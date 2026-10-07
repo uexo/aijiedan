@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>蜂单 HiveGet · 需求大厅</title>
+<style>
+  :root{
+    --bg:#0f1220; --card:#181c2e; --card2:#1f2440; --line:#2b3155;
+    --txt:#e8ecff; --muted:#9aa3c7; --accent:#5b8cff; --good:#37d39b; --warn:#ffb454; --bad:#ff6b81;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+    background:radial-gradient(1200px 600px at 50% -10%,#1b2240 0%,var(--bg) 60%);color:var(--txt);min-height:100vh}
+  a{color:var(--accent);text-decoration:none}
+  .topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:14px;padding:14px 18px;
+    background:rgba(15,18,32,.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  .brand{font-size:18px;font-weight:800;letter-spacing:.5px}
+  .brand small{font-size:11px;color:var(--muted);font-weight:500;margin-left:6px}
+  .spacer{flex:1}
+  .login{display:flex;align-items:center;gap:8px}
+  select,input,button{font-family:inherit}
+  .login select,.login input{background:var(--card);border:1px solid var(--line);color:var(--txt);
+    padding:8px 10px;border-radius:10px;font-size:13px;outline:none}
+  .login button{background:var(--accent);color:#fff;border:0;padding:8px 14px;border-radius:10px;font-size:13px;cursor:pointer}
+  .me{display:flex;align-items:center;gap:10px;font-size:13px}
+  .rolebadge{font-size:11px;padding:3px 10px;border-radius:999px;border:1px solid var(--line);background:var(--card2)}
+  .rolebadge.requester{color:var(--good);border-color:var(--good)}
+  .rolebadge.provider{color:var(--accent);border-color:var(--accent)}
+  .rolebadge.admin{color:var(--warn);border-color:var(--warn)}
+  .me a{font-size:12px;color:var(--muted)}
+  .wrap{max-width:1100px;margin:0 auto;padding:22px 16px 60px}
+  .search{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr auto;gap:10px;background:var(--card);
+    border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:18px}
+  .search input,.search select{background:var(--card2);border:1px solid var(--line);color:var(--txt);
+    padding:11px 12px;border-radius:11px;font-size:14px;outline:none;width:100%}
+  .search input:focus,.search select:focus{border-color:var(--accent)}
+  .search button{grid-column:span 1;background:var(--accent);color:#fff;border:0;border-radius:11px;font-size:14px;cursor:pointer}
+  .search .full{grid-column:1 / -1;display:flex;gap:10px;align-items:center;color:var(--muted);font-size:12px}
+  .section-title{font-size:15px;font-weight:700;margin:22px 0 12px;display:flex;align-items:center;gap:10px}
+  .section-title .tag{font-size:11px;font-weight:600;color:var(--accent);background:rgba(91,140,255,.12);
+    border:1px solid var(--accent);padding:2px 10px;border-radius:999px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;cursor:pointer;transition:.15s}
+  .card:hover{border-color:var(--accent);transform:translateY(-2px)}
+  .card h3{margin:0 0 8px;font-size:16px;line-height:1.4}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;color:var(--muted);font-size:12px;margin-bottom:10px}
+  .chip{background:var(--card2);border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12px}
+  .budget{color:var(--good);font-weight:700;font-size:15px}
+  .status{font-size:11px;padding:2px 9px;border-radius:999px;border:1px solid var(--line)}
+  .status.open{color:var(--good);border-color:var(--good)}
+  .status.matched{color:var(--warn);border-color:var(--warn)}
+  .status.active,.status.pending_escrow,.status.pending_settlement{color:var(--accent);border-color:var(--accent)}
+  .status.completed{color:var(--muted);border-color:var(--muted)}
+  .spec{color:var(--muted);font-size:13px;line-height:1.6;margin:8px 0;max-height:54px;overflow:hidden}
+  .matchbar{margin-top:10px}
+  .matchbar .lab{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:4px}
+  .bar{height:7px;border-radius:999px;background:var(--line);overflow:hidden}
+  .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),#8a5bff)}
+  .reason{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.5}
+  .reco-strip{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+  .reco-strip .card{cursor:pointer}
+  .reco-strip .card h4{margin:0 0 6px;font-size:14px}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .btn{background:var(--accent);color:#fff;border:0;padding:9px 16px;border-radius:11px;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--txt)}
+  .btn.good{background:var(--good)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .detail .back{margin-bottom:14px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:16px}
+  .panel h2{margin:0 0 12px;font-size:18px}
+  .kv{display:grid;grid-template-columns:120px 1fr;gap:8px 14px;font-size:14px;margin:6px 0}
+  .kv b{color:var(--muted);font-weight:500}
+  .prov{display:flex;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
+  .prov:last-child{border-bottom:0}
+  .pavatar{width:46px;height:46px;border-radius:12px;background:linear-gradient(135deg,var(--accent),#8a5bff);
+    display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;flex:0 0 auto}
+  .ptoast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:var(--card2);
+    border:1px solid var(--line);padding:12px 18px;border-radius:12px;font-size:13px;z-index:50;max-width:90vw;
+    box-shadow:0 8px 30px rgba(0,0,0,.4)}
+  .err{background:rgba(255,107,129,.1);border:1px solid var(--bad);color:#ffd0d6;padding:14px;border-radius:12px;font-size:14px}
+  .hint{color:var(--muted);font-size:13px;line-height:1.7}
+  .empty{text-align:center;color:var(--muted);padding:40px 0;font-size:14px}
+  .pub{display:flex;gap:12px;align-items:center;margin-top:8px}
+  footer{margin-top:34px;color:var(--muted);font-size:12px;text-align:center;line-height:1.8}
+  @media(max-width:820px){.search{grid-template-columns:1fr 1fr}.search button{grid-column:1/-1}}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">蜂单 <small>HiveGet Marketplace</small></div>
+  <div class="spacer"></div>
+  <div id="authbox" class="login"></div>
+</div>
+
+<div class="wrap" id="app"></div>
+
+<footer>
+  演示账号：R001=需求方 · P001~P004=接单方 · A001=运营 &nbsp;|&nbsp;
+  <a href="/console" target="_blank">运营后台 /console</a> &nbsp;|&nbsp;
+  <a href="/static/profile.html" target="_blank">公开画像页</a>
+</footer>
+
+<script>
+const API = location.origin;
+const DEMO = [
+  {uid:"R001",role:"requester",name:"需求方演示"},
+  {uid:"P001",role:"provider",name:"接单方 P001"},
+  {uid:"P002",role:"provider",name:"接单方 P002"},
+  {uid:"P003",role:"provider",name:"接单方 P003"},
+  {uid:"P004",role:"provider",name:"接单方 P004"},
+  {uid:"A001",role:"admin",name:"运营 A001"},
+];
+let TOKEN = localStorage.getItem("hg_token") || "";
+let ME = null; // {uid, role, name}
+let CATS = {}; // id -> label
+
+function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function money(c){ return "¥" + ((c||0)/100).toLocaleString("zh-CN",{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function ago(ms){
+  if(!ms) return "";
+  const d = Date.now()-ms; const h=d/3600000;
+  if(h<1) return Math.max(1,Math.round(d/60000))+" 分钟前";
+  if(h<24) return Math.round(h)+" 小时前";
+  return Math.round(h/24)+" 天前";
+}
+function scoreColor(s){ if(s>=70) return "var(--good)"; if(s>=45) return "var(--warn)"; return "var(--bad)"; }
+
+async function api(path, opts={}){
+  const headers = {"Content-Type":"application/json"};
+  if(TOKEN) headers["Authorization"] = "Bearer "+TOKEN;
+  const r = await fetch(API+path, {...opts, headers});
+  let j=null; try{ j = await r.json(); }catch(e){}
+  return {r, j};
+}
+async function loadMe(){
+  if(!TOKEN) { ME=null; return; }
+  const {r,j} = await api("/api/v1/auth/me");
+  if(r.ok && j && j.data){ ME = {uid:j.data.uid, role:j.data.role, name:j.data.name}; }
+  else { TOKEN=""; localStorage.removeItem("hg_token"); ME=null; }
+}
+function renderAuth(){
+  const box = document.getElementById("authbox");
+  if(ME){
+    const cls = ME.role;
+    box.innerHTML = `<div class="me">
+      <span>${esc(ME.name||ME.uid)}</span>
+      <span class="rolebadge ${cls}">${roleLabel(ME.role)}</span>
+      <a href="#" onclick="logout();return false">退出</a>
+    </div>`;
+  } else {
+    box.innerHTML = `<select id="uid">${DEMO.map(d=>`<option value="${d.uid}">${esc(d.name)}</option>`).join("")}</select>
+      <button onclick="login()">登录</button>`;
+  }
+}
+function roleLabel(r){ return {requester:"需求方",provider:"接单方",admin:"运营"}[r]||r; }
+async function login(){
+  const uid = document.getElementById("uid").value;
+  const {r,j} = await api("/api/v1/auth/login",{method:"POST",body:JSON.stringify({uid})});
+  if(r.ok && j && j.data && j.data.token){ TOKEN=j.data.token; localStorage.setItem("hg_token",TOKEN);
+    ME={uid:j.data.uid,role:j.data.role,name:j.data.name}; renderAuth(); toast("已登录："+j.data.name); route(); }
+  else toast("登录失败：" + (j?j.msg:"网络错误"));
+}
+function logout(){ TOKEN=""; ME=null; localStorage.removeItem("hg_token"); renderAuth(); toast("已退出"); route(); }
+
+// ---- 路由(哈希) ----
+function route(){
+  const h = location.hash || "#hall";
+  if(h.startsWith("#task/")) renderTask(h.slice(6));
+  else renderHall();
+}
+
+// ---- 需求大厅 ----
+let HALL_STATE = {q:"",category:"",skill:"",min:"",max:"",sort:"latest"};
+async function renderHall(){
+  const cats = await api("/api/v1/meta/categories");
+  if(cats.j && cats.j.data) CATS = Object.fromEntries(cats.j.data.map(c=>[c.id,c.label]));
+
+  const app = document.getElementById("app");
+  app.innerHTML = `
+  <div class="search">
+    <input id="f_q" placeholder="搜索关键词 / 标题 / 描述" value="${esc(HALL_STATE.q)}">
+    <select id="f_cat"><option value="">全部类目</option>${Object.entries(CATS).map(([k,v])=>`<option value="${k}" ${HALL_STATE.category===k?"selected":""}>${esc(v)}</option>`).join("")}</select>
+    <input id="f_skill" placeholder="技能关键词" value="${esc(HALL_STATE.skill)}">
+    <input id="f_min" placeholder="最低¥" value="${esc(HALL_STATE.min)}">
+    <input id="f_max" placeholder="最高¥" value="${esc(HALL_STATE.max)}">
+    <button onclick="doSearch()">搜索</button>
+    <div class="full">
+      <span>排序：</span>
+      <select id="f_sort" onchange="doSearch()">
+        <option value="latest" ${HALL_STATE.sort==="latest"?"selected":""}>最新</option>
+        ${ME&&ME.role==="provider"?`<option value="relevance" ${HALL_STATE.sort==="relevance"?"selected":""}>相关度（按我的技能画像）</option>`:""}
+      </select>
+      ${ME&&ME.role==="provider"?`<span style="color:var(--accent)">· 登录为接单方，可开启「相关度」排序并查看「为你推荐」</span>`:(ME&&ME.role==="requester"?`<span>· 需求方：点开任务可查看「推荐接单方」与 AI 撮合</span>`:`<span>· 登录后解锁相关度排序 / 推荐位</span>`)}
+    </div>
+  </div>
+  <div id="reco"></div>
+  <div class="section-title">需求大厅 <span class="tag">${HALL_STATE.sort==="relevance"&&ME&&ME.role==="provider"?"相关度优先":"最新发布"}</span></div>
+  <div id="hall" class="grid"></div>`;
+
+  if(ME && ME.role==="provider") renderRecoStrip();
+  doSearch(true);
+}
+
+async function doSearch(skipRead){
+  if(!skipRead){
+    HALL_STATE = {
+      q:document.getElementById("f_q").value.trim(),
+      category:document.getElementById("f_cat").value,
+      skill:document.getElementById("f_skill").value.trim(),
+      min:document.getElementById("f_min").value.trim(),
+      max:document.getElementById("f_max").value.trim(),
+      sort:document.getElementById("f_sort").value,
+    };
+  }
+  const p = new URLSearchParams();
+  if(HALL_STATE.q) p.set("q",HALL_STATE.q);
+  if(HALL_STATE.category) p.set("category",HALL_STATE.category);
+  if(HALL_STATE.skill) p.set("skill",HALL_STATE.skill);
+  if(HALL_STATE.min) p.set("min_budget", Math.round(parseFloat(HALL_STATE.min)*100));
+  if(HALL_STATE.max) p.set("max_budget", Math.round(parseFloat(HALL_STATE.max)*100));
+  p.set("sort", HALL_STATE.sort);
+  p.set("limit","50");
+  const {r,j} = await api("/api/v1/tasks?"+p.toString());
+  const hall = document.getElementById("hall");
+  if(!r.ok || !j || !j.data){ hall.innerHTML = `<div class="err">加载失败：${j?j.msg:"网络错误"}</div>`; return; }
+  const tasks = j.data;
+  // 接单方：拉取「为你推荐」分数映射，叠加相关度可视化
+  let scoreMap = {};
+  if(ME && ME.role==="provider"){
+    const rec = await api("/api/v1/recommend/tasks");
+    if(rec.j && rec.j.data) rec.j.data.forEach(x=>{ if(x.task) scoreMap[x.task.id]={score:x.score,reason:x.reason}; });
+  }
+  if(!tasks.length){ hall.innerHTML = `<div class="empty">暂无符合条件的需求，换个筛选试试～</div>`; return; }
+  hall.innerHTML = tasks.map(t=>taskCard(t, scoreMap[t.id])).join("");
+}
+
+function taskCard(t, sc){
+  const cat = CATS[t.category] || t.category;
+  const scHtml = sc ? `
+    <div class="matchbar">
+      <div class="lab"><span>匹配度</span><span style="color:${scoreColor(sc.score)};font-weight:700">${sc.score.toFixed(1)}</span></div>
+      <div class="bar"><i style="width:${Math.min(100,sc.score)}%"></i></div>
+      ${sc.reason?`<div class="reason">${esc(sc.reason)}</div>`:""}
+    </div>` : "";
+  return `<div class="card" onclick="location.hash='#task/${esc(t.id)}'">
+    <h3>${esc(t.title)}</h3>
+    <div class="meta">
+      <span class="chip">${esc(cat)}</span>
+      <span class="budget">${money(t.budget_cents)}</span>
+      <span class="status ${t.status}">${esc(t.status)}</span>
+      <span>需求方 ${esc(t.requester_id)}</span>
+      <span>${ago(t.created_at)}</span>
+    </div>
+    <div class="spec">${esc(t.spec||"")}</div>
+    ${scHtml}
+  </div>`;
+}
+
+// 接单方「为你推荐」strip
+async function renderRecoStrip(){
+  const box = document.getElementById("reco");
+  const {r,j} = await api("/api/v1/recommend/tasks");
+  if(!r.ok || !j || !j.data || !j.data.length){ return; }
+  box.innerHTML = `<div class="section-title">为你推荐 <span class="tag">按多因子匹配分 · Top ${j.data.length}</span></div>
+    <div class="reco-strip">${j.data.map(x=>{
+      const t=x.task; const cat=CATS[t.category]||t.category;
+      return `<div class="card" onclick="location.hash='#task/${esc(t.id)}'">
+        <h4>${esc(t.title)}</h4>
+        <div class="meta"><span class="chip">${esc(cat)}</span><span class="budget">${money(t.budget_cents)}</span></div>
+        <div class="matchbar"><div class="lab"><span>匹配度</span><span style="color:${scoreColor(x.score)};font-weight:700">${x.score.toFixed(1)}</span></div>
+        <div class="bar"><i style="width:${Math.min(100,x.score)}%"></i></div>
+        ${x.reason?`<div class="reason">${esc(x.reason)}</div>`:""}</div>
+      </div>`;
+    }).join("")}</div>`;
+}
+
+// ---- 任务详情 ----
+async function renderTask(id){
+  const {r,j} = await api("/api/v1/tasks/"+encodeURIComponent(id));
+  const app = document.getElementById("app");
+  if(!r.ok || !j || !j.data){ app.innerHTML = `<div class="err">需求不存在：${esc(id)}</div>`; return; }
+  const t = j.data.task, pub = j.data.publisher, order = j.data.order;
+  const cat = CATS[t.category]||t.category;
+  const so = t.spec_obj||{};
+  let html = `<div class="detail">
+    <div class="back"><a href="#hall" onclick="renderHall();return true">← 返回需求大厅</a></div>
+    <div class="panel">
+      <h2>${esc(t.title)}</h2>
+      <div class="meta"><span class="chip">${esc(cat)}</span><span class="budget">${money(t.budget_cents)}</span>
+        <span class="status ${t.status}">${esc(t.status)}</span><span>${ago(t.created_at)}</span></div>
+      <div class="kv">
+        <b>需求描述</b><span>${esc(t.spec||"—")}</span>
+        <b>交付物</b><span>${esc(so.deliverables||"—")}</span>
+        <b>交付格式</b><span>${esc(so.required_format||"—")}</span>
+        <b>期望截止</b><span>${so.deadline_at?new Date(so.deadline_at).toLocaleString("zh-CN"):"—"}</span>
+        <b>风格参考</b><span>${esc(so.style_ref||"—")}</span>
+      </div>
+      ${t.clarifications&&t.clarifications.length?`<div class="hint" style="margin-top:8px"><b>待澄清：</b>${t.clarifications.map(esc).join("；")}</div>`:""}
+      ${pub?`<div class="pub"><div class="avatar" style="width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,var(--accent),#8a5bff);display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff">${esc((pub.name||pub.id||"?").charAt(0).toUpperCase())}</div>
+        <div><div style="font-weight:600">${esc(pub.name||pub.id)}</div>
+        <div class="hint">可信分 ${pub.trust_score||0} · 已完成 ${pub.completed_count||0} · 均分 ${(pub.avg_rating||0).toFixed(1)} · <a href="/static/profile.html?uid=${esc(pub.id)}" target="_blank">查看公开画像</a></div></div></div>`:""}
+      <div class="row" style="margin-top:14px">
+        ${ME&&ME.role==="provider"?`<button class="btn" onclick="takeTask('${esc(t.id)}')">我接这个单</button>`:""}
+        ${ME&&ME.role==="requester"?`<button class="btn good" onclick="aiMatch('${esc(t.id)}')">AI 撮合推荐接单方</button>`:""}
+      </div>
+      <div id="act"></div>
+    </div>
+    <div id="provPanel"></div>
+  </div>`;
+  app.innerHTML = html;
+
+  if(ME && ME.role==="requester") renderProvPanel(t.id);
+  if(order) document.getElementById("act").innerHTML = `<div class="hint" style="margin-top:10px">已有接单订单：#${esc(order.id)} · 状态 ${esc(order.status)}</div>`;
+}
+
+async function renderProvPanel(taskId){
+  const box = document.getElementById("provPanel");
+  box.innerHTML = `<div class="section-title">推荐接单方 <span class="tag">同口径多因子匹配 · 需求方首页推荐位</span></div>
+    <div class="panel" id="provList"><div class="hint">加载中…</div></div>`;
+  const {r,j} = await api("/api/v1/recommend/providers?task_id="+encodeURIComponent(taskId));
+  const list = document.getElementById("provList");
+  if(!r.ok || !j || !j.data || !j.data.length){ list.innerHTML = `<div class="hint">暂无匹配接单方</div>`; return; }
+  list.innerHTML = j.data.map(x=>{
+    const p=x.provider; const ini=(p.name||p.id||"?").charAt(0).toUpperCase();
+    return `<div class="prov">
+      <div class="pavatar">${esc(ini)}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600">${esc(p.name||p.id)} <span class="rolebadge provider">接单方</span>
+          ${p.kyc_verified?'<span class="rolebadge" style="color:var(--good);border-color:var(--good)">KYC✓</span>':''}</div>
+        <div class="hint">可信分 ${p.trust_score||0} · 已完成 ${p.completed_count||0} · 均分 ${(p.avg_rating||0).toFixed(1)} · ${(p.skills||[]).slice(0,4).map(esc).join(" / ")}</div>
+        <div class="matchbar" style="margin-top:6px"><div class="lab"><span>匹配度</span><span style="color:${scoreColor(x.score)};font-weight:700">${x.score.toFixed(1)}</span></div>
+          <div class="bar"><i style="width:${Math.min(100,x.score)}%"></i></div>${x.reason?`<div class="reason">${esc(x.reason)}</div>`:""}</div>
+      </div>
+      <a class="btn ghost" href="/static/profile.html?uid=${esc(p.id)}" target="_blank">画像</a>
+    </div>`;
+  }).join("");
+}
+
+async function aiMatch(taskId){
+  const box = document.getElementById("provPanel");
+  box.innerHTML = `<div class="section-title">AI 撮合结果</div><div class="panel"><div class="hint">撮合中…</div></div>`;
+  const {r,j} = await api("/api/v1/tasks/"+encodeURIComponent(taskId)+"/match",{method:"POST"});
+  if(!r.ok||!j||!j.data){ box.querySelector(".panel").innerHTML=`<div class="err">${j?j.msg:"失败"}</div>`; return; }
+  const list = (j.data.recs||j.data);
+  if(!list.length){ box.querySelector(".panel").innerHTML=`<div class="hint">未找到匹配接单方</div>`; return; }
+  box.querySelector(".panel").innerHTML = list.map(x=>{
+    const p=x.provider||{}; const ini=(p.name||p.id||"?").charAt(0).toUpperCase();
+    return `<div class="prov"><div class="pavatar">${esc(ini)}</div>
+      <div style="flex:1"><div style="font-weight:600">${esc(p.name||p.id)}</div>
+      <div class="hint">${(p.skills||[]).slice(0,4).map(esc).join(" / ")}</div>
+      <div class="matchbar"><div class="lab"><span>匹配度</span><span style="color:${scoreColor(x.score)};font-weight:700">${(x.score||0).toFixed(1)}</span></div>
+      <div class="bar"><i style="width:${Math.min(100,x.score||0)}%"></i></div>${x.reason?`<div class="reason">${esc(x.reason)}</div>`:""}</div></div></div>`;
+  }).join("");
+}
+
+async function takeTask(taskId){
+  const act = document.getElementById("act");
+  act.innerHTML = `<div class="hint">接单中…</div>`;
+  const {r,j} = await api("/api/v1/tasks/"+encodeURIComponent(taskId)+"/take",{method:"POST",body:JSON.stringify({milestones:[]})});
+  if(r.ok && j && j.data){ act.innerHTML = `<div style="margin-top:10px;padding:12px;border:1px solid var(--good);border-radius:10px;color:var(--good);font-size:13px">接单成功，订单 #${esc(j.data.id||"")} 已创建（待托管）。状态：${esc(j.data.status||"")}</div>`; }
+  else { const m = j&&j.msg?j.msg:(j&&j.missing?j.missing.map(x=>x).join("、"):"接单被拦截"); act.innerHTML = `<div class="err" style="margin-top:10px">${esc(m)}</div>`; }
+}
+
+// ---- toast ----
+let toastTimer=null;
+function toast(msg){
+  let el=document.getElementById("toast");
+  if(!el){ el=document.createElement("div"); el.id="toast"; el.className="ptoast"; document.body.appendChild(el); }
+  el.textContent=msg; el.style.display="block";
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.style.display="none",2600);
+}
+
+// ---- 启动 ----
+window.addEventListener("hashchange", route);
+(async function(){
+  await loadMe();
+  renderAuth();
+  if(!CATS || !Object.keys(CATS).length){ const c=await api("/api/v1/meta/categories"); if(c.j&&c.j.data) CATS=Object.fromEntries(c.j.data.map(x=>[x.id,x.label])); }
+  route();
+})();
+</script>
+</body>
+</html>

@@ -33,8 +33,12 @@ hiveget/
 │   ├── clarify/    clarify.go     # P1-2: AI 澄清(自然语言→多轮对话→结构化 spec, 零依赖 stub + 可选 LLM)
 │   ├── middleware/ auth.go        # 自实现 HS256 JWT 鉴权
 │   └── handler/    handler.go     # REST API + 合规拦截(409) + SSE
-│       ├── console.html           # 演示控制台(注册/登录/发单/评价/AI澄清)
+│       ├── console.html           # 演示控制台(注册/登录/发单/评价/AI澄清) — 路由 /console
 │       └── mobile.html            # P1-3 移动端 H5 核心页(/m: 大厅/发单/订单/我的·钱包)
+├── web/                          # 静态前端(由 Go 内置 http.FileServer 托管于 /static/)
+│   ├── index.html                 # Marketplace 枢纽页(根路径 / → /static/): 需求大厅 + 推荐位 + 相关度可视化
+│   └── profile.html               # 接单方公开画像页(可点击展开订单/评价) — /static/profile.html
+└── smoke_test.py                 # 主链路冒烟测试(验证拦截与放行)
 └── smoke_test.py                 # 主链路冒烟测试(验证拦截与放行)
 ```
 
@@ -225,6 +229,20 @@ P3 企业版从「最小骨架」推向可商用：组织作为统一结算主�
 - **用户画像页前端**：`PublicProfile` 扩出 `recent_orders` / `recent_reviews`（近期订单双视角 + 收到的互评，各 5 条），单文件静态页 `web/profile.html` 已渲染这两个区块；由 Go 内置 `http.FileServer` 托管于 `/static/profile.html`，并加 CORS 中间件（`Access-Control-Allow-Origin: *`）。
 
 接口与全链路已验证：搜索 `q=rag`/`skill=python` 命中、截止窗口 `deadline_after` 含 / `deadline_before` 排除、推荐位 P001 返回 6 条且 top 分 81.3、需求方访问推荐位 403、推荐接单方 P001 对某任务返回 2 条且 top 分 83.4、KYC 模拟提交自动通过、`/static/profile.html` 可访问 200、画像含 recent_orders/recent_reviews。**内存模式与 MySQL 模式 smoke 均 218/218 PASS（方案2 新增 6 项 + 方案3做深新增 6 项断言，双模式通过）。**
+
+### 方案3 前端做深（2026-10-07，董事长拍板「方案3 前端做深」）
+
+把已验证的「搜索 → 推荐 → 画像」后端闭环在 UI 层串成可演示的前端（纯静态单页，不卡合规）：
+
+- **Marketplace 枢纽页 `web/index.html`（新，根路径 `/` 入口）**：单文件 SPA（深色主题、自带 API 调用、零构建）。顶部演示账号登录（R001 / P001~P004 / A001）并角色感知。
+  - **需求大厅**：关键词 `q` / 类目（下拉来自 `/meta/categories`，单一事实来源）/ 技能 `skill` / 预算区间 / 排序（最新 或 **接单方专属「相关度」**）检索，卡片展示类目 / 预算 / 状态 / 需求方 / 时间。
+  - **相关度可视化**：接单方登录后，大厅卡片叠加 `/recommend/tasks` 的多因子匹配分（条形 + 可解释理由）；选「相关度」排序即按该分重排。
+  - **推荐位（接单方「为你推荐」）**：登录为接单方时顶部 feed 直接拉取 `/recommend/tasks`（TopN，带匹配分条 + 理由），点击进任务详情。
+  - **推荐位（需求方「推荐接单方」）**：进入任一任务详情，需求方可见「推荐接单方」面板（拉 `/recommend/providers?task_id=`，带可信分环 + 匹配分条 + 理由 + 画像链接）与「AI 撮合」按钮（POST `/tasks/{id}/match` 复用同口径）；接单方详情内可一键「我接这个单」（POST `/tasks/{id}/take`）。
+  - 路由：根路径 `/` 302 到 `/static/`（目录索引即 `index.html`，单次跳转 200）；运营后台保留于 `/console`。
+- **画像页交互增强 `web/profile.html`**：「近期订单（双视角）」「近期评价（收到的互评）」改为**可点击展开**（订单号 / 角色 / 金额 / 状态 / 创建时间、评价方 / 评分 / 内容 / 时间），新增「← 返回需求大厅」入口；公开接口仍无需登录。
+
+实测（MySQL 模式在线）：`/`→`/static/` 单跳 200、`/console` 200、`/recommend/tasks`(P001) 返回 6 条（top 79.7）、`/recommend/providers?task_id=T-DEMO-001`(R001) 返回 2 条（P001 trust 75 / score 79.7，P003 trust 24 / score 30.7）、`/users/P001` 含 `recent_orders=5` / `recent_reviews=1`。后端端点此前已双模式 218/218 验证，前端为纯静态、同源调用，无新增后端改动。
 
 ## 演示账号（登录 uid）
 

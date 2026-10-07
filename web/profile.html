@@ -52,6 +52,13 @@
     padding:14px;border-radius:12px;font-size:14px}
   .hint{color:var(--muted);font-size:13px;line-height:1.7}
   .reason{font-size:11px;color:var(--muted);margin-top:4px}
+  .o-row{cursor:pointer}
+  .o-detail{display:none;padding:6px 0 12px 2px}
+  .o-detail.open{display:block}
+  .kv2{display:grid;grid-template-columns:80px 1fr;gap:6px 12px;font-size:13px;padding:3px 0}
+  .kv2 b{color:var(--muted);font-weight:500}
+  .nav{margin-bottom:14px}
+  .nav a{font-size:13px}
   a{color:var(--accent)}
   footer{margin-top:28px;color:var(--muted);font-size:12px;text-align:center}
 </style>
@@ -60,6 +67,7 @@
 <div class="wrap">
   <h1>接单方公开画像</h1>
   <div class="sub">HiveGet Marketplace · 信用 / 声誉 / 可信分透明可解释</div>
+  <div class="nav"><a href="/">← 返回需求大厅</a></div>
 
   <div class="search">
     <input id="uid" placeholder="输入用户 ID，如 P001 / P002" autocomplete="off">
@@ -138,37 +146,54 @@ function render(p){
   </div>
 
   <div class="card">
-    <div class="section-title">近期订单（需求方 / 接单方双视角）</div>
-    ${(p.recent_orders&&p.recent_orders.length)? p.recent_orders.map(o=>{
+    <div class="section-title">近期订单（需求方 / 接单方双视角 · 点击展开）</div>
+    ${(p.recent_orders&&p.recent_orders.length)? p.recent_orders.map((o,i)=>{
       const roleTxt = o.role==="requester"?"需求方":"接单方";
       const stTxt = (o.status||"").replace(/_/g," ");
-      return `<div style="display:flex;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)">
-        <div style="min-width:0">
-          <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(o.task_title||o.id)}</div>
-          <div class="reason">#${esc(o.id)} · ${roleTxt}</div>
+      return `<div class="o-row" onclick="toggle('o'+${i})">
+        <div style="display:flex;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)">
+          <div style="min-width:0">
+            <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(o.task_title||o.id)}</div>
+            <div class="reason">#${esc(o.id)} · ${roleTxt} · 点击展开 ▾</div>
+          </div>
+          <div style="text-align:right;flex:0 0 auto">
+            <div style="font-size:14px;font-weight:700">¥${(o.amount_cents/100).toFixed(2)}</div>
+            <div class="reason">${esc(stTxt)}</div>
+          </div>
         </div>
-        <div style="text-align:right;flex:0 0 auto">
-          <div style="font-size:14px;font-weight:700">¥${(o.amount_cents/100).toFixed(2)}</div>
-          <div class="reason">${esc(stTxt)}</div>
+        <div class="o-detail" id="o${i}">
+          <div class="kv2"><b>订单号</b><span>${esc(o.id)}</span></div>
+          <div class="kv2"><b>角色</b><span>${roleTxt}</span></div>
+          <div class="kv2"><b>金额</b><span>¥${(o.amount_cents/100).toFixed(2)}</span></div>
+          <div class="kv2"><b>状态</b><span>${esc(stTxt)}</span></div>
+          <div class="kv2"><b>创建时间</b><span>${o.created_at?new Date(o.created_at).toLocaleString("zh-CN"):"—"}</span></div>
         </div>
       </div>`;
     }).join("") : '<div class="hint">暂无订单记录</div>'}
   </div>
 
   <div class="card">
-    <div class="section-title">近期评价（收到的互评）</div>
-    ${(p.recent_reviews&&p.recent_reviews.length)? p.recent_reviews.map(rv=>{
+    <div class="section-title">近期评价（收到的互评 · 点击展开）</div>
+    ${(p.recent_reviews&&p.recent_reviews.length)? p.recent_reviews.map((rv,i)=>{
       const star = "★".repeat(rv.rating) + "☆".repeat(5-rv.rating);
-      return `<div style="padding:11px 0;border-bottom:1px solid var(--line)">
-        <div style="display:flex;justify-content:space-between;gap:12px">
-          <div style="font-size:13px;color:var(--muted)">来自 ${esc(rv.counterparty||"匿名")}</div>
-          <div class="stars">${star}</div>
+      return `<div class="o-row" onclick="toggle('r'+${i})">
+        <div style="padding:11px 0;border-bottom:1px solid var(--line)">
+          <div style="display:flex;justify-content:space-between;gap:12px">
+            <div style="font-size:13px;color:var(--muted)">来自 ${esc(rv.counterparty||"匿名")} · 点击展开 ▾</div>
+            <div class="stars">${star}</div>
+          </div>
         </div>
-        ${rv.comment? '<div class="reason" style="margin-top:4px;color:var(--txt)">'+esc(rv.comment)+'</div>':''}
+        <div class="o-detail" id="r${i}">
+          <div class="kv2"><b>评价方</b><span>${esc(rv.counterparty||"匿名")}</span></div>
+          <div class="kv2"><b>评分</b><span>${star}</span></div>
+          <div class="kv2"><b>内容</b><span>${esc(rv.comment||"（无文字评价）")}</span></div>
+          <div class="kv2"><b>时间</b><span>${rv.created_at?new Date(rv.created_at).toLocaleString("zh-CN"):"—"}</span></div>
+        </div>
       </div>`;
     }).join("") : '<div class="hint">暂无评价记录</div>'}
   </div>`;
 }
+function toggle(id){ const el=document.getElementById(id); if(el) el.classList.toggle("open"); }
 function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 
 // 支持 ?uid= 直达

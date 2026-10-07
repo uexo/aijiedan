@@ -115,6 +115,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.mobile(w, r)
 		return
 	}
+	if r.URL.Path == "/console" {
+		h.console(w, r)
+		return
+	}
 	segs := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	if len(segs) < 3 || segs[0] != "api" || segs[1] != "v1" {
 		h.writeJSON(w, http.StatusNotFound, envelope{Code: 404, Msg: "not found"})
@@ -194,10 +198,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusNotFound, envelope{Code: 404, Msg: "not found"})
 }
 
-// ---- 运营控制台(根路径 /) ----
-// console.html 为纯前端单页, 自行 fetch /api/v1 接口; 此处仅投递静态文件。
+// ---- Marketplace 首页(根路径 /) ----
+// index.html 为单文件 SPA(需求大厅: 搜索→推荐→画像闭环), 由 web/ 经 /static/ 提供; 此处重定向。
 
 func (h *Handler) landing(w http.ResponseWriter, r *http.Request) {
+	// Marketplace 首页: 由 web/index.html 经 /static/ 提供(单文件 SPA, 自带 API 调用)。
+	// 直接重定向到 /static/ 目录索引(单次跳转即 200, 避免 /static/index.html 的索引去重 301)。
+	http.Redirect(w, r, "/static/", http.StatusFound)
+}
+
+// console 运营控制台(独立路由 /console, 避免与 Marketplace 首页冲突), 仍为内嵌静态文件。
+func (h *Handler) console(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(consoleHTML)
