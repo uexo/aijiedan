@@ -1076,7 +1076,7 @@ func (h *Handler) handleOrgs(w http.ResponseWriter, r *http.Request, segs []stri
 		// 组织钱包: GET /orgs/{id}/wallet
 		h.writeJSON(w, 200, envelope{Code: 200, Msg: "ok", Data: h.Svc.GetOrgWallet(segs[3])})
 
-	case len(segs) == 5 && segs[4] == "wallet" && r.Method == http.MethodPost:
+	case len(segs) == 6 && segs[4] == "wallet" && segs[5] == "deposit" && r.Method == http.MethodPost:
 		// 组织钱包充值(owner/admin): POST /orgs/{id}/wallet/deposit {"amount_cents":...}
 		var body struct {
 			AmountCents int64 `json:"amount_cents"`
@@ -1172,7 +1172,7 @@ func (h *Handler) handleOrgs(w http.ResponseWriter, r *http.Request, segs []stri
 	case len(segs) == 5 && segs[4] == "webhooks" && r.Method == http.MethodGet:
 		h.writeJSON(w, 200, envelope{Code: 200, Msg: "ok", Data: h.Svc.ListWebhooks(segs[3])})
 
-	case len(segs) == 6 && segs[4] == "webhook-deliveries" && r.Method == http.MethodGet:
+	case len(segs) == 5 && segs[4] == "webhook-deliveries" && r.Method == http.MethodGet:
 		// 组织 Webhook 投递记录(验证事件已真实投递)。
 		h.writeJSON(w, 200, envelope{Code: 200, Msg: "ok", Data: h.Svc.Store.ListWebhookDeliveriesByOrg(segs[3])})
 

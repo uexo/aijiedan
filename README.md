@@ -244,6 +244,18 @@ P3 企业版从「最小骨架」推向可商用：组织作为统一结算主�
 
 实测（MySQL 模式在线）：`/`→`/static/` 单跳 200、`/console` 200、`/recommend/tasks`(P001) 返回 6 条（top 79.7）、`/recommend/providers?task_id=T-DEMO-001`(R001) 返回 2 条（P001 trust 75 / score 79.7，P003 trust 24 / score 30.7）、`/users/P001` 含 `recent_orders=5` / `recent_reviews=1`。后端端点此前已双模式 218/218 验证，前端为纯静态、同源调用，无新增后端改动。
 
+### P3 运营侧前端（2026-10-07，董事长拍板「下一步 p3」）
+
+把 P3 企业版已落地的后端（运营看板 + 组织治理全链路）在 UI 层串成可演示的前端。
+
+- **运营 · 企业版单页 `web/admin.html`（入口 `/static/admin.html`，`web/index.html` 页脚已加链接）**：单文件 SPA（深色主题、沿用 `index.html` 的 `api()`/`login()` 范式、零构建）。顶部演示账号登录（R001 / P001~P004 / **A001 运营**）并角色感知，哈希路由 `#dash` / `#orgs` / `#org/{id}`。
+  - **运营看板 `#dash`（仅 A001）**：拉 `GET /admin/metrics`，7 张指标卡（用户总数 / 任务 / 订单 / GMV / 平台资金水位 / 提现 / 合规红灯）+ 订单状态分布条形图；非运营账号显示 403 提示。
+  - **组织治理 `#orgs`**：创建组织（`POST /orgs`）、列出我名下组织；进入组织详情按成员角色动态显隐操作。
+  - **组织详情 `#org/{id}`**：四角色 RBAC（owner / admin / member / viewer）驱动权限——概览（钱包余额/冻结/成员数/任务数）、成员（邀请，owner/admin）、任务与发包（发包，成员即可）、资金与审批（充值 owner/admin、提现申请 成员、审批 通过/驳回 owner/admin）、开放 API / Webhook（生成 API Key、订阅 Webhook、查看最近投递记录）。
+- **后端路由修复（随本步一并落地）**：P3 骨架遗留两处 segment 计数写反导致 404——`POST /orgs/{id}/wallet/deposit`（应为 6 段误写 5）与 `GET /orgs/{id}/webhook-deliveries`（应为 5 段误写 6），已在 `internal/handler/handler.go` 修正，编译通过。
+
+实测（MySQL 模式在线，全链路）：A001 看板 7 卡齐全（users=6 / tasks=1 / 平台资金水位=¥10000 / 合规红灯=3）；R001 建组织 → 邀请 P001 → 充值 ¥5000（wallet=500000）→ 发组织任务 → P001 提现申请 ¥800 生成审批单 → R001 审批通过（wallet 扣减至 420000，资金流真实持久化）→ 生成 API Key（`hgk_` 明文仅一次）→ 订阅 Webhook → 先订阅后发包验证 `task_created` 事件真实投递（deliveries n=1）。后端端点此前已双模式 218/218 验证；本步新增 2 个路由修复已编译并端到端复现。
+
 ## 演示账号（登录 uid）
 
 | uid  | 角色   | 说明                         |
