@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>蜂得 HiveGet · 移动端</title>
+<style>
+  :root{--bg:#f4f5f7;--card:#fff;--ink:#1f2329;--muted:#8a9099;--line:#eceef1;--brand:#f59e0b;--brand-d:#b45309;--green:#16a34a;--red:#dc2626;--blue:#2563eb;--purple:#7c3aed}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;font-size:14px;line-height:1.5}
+  .app{max-width:480px;margin:0 auto;min-height:100vh;background:var(--bg);display:flex;flex-direction:column}
+  .topbar{position:sticky;top:0;z-index:10;background:#fff;border-bottom:1px solid var(--line);padding:12px 16px;display:flex;align-items:center;gap:10px}
+  .logo{width:30px;height:30px;border-radius:8px;background:var(--brand);color:#fff;font-weight:800;display:inline-flex;align-items:center;justify-content:center;font-size:15px}
+  .topbar h1{font-size:16px;margin:0;font-weight:700}
+  .topbar .who{margin-left:auto;font-size:12px;color:var(--muted)}
+  .main{flex:1;overflow-y:auto;padding:14px 14px 78px}
+  .tabbar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;z-index:20;background:#fff;border-top:1px solid var(--line);display:flex}
+  .tab{flex:1;text-align:center;padding:8px 0 10px;font-size:11px;color:var(--muted);cursor:pointer;user-select:none}
+  .tab .ic{font-size:20px;display:block;line-height:1.2}
+  .tab.on{color:var(--brand-d);font-weight:700}
+  section{display:none}
+  section.on{display:block}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.03)}
+  h2.t{font-size:15px;margin:0 0 12px;font-weight:700;display:flex;align-items:center;gap:6px}
+  .pill{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted);display:inline-block;margin:2px 4px 2px 0}
+  .pill.blue{color:var(--blue);border-color:rgba(37,99,235,.3);background:rgba(37,99,235,.06)}
+  .pill.green{color:var(--green);border-color:rgba(22,163,74,.3);background:rgba(22,163,74,.06)}
+  .pill.red{color:var(--red);border-color:rgba(220,38,38,.3);background:rgba(220,38,38,.06)}
+  .pill.gray{color:var(--muted);border-color:var(--line);background:#f7f8fa}
+  .pill.amber{color:var(--brand-d);border-color:rgba(245,158,11,.35);background:rgba(245,158,11,.08)}
+  .meta{font-size:12px;color:var(--muted);margin:6px 0}
+  .amt{font-size:16px;font-weight:800;color:var(--brand-d)}
+  input,textarea,select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font-size:14px;outline:none;background:#fff;font-family:inherit}
+  input:focus,textarea:focus,select:focus{border-color:var(--brand)}
+  textarea{resize:vertical}
+  label.f{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+  button.btn{width:100%;border:none;border-radius:10px;padding:11px;font-size:14px;font-weight:700;background:var(--brand);color:#fff;cursor:pointer;margin-top:6px}
+  button.btn.ghost{background:#eef0f3;color:var(--ink)}
+  button.btn.blue{background:var(--blue)}
+  button.btn.sm{width:auto;padding:7px 14px;font-size:13px;margin:0}
+  button.btn:disabled{opacity:.45}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .note{font-size:12px;color:var(--muted);margin-top:8px}
+  .empty{text-align:center;color:var(--muted);padding:40px 0;font-size:13px}
+  .badge{display:inline-block;font-size:11px;padding:2px 7px;border-radius:6px;background:#f1f3f5;color:var(--muted);margin-right:6px}
+  .kv{display:flex;justify-content:space-between;font-size:13px;padding:7px 0;border-bottom:1px dashed var(--line)}
+  .kv:last-child{border-bottom:none}
+  .kv b{font-weight:700}
+  .msg{position:fixed;left:50%;top:64px;transform:translateX(-50%);background:rgba(31,35,41,.92);color:#fff;padding:9px 16px;border-radius:10px;font-size:13px;z-index:50;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90%}
+  .msg.show{opacity:1}
+  .msg.err{background:rgba(220,38,38,.94)}
+  .msg.ok{background:rgba(22,163,74,.94)}
+  .detail{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);display:none}
+  .detail.on{display:block}
+  .sw{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line)}
+  .sw:last-child{border-bottom:none}
+  .dot{width:42px;height:24px;border-radius:999px;background:#d1d5db;position:relative;transition:background .2s;cursor:pointer;flex:none}
+  .dot.on{background:var(--green)}
+  .dot::after{content:"";position:absolute;width:20px;height:20px;border-radius:50%;background:#fff;top:2px;left:2px;transition:left .2s}
+  .dot.on::after{left:20px}
+  .score{font-size:30px;font-weight:800;color:var(--brand-d)}
+  .sub2{font-size:13px;color:var(--muted);margin:2px 0 10px}
+  .hero{background:linear-gradient(135deg,var(--brand),#fbbf24);color:#fff;border-radius:14px;padding:16px;margin-bottom:12px}
+  .hero .big{font-size:24px;font-weight:800}
+  .conv{padding:12px;border-bottom:1px solid #eee;cursor:pointer}
+  .conv:hover{background:#fafafa}
+  .conv-top{display:flex;justify-content:space-between;align-items:center;font-size:15px}
+  .badge{background:#dc2626;color:#fff;border-radius:10px;padding:1px 7px;font-size:12px;margin-left:8px}
+  .conv-sub{color:#6b7280;font-size:13px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chat-head{display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid #eee}
+  .chat-body{max-height:50vh;overflow:auto;padding:10px 0}
+  .bubble{max-width:72%;padding:8px 12px;border-radius:12px;margin:6px 0;word-break:break-word;line-height:1.4}
+  .bubble.mine{background:#f59e0b;color:#fff;margin-left:auto}
+  .bubble.theirs{background:#f1f1f1;color:#111;margin-right:auto}
+  .sysmsg{text-align:center;color:#6b7280;font-size:12px;margin:6px 0}
+  .chat-input{display:flex;gap:8px;padding:10px 0}
+  .chat-input input{flex:1;padding:10px;border:1px solid #e5e7eb;border-radius:10px;box-sizing:border-box}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <span class="logo">蜂</span>
+    <h1>蜂得 HiveGet</h1>
+    <span class="who" id="who">未登录</span>
+  </div>
+
+  <div class="main">
+    <!-- 大厅 -->
+    <section id="sec-hall" class="on">
+      <h2 class="t">🏪 需求大厅</h2>
+      <div id="hall"></div>
+    </section>
+
+    <!-- 发单 -->
+    <section id="sec-post">
+      <h2 class="t">➕ 发布需求</h2>
+      <div id="post"></div>
+    </section>
+
+    <!-- 订单 -->
+    <section id="sec-orders">
+      <h2 class="t">📦 我的订单</h2>
+      <div id="orders"></div>
+    </section>
+
+    <!-- 我的 -->
+    <section id="sec-me">
+      <h2 class="t">👤 我的</h2>
+      <div id="me"></div>
+    </section>
+
+    <!-- 消息 (P2-2 + P2-3) -->
+    <section id="sec-msg">
+      <h2 class="t">💬 消息</h2>
+      <div id="notilist"></div>
+      <div id="msglist"></div>
+      <div id="chat" style="display:none"></div>
+    </section>
+  </div>
+
+  <div class="tabbar">
+    <div class="tab on" data-tab="hall" onclick="showTab('hall')"><span class="ic">🏪</span>大厅</div>
+    <div class="tab" data-tab="post" onclick="showTab('post')"><span class="ic">➕</span>发单</div>
+    <div class="tab" data-tab="orders" onclick="showTab('orders')"><span class="ic">📦</span>订单</div>
+    <div class="tab" data-tab="me" onclick="showTab('me')"><span class="ic">👤</span>我的</div>
+    <div class="tab" data-tab="msg" onclick="showTab('msg')"><span class="ic">💬</span>消息<span id="msgBadge" class="badge" style="display:none"></span></div>
+  </div>
+</div>
+<div class="msg" id="msg"></div>
+
+<script>
+// ---------- 状态 ----------
+const LS=["hg_token","hg_uid","hg_role","hg_name"];
+let TOKEN=localStorage.getItem("hg_token")||"";
+let UID=localStorage.getItem("hg_uid")||"";
+let ROLE=localStorage.getItem("hg_role")||"";
+let NAME=localStorage.getItem("hg_name")||"";
+const API="/api/v1";
+const STATUS_CN={pending_escrow:"待托管",active:"进行中",delivering:"交付中",delivered:"待验收",completed:"已完成",pending_settlement:"待结算",disputed:"纠纷中",cancelled:"已取消"};
+const ROLE_CN={requester:"需求方",provider:"接单方",admin:"运营"};
+const TX_CN={escrow:"托管冻结",settle:"结算放款",commission:"平台佣金",refund:"退款",withdraw:"提现",deposit:"充值"};
+function money(c){ return "¥"+(Number(c||0)/100).toFixed(2); }
+function statusPill(s){ const c={completed:"green",cancelled:"gray",disputed:"red",pending_settlement:"amber",pending_escrow:"amber"}[s]||"blue"; return `<span class="pill ${c}">${STATUS_CN[s]||s}</span>`; }
+
+// ---------- 基础 API ----------
+async function api(method, path, body){
+  const opt={method, headers:{}};
+  if(body!==undefined){ opt.headers["Content-Type"]="application/json"; opt.body=JSON.stringify(body); }
+  if(TOKEN) opt.headers["Authorization"]="Bearer "+TOKEN;
+  try{
+    const r=await fetch(API+path, opt);
+    let d={}; try{ d=await r.json(); }catch(e){}
+    return {status:r.status, d};
+  }catch(e){ return {status:0, d:{msg:String(e)}}; }
+}
+function showMsg(t, ok){ const m=document.getElementById("msg"); m.textContent=t; m.className="msg show "+(ok===false?"err":ok===true?"ok":""); setTimeout(()=>m.className="msg",1800); }
+
+// ---------- Tab ----------
+function showTab(name){
+  document.querySelectorAll("section").forEach(s=>s.classList.remove("on"));
+  document.querySelectorAll(".tab").forEach(t=>t.classList.remove("on"));
+  document.getElementById("sec-"+name).classList.add("on");
+  document.querySelector('.tab[data-tab="'+name+'"]').classList.add("on");
+  if(name==="hall") renderHall();
+  else if(name==="post") renderPost();
+  else if(name==="orders") renderOrders();
+  else if(name==="me") renderMe();
+  else if(name==="msg") renderMsg();
+  window.scrollTo(0,0);
+}
+function syncIdentity(){
+  const w=document.getElementById("who");
+  if(TOKEN){ w.textContent=(NAME||UID)+" · "+(ROLE_CN[ROLE]||ROLE); }
+  else { w.textContent="未登录"; }
+}
+function saveAuth(d){
+  TOKEN=d.token; UID=d.uid; ROLE=d.role; NAME=d.name||"";
+  localStorage.setItem("hg_token",TOKEN); localStorage.setItem("hg_uid",UID); localStorage.setItem("hg_role",ROLE); localStorage.setItem("hg_name",NAME);
+  syncIdentity();
+}
+function logout(){ TOKEN=UID=ROLE=NAME=""; LS.forEach(k=>localStorage.removeItem(k)); syncIdentity(); showMsg("已登出",true); renderMe(); }
+
+// ---------- 大厅 ----------
+async function renderHall(){
+  const el=document.getElementById("hall");
+  if(!TOKEN){ el.innerHTML=`<div class="card"><div class="empty">请先在「我的」登录后查看需求大厅</div><button class="btn ghost" onclick="showTab('me')">去登录</button></div>`; return; }
+  const {status,d}=await api("GET","/tasks");
+  if(status!==200){ el.innerHTML=`<div class="card"><div class="empty">加载失败：`+(d.msg||status)+`</div></div>`; return; }
+  const list=(d.data||[]);
+  if(!list.length){ el.innerHTML=`<div class="card"><div class="empty">暂无开放需求</div></div>`; return; }
+  el.innerHTML=list.map(t=>`
+    <div class="card">
+      <div class="row"><b style="font-size:15px">${esc(t.title)}</b></div>
+      <div style="margin:6px 0">
+        <span class="pill blue">${esc(t.category||"")}</span>
+        ${statusPill(t.status)}
+        <span class="pill gray">${esc((t.spec_obj&&t.spec_obj.deliverables)||"")}</span>
+      </div>
+      <div class="row" style="justify-content:space-between">
+        <span class="amt">${money(t.budget_cents)}</span>
+        <span class="meta">${ROLE==="provider"?`<button class="btn sm blue" onclick="acceptTask('${t.id}')">我要接</button>`:`<span class="badge">${(t.requester_id===UID)?"我发布的":"查看"}</span>`}</span>
+      </div>
+      <div class="meta">${(t.spec||"").slice(0,60)}${(t.spec||"").length>60?"…":""}</div>
+    </div>`).join("");
+}
+async function acceptTask(taskId){
+  const {status,d}=await api("POST","/tasks/"+taskId+"/match");
+  if(status!==200 || !Array.isArray(d.data) || !d.data.length){ showMsg("未匹配到接单推荐："+(d.msg||status),false); return; }
+  const m=d.data[0];
+  const r2=await api("POST","/matches/"+m.id+"/accept");
+  if(r2.status===201){ showMsg("接单成功，订单待托管 ✅",true); renderHall(); }
+  else if(r2.status===409){ showMsg("需运营开启「税源+托管」后方可接单（到「我的」用运营账号开启）",false); }
+  else { showMsg("接单失败："+(r2.d.msg||r2.status),false); }
+}
+
+// ---------- 发单 ----------
+function renderPost(){
+  const el=document.getElementById("post");
+  if(!TOKEN){ el.innerHTML=`<div class="card"><div class="empty">请先登录（需求方）后发布需求</div><button class="btn ghost" onclick="showTab('me')">去登录</button></div>`; return; }
+  if(ROLE!=="requester"){ el.innerHTML=`<div class="card"><div class="empty">当前为「${ROLE_CN[ROLE]||ROLE}」身份，发单需切换到需求方账号（R001 或注册新需求方）</div></div>`; return; }
+  el.innerHTML=`
+    <div class="card">
+      <label class="f">标题 *</label><input id="p_title" placeholder="如：用 Python 搭建 RAG 问答系统">
+      <div class="grid2">
+        <div><label class="f">类目 *</label><input id="p_cat" placeholder="如 nlp"></div>
+        <div><label class="f">预算(元) *</label><input id="p_budget" type="number" placeholder="如 3000"></div>
+      </div>
+      <label class="f">需求描述</label><textarea id="p_spec" rows="2" placeholder="项目背景与目标"></textarea>
+      <div class="grid2">
+        <div><label class="f">交付物 *</label><input id="p_deliv" placeholder="如 1 套源码+文档"></div>
+        <div><label class="f">交付格式 *</label><input id="p_fmt" placeholder="如 zip+README"></div>
+      </div>
+      <div class="grid2">
+        <div><label class="f">截止(天) *</label><input id="p_dl" type="number" placeholder="如 7"></div>
+        <div><label class="f">风格/参考</label><input id="p_style" placeholder="选填"></div>
+      </div>
+      <button class="btn" onclick="publishTask()">发布需求</button>
+      <div class="note" id="postNote"></div>
+    </div>`;
+}
+async function publishTask(){
+  const v=id=>document.getElementById(id).value.trim();
+  const budgetYuan=parseFloat(v("p_budget"));
+  const dlDays=parseInt(v("p_dl"),10);
+  if(!v("p_title")||!v("p_cat")||!budgetYuan||!v("p_deliv")||!v("p_fmt")||!dlDays){ showMsg("请填齐必填项(*)",false); return; }
+  const body={ title:v("p_title"), category:v("p_cat"), budget_cents:Math.round(budgetYuan*100), spec:v("p_spec"),
+    deliverables:v("p_deliv"), required_format:v("p_fmt"), deadline_at:Date.now()+dlDays*86400000, style_ref:v("p_style") };
+  const {status,d}=await api("POST","/tasks",body);
+  const note=document.getElementById("postNote");
+  if(status===201){
+    const ok=d.data.spec_complete;
+    note.innerHTML=`<div class="pill ${ok?"green":"amber"}">${ok?"规格完整 ✅":"缺必填项，已生成澄清"}</div> 任务号：<b>${esc(d.data.task.id)}</b>`+
+      (ok?"":`<div class="note">澄清：${(d.data.clarifications||[]).map(esc).join("；")}</div>`);
+    showMsg("发布成功 ✅",true);
+  }else{ note.textContent="发布失败："+(d.msg||status); showMsg("发布失败",false); }
+}
+
+// ---------- 订单 ----------
+async function renderOrders(){
+  const el=document.getElementById("orders");
+  if(!TOKEN){ el.innerHTML=`<div class="card"><div class="empty">请先登录后查看订单</div><button class="btn ghost" onclick="showTab('me')">去登录</button></div>`; return; }
+  const {status,d}=await api("GET","/orders");
+  if(status!==200){ el.innerHTML=`<div class="card"><div class="empty">加载失败：`+(d.msg||status)+`</div></div>`; return; }
+  const list=(d.data||[]);
+  if(!list.length){ el.innerHTML=`<div class="card"><div class="empty">暂无订单</div></div>`; return; }
+  el.innerHTML=list.map(o=>{
+    const mySide = o.requester_id===UID ? "需求方" : "接单方";
+    const other = o.requester_id===UID ? o.provider_id : o.requester_id;
+    return `<div class="card" onclick="toggleDetail('${o.id}')" style="cursor:pointer">
+      <div class="row" style="justify-content:space-between">
+        <b>${mySide} · ${money(o.amount_cents)}</b> ${statusPill(o.status)}
+      </div>
+      <div class="meta">订单号 ${esc(o.id)} · 对方 ${esc(other)} · ${o.settled?"已结算":"未结算"}</div>
+      <div class="detail" id="det-${o.id}"><div class="meta">点击加载详情…</div></div>
+    </div>`;
+  }).join("");
+}
+async function toggleDetail(id){
+  const det=document.getElementById("det-"+id);
+  if(det.classList.contains("on")){ det.classList.remove("on"); return; }
+  det.classList.add("on");
+  const {status,d}=await api("GET","/orders/"+id);
+  if(status!==200){ det.innerHTML=`<div class="meta">详情失败：${esc(d.msg||status)}</div>`; return; }
+  const o=d.data;
+  let h=`<div class="kv"><span>金额</span><b>${money(o.amount_cents)}</b></div>
+    <div class="kv"><span>状态</span><b>${STATUS_CN[o.status]||o.status}</b></div>
+    <div class="kv"><span>结算</span><b>${o.settled?"已放款":"未放款"}</b></div>`;
+  if(o.milestones&&o.milestones.length){
+    h+=`<div class="meta" style="margin-top:8px">里程碑：</div>`;
+    o.milestones.forEach(m=>{ h+=`<div class="kv"><span>${esc(m.Name)} · ${money(m.AmountCents)}</span><b>${m.Confirmed?"已确认":"待确认"}</b></div>`; });
+  }
+  if(o.dispute_reason){ h+=`<div class="kv"><span>纠纷</span><b style="color:var(--red)">${esc(o.dispute_reason)}</b></div>`; }
+  if(o.refund_cents){ h+=`<div class="kv"><span>退款</span><b style="color:var(--red)">${money(o.refund_cents)}（${o.refund_pct}%）</b></div>`; }
+  det.innerHTML=h;
+}
+
+// ---------- 我的 ----------
+async function renderMe(){
+  const el=document.getElementById("me");
+  if(!TOKEN){
+    el.innerHTML=`
+      <div class="card">
+        <div class="hero"><div class="big">欢迎来到蜂得</div><div>AI 接单平台 · 连接需求与开发者</div></div>
+        <label class="f">演示登录（uid）</label>
+        <input id="m_uid" placeholder="R001 需求方 / P001 接单方 / A001 运营">
+        <div class="note" style="margin:4px 0">仅支持预置账号，非任意 uid 都能登；需通过 http://localhost:8080/m 访问</div>
+        <button class="btn" onclick="loginUid()">演示登录</button>
+        <label class="f">账号密码登录</label>
+        <input id="m_acc" placeholder="账号"><input id="m_pwd" type="password" placeholder="密码" style="margin-top:8px">
+        <button class="btn ghost" onclick="loginPwd()">账号密码登录</button>
+        <label class="f">注册新账号</label>
+        <input id="r_acc" placeholder="账号(唯一)" style="margin-top:8px">
+        <input id="r_pwd" type="password" placeholder="密码(≥6位)" style="margin-top:8px">
+        <select id="r_role" style="margin-top:8px"><option value="requester">需求方</option><option value="provider">接单方</option></select>
+        <div class="grid2" style="margin-top:8px"><input id="r_name" placeholder="姓名(选填)"><input id="r_phone" placeholder="手机(选填)"></div>
+        <button class="btn blue" onclick="register()">注册并登录</button>
+        <div class="note" id="meNote"></div>
+      </div>`;
+    return;
+  }
+  // 已登录：身份 + 信用分 + 钱包聚合 + 登出
+  const {status,d}=await api("GET","/me");
+  const me = status===200 ? d.data : {uid:UID,role:ROLE,name:NAME,credit_score:0};
+  // 真实钱包(来自 GET /wallet)
+  const w2=await api("GET","/wallet");
+  const wv = w2.status===200 ? w2.d.data : null;
+  const wallet = wv ? wv.wallet : null;
+  const ledger = (wv && wv.ledger) || [];
+  let html=`<div class="card">
+      <div class="row" style="justify-content:space-between"><b style="font-size:16px">${esc(me.name||me.uid)}</b><span class="pill blue">${ROLE_CN[me.role]||me.role}</span></div>
+      <div class="meta">账号 ${esc(me.uid)}</div>
+      <div style="margin-top:10px">
+        <div class="sub2">信用分</div><div class="score">${me.credit_score||0}</div>
+        <div class="note">信用分 = 历史评价均值映射（0–100），越高越易被推荐</div>
+      </div>
+    </div>`;
+  html+=`<div class="card">
+      <h2 class="t">💰 我的钱包</h2>
+      <div class="kv"><span>可用余额</span><b style="color:var(--green)">${wallet?money(wallet.balance_cents):'--'}</b></div>
+      <div class="kv"><span>冻结中（托管/提现中）</span><b style="color:var(--brand-d)">${wallet?money(wallet.frozen_cents):'--'}</b></div>
+      <div class="note">真实记账来自 GET /wallet；托管/结算/退款/提现全程过账。</div>
+    </div>`;
+  if(me.role==="provider"){
+    html+=`<div class="card">
+      <h2 class="t">📤 申请提现</h2>
+      <div class="f">提现金额（元）</div>
+      <input id="wd_amt" type="number" min="0" step="0.01" placeholder="例如 10">
+      <button class="btn" onclick="doWithdraw()">提交提现申请</button>
+      <div class="note">提现需运营审批；通过后真实出账。仅可提可提现余额。</div>
+    </div>`;
+  }
+  if(ledger.length){
+    html+=`<div class="card">
+      <h2 class="t">🧾 最近流水</h2>
+      ${ledger.slice(0,6).map(l=>`<div class="kv"><span>${TX_CN[l.type]||l.type}${l.note?(' · '+esc(l.note)):''}</span><b style="color:${l.amount_cents>=0?'var(--green)':'var(--red)'}">${l.amount_cents>=0?'+':'-'}${money(Math.abs(l.amount_cents))}</b></div>`).join("")}
+    </div>`;
+  }
+  if(me.role==="admin"){
+    html+=`<div class="card"><h2 class="t">🛡 合规闸门（运营）</h2><div id="compBox"></div><div class="note">接单需开启「税源+托管」，验收放款需开启「ICP」</div></div>`;
+  }
+  html+=`<button class="btn ghost" onclick="logout()">退出登录</button>`;
+  el.innerHTML=html;
+  if(me.role==="admin"){ loadCompliance(); }
+}
+
+async function doWithdraw(){
+  const amt=parseFloat(document.getElementById("wd_amt").value);
+  if(!amt||amt<=0){ showMsg("请输入有效提现金额",false); return; }
+  const cents=Math.round(amt*100);
+  const {status,d}=await api("POST","/wallet/withdraw",{amount_cents:cents});
+  if(status===201){ showMsg("提现申请已提交，待运营审批 ✅",true); renderMe(); }
+  else if(status===0){ showMsg("连不上后端：请通过 http://localhost:8080/m 打开本页",false); }
+  else { showMsg(d.msg||"提现失败",false); }
+}
+
+async function loginUid(){
+  const uid=document.getElementById("m_uid").value.trim();
+  if(!uid){ showMsg("请输入 uid",false); return; }
+  const {status,d}=await api("POST","/auth/login",{uid});
+  if(status===200){ saveAuth(d.data); showMsg("登录成功 ✅",true); renderMe(); } else if(status===0){ showMsg("连不上后端：请通过 http://localhost:8080 打开本页",false); } else { showMsg(d.msg||"登录失败",false); }
+}
+async function loginPwd(){
+  const account=document.getElementById("m_acc").value.trim(), password=document.getElementById("m_pwd").value;
+  if(!account||!password){ showMsg("请输入账号和密码",false); return; }
+  const {status,d}=await api("POST","/auth/login",{account,password});
+  if(status===200){ saveAuth(d.data); showMsg("登录成功 ✅",true); renderMe(); } else if(status===0){ showMsg("连不上后端：请通过 http://localhost:8080 打开本页",false); } else { showMsg(d.msg||"登录失败",false); }
+}
+async function register(){
+  const account=document.getElementById("r_acc").value.trim(), password=document.getElementById("r_pwd").value;
+  const role=document.getElementById("r_role").value, name=document.getElementById("r_name").value.trim(), phone=document.getElementById("r_phone").value.trim();
+  if(!account||!password){ showMsg("账号密码必填",false); return; }
+  const {status,d}=await api("POST","/auth/register",{account,password,role,real_name:name,phone});
+  if(status===201){ saveAuth(d.data); showMsg("注册成功 ✅",true); renderMe(); } else if(status===0){ showMsg("连不上后端：请通过 http://localhost:8080 打开本页",false); } else { showMsg(d.msg||"注册失败",false); }
+}
+
+// ---------- 合规(admin) ----------
+async function loadCompliance(){
+  const {status,d}=await api("GET","/compliance");
+  const box=document.getElementById("compBox"); if(!box) return;
+  if(status!==200){ box.innerHTML=`<div class="note">读取失败</div>`; return; }
+  const st=d.data||{};
+  const items=[["kyc","实名(KYC)"],["tax_source","税源地"],["escrow","支付托管"],["icp","ICP 备案"]];
+  box.innerHTML=items.map(([k,label])=>`<div class="sw"><span>${label}</span><div class="dot ${st[k]?"on":""}" onclick="toggleComp('${k}',${st[k]?false:true})"></div></div>`).join("");
+}
+async function toggleComp(item,on){
+  const {status,d}=await api("POST","/compliance",{item,on});
+  if(status===200){ showMsg((on?"已开启 ":"已关闭 ")+item,true); loadCompliance(); } else { showMsg("操作失败",false); }
+}
+
+function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+// ---------- 消息 (P2-2) ----------
+let chatTimer=null, chatPeer="";
+async function renderMsg(){
+  const el=document.getElementById("msglist");
+  if(!TOKEN){ el.innerHTML=`<div class="card"><div class="empty">请先在「我的」登录</div></div>`; return; }
+  await renderNotifs();
+  const {status,d}=await api("GET","/im/conversations");
+  if(status!==200){ el.innerHTML=`<div class="card"><div class="empty">加载失败</div></div>`; return; }
+  const list=(d.data)||[];
+  if(list.length===0){ el.innerHTML=`<div class="card"><div class="empty">暂无会话。接单后将自动建立与对方的项目会话。</div></div>`; return; }
+  let html="";
+  list.forEach(c=>{
+    const other = c.a===UID ? c.b : c.a;
+    const unread = (c.a===UID ? c.a_unread : c.b_unread)||0;
+    const badge = unread>0 ? `<span class="badge">${unread}</span>` : "";
+    const orderTag = c.order_id ? `<span style="color:#2563eb;font-size:12px;margin-left:6px">订单</span>` : "";
+    html+=`<div class="conv" onclick="openChat('${other}')">
+      <div class="conv-top"><b>${esc(other)}</b>${badge}</div>
+      <div class="conv-sub">${esc(c.last_body||"")} ${orderTag}</div>
+    </div>`;
+  });
+  el.innerHTML=html;
+}
+async function openChat(peer){
+  document.getElementById("msglist").style.display="none";
+  const chat=document.getElementById("chat"); chat.style.display="block";
+  chatPeer=peer;
+  await loadChat();
+  if(chatTimer) clearInterval(chatTimer);
+  chatTimer=setInterval(loadChat, 2000); // 轮询实时(演示, 规避 SSE 鉴权 header 限制)
+}
+async function loadChat(){
+  if(!chatPeer) return;
+  const {status,d}=await api("GET","/im/conversations/"+encodeURIComponent(chatPeer));
+  await api("POST","/im/conversations/"+encodeURIComponent(chatPeer)+"/read"); // 进入即已读
+  const chat=document.getElementById("chat"); if(!chat) return;
+  if(status!==200){ chat.innerHTML=`<div class="chat-head"><button class="btn ghost" onclick="closeChat()">← 返回</button></div><div class="empty">加载失败</div>`; return; }
+  const msgs=(d.data)||[];
+  let html=`<div class="chat-head"><button class="btn ghost" onclick="closeChat()">← 返回</button><b>${esc(chatPeer)}</b></div><div class="chat-body" id="chatbody">`;
+  msgs.forEach(m=>{
+    if(m.from_id==="system"){ html+=`<div class="sysmsg">${esc(m.body)}</div>`; }
+    else { const mine=m.from_id===UID; html+=`<div class="bubble ${mine?'mine':'theirs'}">${esc(m.body)}</div>`; }
+  });
+  html+=`</div><div class="chat-input"><input id="chattext" placeholder="输入消息…" onkeydown="if(event.key==='Enter')sendChat()"><button class="btn" onclick="sendChat()">发送</button></div>`;
+  chat.innerHTML=html;
+  const body=document.getElementById("chatbody"); if(body) body.scrollTop=body.scrollHeight;
+}
+async function sendChat(){
+  const inp=document.getElementById("chattext"); if(!inp) return;
+  const body=inp.value.trim(); if(!body) return;
+  const {status,d}=await api("POST","/im",{to:chatPeer, body});
+  if(status!==200){ showMsg(d.msg||"发送失败",false); return; }
+  inp.value="";
+  await loadChat();
+}
+function closeChat(){
+  if(chatTimer){ clearInterval(chatTimer); chatTimer=null; }
+  const chat=document.getElementById("chat"); if(chat){ chat.style.display="none"; chat.innerHTML=""; }
+  document.getElementById("msglist").style.display="block";
+  chatPeer="";
+  renderMsg();
+}
+
+// ---------- 通知中心 (P2-3) ----------
+async function renderNotifs(){
+  const el=document.getElementById("notilist");
+  const badge=document.getElementById("msgBadge");
+  if(!el) return;
+  if(!TOKEN){ el.innerHTML=""; if(badge) badge.style.display="none"; return; }
+  const {status,d}=await api("GET","/notifications");
+  const list=(status===200?(d.data||[]):[]);
+  const {status:s2,d:d2}=await api("GET","/notifications/unread");
+  const unread=(s2===200?((d2.data||{}).unread||0):0);
+  if(badge){ if(unread>0){ badge.style.display="inline-block"; badge.textContent=unread>99?"99+":(""+unread); } else { badge.style.display="none"; } }
+  if(list.length===0){ el.innerHTML=`<div class="card"><div class="empty">暂无平台通知</div></div>`; return; }
+  el.innerHTML=`<div class="card"><h2 class="t">🔔 平台通知（${unread} 条未读）</h2>`+list.map(n=>{
+    const b=n.status==="unread"?`<span class="badge">未读</span>`:`<span class="pill gray">已读</span>`;
+    const btn=n.status==="unread"?`<button class="btn sm ghost" onclick="readNoti('${n.id}')">标为已读</button>`:"";
+    return `<div style="padding:8px 0;border-bottom:1px solid #eee"><div class="row" style="justify-content:space-between"><b>${esc(n.title)}</b>${b}</div><div class="conv-sub">${esc(n.body)}</div><div>${btn}</div></div>`;
+  }).join("")+`</div>`;
+}
+async function readNoti(id){
+  const {status}=await api("POST",`/notifications/${id}/read`);
+  if(status===200){ showMsg("已读 ✅",true); renderNotifs(); } else { showMsg("操作失败",false); }
+}
+
+// ---------- init ----------
+syncIdentity();
+renderHall();
+</script>
+</body>
+</html>

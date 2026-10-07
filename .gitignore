@@ -1,0 +1,22 @@
+# --- Build artifacts ---
+hiveget
+hiveget.exe
+hiveget.exe~
+*.exe
+*.exe~
+
+# --- Logs ---
+*.log
+
+# --- Local secrets / env ---
+.env
+db_reset.local.py
+
+# --- Python caches ---
+__pycache__/
+*.pyc
+
+# --- OS / editor ---
+.DS_Store
+.idea/
+.vscode/
