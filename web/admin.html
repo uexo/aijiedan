@@ -273,6 +273,7 @@ async function createOrg(){
 
 // ---- 组织详情 ----
 let ORG_TAB = "overview";
+let CUR_ORG = "";
 async function renderOrg(orgID){
   const app = document.getElementById("app");
   if(!ME){ app.innerHTML = `<div class="empty">请先登录。</div>`; return; }
@@ -312,6 +313,7 @@ async function renderOrg(orgID){
 }
 
 function renderOrgTab(orgID, tab, ctx){
+  CUR_ORG = orgID;
   const el = document.getElementById("orgtab");
   const {members,wallet,tasks,approvals,orders,isMember,isOwnerAdmin,isOwner,me} = ctx;
   if(tab==="overview"){
@@ -403,17 +405,30 @@ function renderOrgTab(orgID, tab, ctx){
     return;
   }
   if(tab==="orders"){
+    CUR_ORG = orgID;
     const titleById = {};
     (tasks||[]).forEach(t=>{ titleById[t.id]=t.title; });
-    let html = `<div class="hint" style="margin-bottom:10px">企业版统一结算视图：所有以本组织名义发包产生的订单，托管资金从<b>组织钱包</b>冻结，结算释放回组织钱包。</div>`;
-    html += orders.length ? orders.map(o=>`<div class="item">
-      <div class="av">${esc((o.id||"?").slice(0,2))}</div>
-      <div class="grow"><div style="font-weight:600">${esc(titleById[o.task_id]||o.task_id)}</div>
-        <div class="hint mono">${esc(o.id)} · 接单方 ${esc(o.provider_id)} · 托管 ${esc(o.escrow_id||"-")}</div></div>
-      <div style="text-align:right;flex:0 0 auto"><div style="font-weight:700">${money(o.amount_cents)}</div>
-        <span class="status ${esc(o.status)}">${esc(o.status)}</span></div>
-    </div>`).join("")
-      : `<div class="empty">该组织暂无订单（先发布任务 → 切换接单方账号「接单」→ 组织主「托管」）</div>`;
+    if(!orders.length){
+      el.innerHTML = `<div class="empty">该组织暂无订单。<br>完整闭环：发布任务 → 接单方「接单」→ 组织主「托管」→ 接单方「交付」→ 需求方「验收结算」。</div>`;
+      return;
+    }
+    let html = `<div class="hint" style="margin-bottom:10px">企业版统一结算视图：以本组织名义发包产生的订单，托管资金从<b>组织钱包</b>冻结，结算释放回组织钱包。
+      <br><b>闭环操作（按当前登录身份自适应）：</b>接单方（P001 等）可<b>交付</b>；需求方（组织任务创建者，如 R001）可<b>验收结算</b>；验收被合规拦截时由需求方/组织主<b>补结算</b>；完成后双向<b>评价</b>。</div>`;
+    html += orders.map(o=>{
+      const isProv = ME.uid===o.provider_id;
+      const isReq = ME.uid===o.requester_id;
+      const isPart = isProv||isReq;
+      return `<div class="card" style="cursor:default;margin-bottom:12px">
+        <div style="display:flex;gap:12px;align-items:center">
+          <div class="av">${esc((o.id||"?").slice(0,2))}</div>
+          <div class="grow"><div style="font-weight:600">${esc(titleById[o.task_id]||o.task_id)}</div>
+            <div class="hint mono">${esc(o.id)} · 接单方 ${esc(o.provider_id)} · 需求方 ${esc(o.requester_id)} · 托管 ${esc(o.escrow_id||"-")} · ${esc(o.settlement_mode||"lump")}</div></div>
+          <div style="text-align:right;flex:0 0 auto"><div style="font-weight:700">${money(o.amount_cents)}</div>
+            <span class="status ${esc(o.status)}">${esc(o.status)}</span></div>
+        </div>
+        <div class="gmtop" id="ord-actions-${esc(o.id)}">${orderActions(o,isProv,isReq,isPart)}</div>
+      </div>`;
+    }).join("");
     el.innerHTML = html;
     return;
   }
@@ -503,6 +518,113 @@ async function renderOrgDev(orgID, isOwnerAdmin){
     : `<div class="empty">暂无投递记录（发布组织任务 / 审批提现后会自动触发）</div>`;
   html += `</div>`;
   el.innerHTML = html;
+}
+
+// ---- 组织订单闭环操作（交付 / 验收结算 / 补结算 / 打回 / 评价 / 里程碑确认） ----
+function orderActions(o,isProv,isReq,isPart){
+  const b=[];
+  if(o.settlement_mode==="milestone" && (o.milestones||[]).length){
+    if((o.status==="active"||o.status==="delivering") && isProv)
+      b.push(`<button class="btn good" onclick="expandDeliver('${esc(o.id)}')">交付阶段成果</button>`);
+    (o.milestones||[]).forEach(m=>{
+      const done=m.status==="done";
+      b.push(`<span class="chip">${esc(m.title||m.id)} ${money(m.amount_cents)} · ${done?'✓已结算':'待确认'}</span>`);
+      if(!done && isReq && (o.status==="active"||o.status==="delivering"||o.status==="delivered"))
+        b.push(`<button class="btn good" onclick="confirmMilestone('${esc(o.id)}','${esc(m.id)}')">确认阶段</button>`);
+    });
+    return b.join("");
+  }
+  if(o.status==="active"||o.status==="delivering"){
+    if(isProv) b.push(`<button class="btn good" onclick="expandDeliver('${esc(o.id)}')">交付成果</button>`);
+    else if(isReq) b.push(`<span class="hint">等待接单方（${esc(o.provider_id)}）交付</span>`);
+    else b.push(`<span class="hint">交付需接单方 ${esc(o.provider_id)} 登录</span>`);
+  }
+  if(o.status==="delivered"){
+    if(isReq) b.push(`<button class="btn good" onclick="acceptOrder('${esc(o.id)}')">验收并结算</button><button class="btn" style="background:var(--bad)" onclick="reviseOrder('${esc(o.id)}')">打回重做</button>`);
+    else if(isProv) b.push(`<span class="hint">已交付，等待需求方（${esc(o.requester_id)}）验收</span>`);
+    else b.push(`<span class="hint">验收需需求方 ${esc(o.requester_id)} 登录</span>`);
+  }
+  if(o.status==="pending_settlement"){
+    if(isReq) b.push(`<button class="btn warn" onclick="settleOrder('${esc(o.id)}')">补结算（合规落地后）</button>`);
+    else b.push(`<span class="hint">结算待合规放行，由需求方（${esc(o.requester_id)}）补结算</span>`);
+  }
+  if(o.status==="completed"){
+    if(isPart) b.push(`<button class="btn" onclick="expandReview('${esc(o.id)}')">评价</button>`);
+    else b.push(`<span class="chip">已完成</span>`);
+  }
+  if(o.status==="disputed") b.push(`<span class="status disputed">纠纷中，待运营仲裁</span>`);
+  if(o.status==="pending_escrow") b.push(`<span class="hint">待组织主「托管」（见「任务与接单」页）</span>`);
+  if(!b.length) b.push(`<span class="hint">状态：${esc(o.status)}</span>`);
+  b.push(`<button class="btn ghost" onclick="viewDeliveries('${esc(o.id)}')">交付记录</button>`);
+  return b.join("");
+}
+
+async function expandDeliver(orderID){
+  const box=document.getElementById("ord-actions-"+orderID);
+  if(document.getElementById("dv-"+orderID)) return;
+  box.insertAdjacentHTML("beforeend", `<div id="dv-${esc(orderID)}" style="margin-top:8px;width:100%">
+    <textarea class="inp" id="dv_text-${esc(orderID)}" placeholder="交付说明 / 成果链接"></textarea>
+    <button class="btn good" onclick="deliverOrder('${esc(orderID)}')">提交交付</button>
+    <button class="btn ghost" onclick="document.getElementById('dv-${esc(orderID)}').remove()">取消</button></div>`);
+}
+async function deliverOrder(orderID){
+  const content=(document.getElementById("dv_text-"+orderID).value||"").trim();
+  const {r,j}=await api(`/api/v1/orders/${orderID}/deliver`,{method:"POST",body:JSON.stringify({content})});
+  if(r.ok){ toast("已交付，待验收"); renderOrg(CUR_ORG); }
+  else toast("交付失败："+(j?j.msg:"网络错误"));
+}
+async function acceptOrder(orderID){
+  const {r,j}=await api(`/api/v1/orders/${orderID}/accept`,{method:"POST"});
+  if(r.ok){ toast("验收完成，已结算放款"); renderOrg(CUR_ORG); }
+  else if(r.status===409){ toast("验收通过，但结算被合规拦截，请「补结算」"); renderOrg(CUR_ORG); }
+  else toast("验收失败："+(j?j.msg:"网络错误"));
+}
+async function reviseOrder(orderID){
+  const note=(prompt("打回原因（可选）：")||"").trim();
+  const {r,j}=await api(`/api/v1/orders/${orderID}/revise`,{method:"POST",body:JSON.stringify({note})});
+  if(r.ok){ toast("已打回重做，接单方可再次交付"); renderOrg(CUR_ORG); }
+  else toast("失败："+(j?j.msg:"网络错误"));
+}
+async function settleOrder(orderID){
+  const {r,j}=await api(`/api/v1/orders/${orderID}/settle`,{method:"POST"});
+  if(r.ok){ toast("补结算成功，已放款"); renderOrg(CUR_ORG); }
+  else toast("失败："+(j?j.msg:"网络错误"));
+}
+async function confirmMilestone(orderID,msID){
+  const {r,j}=await api(`/api/v1/orders/${orderID}/milestones/${msID}/confirm`,{method:"POST"});
+  if(r.ok){ toast("阶段已确认放款"); renderOrg(CUR_ORG); }
+  else toast("失败："+(j?j.msg:"网络错误"));
+}
+async function expandReview(orderID){
+  const box=document.getElementById("ord-actions-"+orderID);
+  if(document.getElementById("rv-"+orderID)) return;
+  box.insertAdjacentHTML("beforeend", `<div id="rv-${esc(orderID)}" style="margin-top:8px;width:100%">
+    <div class="row">评分 <select class="inp" id="rv_rating-${esc(orderID)}">${[5,4,3,2,1].map(n=>`<option value="${n}">${n} ★</option>`).join("")}</select></div>
+    <textarea class="inp" id="rv_text-${esc(orderID)}" placeholder="评价内容"></textarea>
+    <button class="btn" onclick="reviewOrder('${esc(orderID)}')">提交评价</button>
+    <button class="btn ghost" onclick="document.getElementById('rv-${esc(orderID)}').remove()">取消</button></div>`);
+}
+async function reviewOrder(orderID){
+  const rating=parseInt(document.getElementById("rv_rating-"+orderID).value);
+  const comment=(document.getElementById("rv_text-"+orderID).value||"").trim();
+  const {r,j}=await api(`/api/v1/orders/${orderID}/review`,{method:"POST",body:JSON.stringify({rating,comment})});
+  if(r.ok){ toast("评价成功，已更新对方信用分"); renderOrg(CUR_ORG); }
+  else toast("失败："+(j?j.msg:"网络错误"));
+}
+async function viewDeliveries(orderID){
+  if(document.getElementById("dvs-"+orderID)){ document.getElementById("dvs-"+orderID).remove(); return; }
+  const {r,j}=await api(`/api/v1/orders/${orderID}`);
+  const box=document.getElementById("ord-actions-"+orderID);
+  let html=`<div id="dvs-${esc(orderID)}" style="margin-top:8px;width:100%">`;
+  if(r.ok && j && j.data){
+    const ds=(j.data.deliveries)||[];
+    html += ds.length ? ds.map(d=>`<div class="item" style="border-color:var(--line)">
+      <div class="grow"><div style="font-weight:600">第 ${d.round} 轮交付（${esc(d.status)}）</div>
+        <div class="hint">${esc(d.content||"（无说明）")}</div></div></div>`).join("")
+      : `<div class="hint">暂无交付记录</div>`;
+  } else html+=`<div class="hint">加载失败</div>`;
+  html+=`<button class="btn ghost" onclick="document.getElementById('dvs-${esc(orderID)}').remove()">收起</button></div>`;
+  box.insertAdjacentHTML("beforeend", html);
 }
 
 // ---- 组织操作 ----
