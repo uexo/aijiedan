@@ -109,6 +109,7 @@ type Store interface {
 	ListWebhooksByOrg(orgID string) []*model.Webhook
 	SaveWebhookDelivery(d *model.WebhookDelivery)
 	ListWebhookDeliveriesByOrg(orgID string) []*model.WebhookDelivery
+	ListOrdersByOrg(orgID string) []*model.Order
 }
 
 // MemStore 内存实现(零依赖)。
@@ -492,6 +493,18 @@ func (s *MemStore) ListOrdersByTask(taskID string) []*model.Order {
 	out := make([]*model.Order, 0)
 	for _, o := range s.orders {
 		if o.TaskID == taskID {
+			out = append(out, o)
+		}
+	}
+	return out
+}
+
+func (s *MemStore) ListOrdersByOrg(orgID string) []*model.Order {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]*model.Order, 0)
+	for _, o := range s.orders {
+		if o.OrgID == orgID {
 			out = append(out, o)
 		}
 	}

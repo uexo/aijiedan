@@ -249,12 +249,24 @@ P3 企业版从「最小骨架」推向可商用：组织作为统一结算主�
 把 P3 企业版已落地的后端（运营看板 + 组织治理全链路）在 UI 层串成可演示的前端。
 
 - **运营 · 企业版单页 `web/admin.html`（入口 `/static/admin.html`，`web/index.html` 页脚已加链接）**：单文件 SPA（深色主题、沿用 `index.html` 的 `api()`/`login()` 范式、零构建）。顶部演示账号登录（R001 / P001~P004 / **A001 运营**）并角色感知，哈希路由 `#dash` / `#orgs` / `#org/{id}`。
-  - **运营看板 `#dash`（仅 A001）**：拉 `GET /admin/metrics`，7 张指标卡（用户总数 / 任务 / 订单 / GMV / 平台资金水位 / 提现 / 合规红灯）+ 订单状态分布条形图；非运营账号显示 403 提示。
+  - **运营看板 `#dash`（仅 A001）**：拉 `GET /admin/metrics`，7 张指标卡（用户总数 / 任务 / 订单 / GMV / 平台资金水位 / 提现 / 合规红灯）+ 订单状态分布条形图；**平台合规闸门面板**（方案2 合规线 C 在 UI 落地，`GET /compliance` 查看、`POST /compliance {item,on}` 翻转 `kyc`/`tax_source`/`escrow`/`icp`，仅 A001）——接单需 `tax_source`、托管需 `escrow`、结算需 `icp`；非运营账号显示 403 提示。
   - **组织治理 `#orgs`**：创建组织（`POST /orgs`）、列出我名下组织；进入组织详情按成员角色动态显隐操作。
   - **组织详情 `#org/{id}`**：四角色 RBAC（owner / admin / member / viewer）驱动权限——概览（钱包余额/冻结/成员数/任务数）、成员（邀请，owner/admin）、任务与发包（发包，成员即可）、资金与审批（充值 owner/admin、提现申请 成员、审批 通过/驳回 owner/admin）、开放 API / Webhook（生成 API Key、订阅 Webhook、查看最近投递记录）。
 - **后端路由修复（随本步一并落地）**：P3 骨架遗留两处 segment 计数写反导致 404——`POST /orgs/{id}/wallet/deposit`（应为 6 段误写 5）与 `GET /orgs/{id}/webhook-deliveries`（应为 5 段误写 6），已在 `internal/handler/handler.go` 修正，编译通过。
 
 实测（MySQL 模式在线，全链路）：A001 看板 7 卡齐全（users=6 / tasks=1 / 平台资金水位=¥10000 / 合规红灯=3）；R001 建组织 → 邀请 P001 → 充值 ¥5000（wallet=500000）→ 发组织任务 → P001 提现申请 ¥800 生成审批单 → R001 审批通过（wallet 扣减至 420000，资金流真实持久化）→ 生成 API Key（`hgk_` 明文仅一次）→ 订阅 Webhook → 先订阅后发包验证 `task_created` 事件真实投递（deliveries n=1）。后端端点此前已双模式 218/218 验证；本步新增 2 个路由修复已编译并端到端复现。
+
+#### P3 继续做深（2026-10-08，董事长拍板「下一步开发 p3」）
+
+把企业版「组织任务 → 接单 → 托管」这条此前缺 UI 的闭环在 `admin.html` 上补完，并把方案2 合规线 C 的闸门接进运营看板。
+
+- **组织任务接单 → 托管可视化（`#org/{id}` 新增「订单与托管」标签页 + 「任务与接单」页动作）**：
+  - **任务与接单**：组织任务列表除展示状态外，按角色显隐动作——开放任务 + 当前登录为接单方成员 → 「接单」按钮（`POST /tasks/{id}/take`，生成带 `OrgID` 的订单，状态 `pending_escrow`）；已接单任务 + 当前为 owner/admin → 「托管（组织钱包扣款冻结）」按钮（`POST /orders/{orderID}/escrow`，从组织钱包扣款冻结、订单转 `active`）；其余角色给引导文案。
+  - **订单与托管**：新增标签页拉 `GET /orgs/{id}/orders`（企业版统一结算视图），展示每笔订单的任务标题、接单方、金额、托管号、状态；与钱包「余额/冻结」联动呈现资金流。
+- **后端新增 `GET /orgs/{id}/orders`**：`store.ListOrdersByOrg`（MemStore + mysqlStore 双实现）→ `service.GetOrgOrders` → handler 路由，补齐组织订单视图（此前缺此端点）。
+- **运营看板加平台合规闸门面板**：A001 可在看板页一键「落地/关闭」`kyc`/`tax_source`/`escrow`/`icp`（方案2 合规线 C 的 UI 入口），落地后对应交易动作（接单/托管/结算）方可放行。
+
+实测（MySQL 模式在线，全链路）：A001 落地 `tax_source`+`escrow` → R001 建组织/邀请 P001/充值 ¥5000 → R001 发组织任务 → **P001 接单**（order `pending_escrow`）→ R001 查组织订单（n=1）→ **R001 托管**（钱包 500000→470000、冻结 0→30000，订单转 `active`）。前端为纯静态、后端仅新增 1 个只读端点，编译通过。
 
 ## 演示账号（登录 uid）
 
@@ -319,6 +331,7 @@ P3 企业版从「最小骨架」推向可商用：组织作为统一结算主�
 | POST | `/orgs/{id}/wallet` | 组织钱包充值（仅 owner/admin） | 登录 + owner/admin |
 | POST | `/orgs/{id}/tasks` | 组织级发包：发布 open 任务（带 OrgID，不预扣款；组织任务走与个人相同的「接单→托管→结算」管线，托管/结算按 OrgID 走组织钱包） | 登录 |
 | GET  | `/orgs/{id}/tasks` | 列出组织发布的任务 | 登录 |
+| GET  | `/orgs/{id}/orders` | 组织订单列表（企业版统一结算视图，按 OrgID 聚合） | 登录 |
 | POST | `/orgs/{id}/payouts` | 组织钱包提现申请（冻结金额并生成 pending 审批单，待 owner/admin 审批） | 登录 |
 | GET  | `/orgs/{id}/approvals` | 组织审批单列表 | 登录 |
 | POST | `/orgs/{id}/approvals/{aid}/approve` | 审批组织提现（仅 owner/admin；通过则真实出账解冻，驳回则解冻） | 登录 + owner/admin |

@@ -189,9 +189,13 @@ async function renderDash(){
     <div id="dashbody"><div class="empty">加载中…</div></div>`;
   if(!ME){ app.innerHTML = `<div class="empty">请先登录（运营账号 <b>A001</b>）以查看平台看板。</div>`; return; }
   if(ME.role !== "admin"){ app.innerHTML = `<div class="err">当前账号 <b>${esc(ME.uid)}</b>（${roleLabel(ME.role)}）无运营权限。请切换登录 <b>A001</b>。</div>`; return; }
-  const {r,j} = await api("/api/v1/admin/metrics");
-  if(!r.ok || !j || !j.data){ app.innerHTML = `<div class="err">看板数据获取失败：${esc(j?j.msg:"网络错误")}</div>`; return; }
-  const m = j.data;
+  const [mj, cj] = await Promise.all([
+    api("/api/v1/admin/metrics"),
+    api("/api/v1/compliance"),
+  ]);
+  if(!mj.r.ok || !mj.j || !mj.j.data){ app.innerHTML = `<div class="err">看板数据获取失败：${esc(mj.j?mj.j.msg:"网络错误")}</div>`; return; }
+  const m = mj.j.data;
+  const cm = (cj.j && cj.j.data && cj.j.data.items) || {};
   const gm = m.gmv_cents||0;
   const statusKeys = Object.keys(m.orders_by_status||{});
   const maxStatus = Math.max(1,...statusKeys.map(k=>m.orders_by_status[k]));
@@ -200,6 +204,13 @@ async function renderDash(){
     return `<div class="row" style="margin:6px 0"><span style="width:120px;font-size:12px;color:var(--muted)">${esc(k)}</span>
       <div class="bar" style="flex:1"><i style="width:${pct}%"></i></div><span style="font-size:12px;width:40px;text-align:right">${v}</span></div>`;
   }).join("") : `<div class="hint">暂无订单</div>`;
+  const CARD = {kyc:"用户实名(onboarding)", tax_source:"执行卡1·税源地合作模式", escrow:"执行卡2·支付托管选型", icp:"执行卡3·备案流程"};
+  const compItems = ["kyc","tax_source","escrow","icp"];
+  const compHtml = compItems.map(it=>`<div class="item">
+      <div class="grow"><div style="font-weight:600">${it}</div><div class="hint">${CARD[it]||""}</div></div>
+      <span class="status ${cm[it]?'active':'pending'}">${cm[it]?'已落地':'未落地'}</span>
+      <button class="btn ${cm[it]?'ghost':''}" onclick="flipCompliance('${it}',${cm[it]?false:true})">${cm[it]?'关闭':'落地'}</button>
+    </div>`).join("");
   app.innerHTML = `
     <div class="grid">
       <div class="stat accent"><div class="lab">用户总数</div><div class="val">${m.users_total}</div><div class="sub">接单方 ${m.providers} · 需求方 ${m.requesters} · 运营 ${m.admins}</div></div>
@@ -212,7 +223,17 @@ async function renderDash(){
     </div>
     <div class="panel" style="margin-top:18px">
       <h2>订单状态分布</h2>${statusBars}
+    </div>
+    <div class="panel" style="margin-top:18px">
+      <h2>平台合规闸门（方案2 合规线 C）<span class="tag">仅 A001</span></h2>
+      <div class="hint" style="margin-bottom:10px">落地后对应交易动作方可放行。接单需 <b>税源地</b>，托管需 <b>支付托管</b>，结算需 <b>ICP 备案</b>。</div>
+      ${compHtml}
     </div>`;
+}
+async function flipCompliance(item, on){
+  const {r,j} = await api("/api/v1/compliance",{method:"POST",body:JSON.stringify({item,on})});
+  if(r.ok){ toast("合规项 "+item+(on?" 已落地":" 已关闭")); renderDash(); }
+  else toast("失败："+(j?j.msg:"网络错误"));
 }
 
 // ---- 组织治理 ----
@@ -258,11 +279,12 @@ async function renderOrg(orgID){
   app.innerHTML = `<div class="section-title">组织 ${esc(orgID)} <a href="#orgs" style="font-size:13px">← 返回组织列表</a></div>
     <div id="orgbody"><div class="empty">加载中…</div></div>`;
   // 并行拉取
-  const [mRes, wRes, tRes, aRes] = await Promise.all([
+  const [mRes, wRes, tRes, aRes, oRes] = await Promise.all([
     api(`/api/v1/orgs/${orgID}/members`),
     api(`/api/v1/orgs/${orgID}/wallet`),
     api(`/api/v1/orgs/${orgID}/tasks`),
     api(`/api/v1/orgs/${orgID}/approvals`),
+    api(`/api/v1/orgs/${orgID}/orders`),
   ]);
   // 校验组织存在 / 成员可见
   if(!mRes.r.ok){ document.getElementById("orgbody").innerHTML = `<div class="err">无法加载组织 ${esc(orgID)}：${esc(mRes.j?mRes.j.msg:"无权限或不存在")}</div>`; return; }
@@ -274,10 +296,11 @@ async function renderOrg(orgID){
   const wallet = (wRes.j && wRes.j.data) || {balance_cents:0,frozen_cents:0};
   const tasks = (tRes.j && tRes.j.data) || [];
   const approvals = (aRes.j && aRes.j.data) || [];
+  const orders = (oRes.j && oRes.j.data) || [];
 
   const tabs = [
-    ["overview","概览"],["members","成员"],["tasks","任务与发包"],
-    ["money","资金与审批"],["dev","开放 API / Webhook"]
+    ["overview","概览"],["members","成员"],["tasks","任务与接单"],
+    ["orders","订单与托管"],["money","资金与审批"],["dev","开放 API / Webhook"]
   ];
   const tabsHtml = tabs.map(([k,lab])=>`<a class="${ORG_TAB===k?'on':''}" onclick="ORG_TAB='${k}';renderOrg('${esc(orgID)}')">${lab}</a>`).join("");
   const body = document.getElementById("orgbody");
@@ -285,12 +308,12 @@ async function renderOrg(orgID){
     <div class="hint" style="margin-bottom:10px">你的角色：<b>${me?orgRoleLabel(me.role):"非成员（仅可见基础信息）"}</b>
       ${isOwnerAdmin?'· 拥有管理权限':''} ${!isMember?'· 加入该组织后可发包/提现':''}</div>
     <div id="orgtab"></div>`;
-  renderOrgTab(orgID, ORG_TAB, {members,wallet,tasks,approvals,isMember,isOwnerAdmin,isOwner,me});
+  renderOrgTab(orgID, ORG_TAB, {members,wallet,tasks,approvals,orders,isMember,isOwnerAdmin,isOwner,me});
 }
 
 function renderOrgTab(orgID, tab, ctx){
   const el = document.getElementById("orgtab");
-  const {members,wallet,tasks,approvals,isMember,isOwnerAdmin,isOwner,me} = ctx;
+  const {members,wallet,tasks,approvals,orders,isMember,isOwnerAdmin,isOwner,me} = ctx;
   if(tab==="overview"){
     const avail = (wallet.balance_cents||0)-(wallet.frozen_cents||0);
     el.innerHTML = `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">
@@ -332,10 +355,34 @@ function renderOrgTab(orgID, tab, ctx){
     return;
   }
   if(tab==="tasks"){
-    let html = tasks.length ? tasks.map(t=>`<div class="item">
-      <div class="grow"><div style="font-weight:600">${esc(t.title)}</div>
-        <div class="hint">${esc(t.id)} · 类目 ${esc(t.category||"-")} · ${money(t.budget_cents)}</div></div>
-      <span class="status ${esc(t.status)}">${esc(t.status)}</span></div>`).join("")
+    // 任务 → 订单映射（用于接单后显示托管）
+    const orderByTask = {};
+    (orders||[]).forEach(o=>{ orderByTask[o.task_id] = o; });
+    let html = tasks.length ? tasks.map(t=>{
+      const od = orderByTask[t.id];
+      let action = "";
+      if(t.status==="open"){
+        if(ME.role==="provider" && isMember){
+          action = `<button class="btn good" onclick="takeOrgTask('${esc(orgID)}','${esc(t.id)}')">接单</button>`;
+        } else if(ME.role==="provider" && !isMember){
+          action = `<span class="hint">需先由组织主邀请为成员</span>`;
+        } else {
+          action = `<span class="hint">切换接单方账号登录可认领</span>`;
+        }
+      } else if(od){
+        if(od.status==="pending_escrow" && isOwnerAdmin){
+          action = `<button class="btn" onclick="escrowOrgOrder('${esc(orgID)}','${esc(od.id)}')">托管（组织钱包扣款冻结）</button>`;
+        } else {
+          action = `<span class="chip">订单 ${esc(od.id)}</span><span class="status ${esc(od.status)}">${esc(od.status)}</span>`;
+        }
+      }
+      return `<div class="item">
+        <div class="grow"><div style="font-weight:600">${esc(t.title)}</div>
+          <div class="hint">${esc(t.id)} · 类目 ${esc(t.category||"-")} · ${money(t.budget_cents)}</div></div>
+        <span class="status ${esc(t.status)}">${esc(t.status)}</span>
+        ${action?`<div style="flex:0 0 auto">${action}</div>`:""}
+      </div>`;
+    }).join("")
       : `<div class="empty">该组织还没发布任务</div>`;
     if(isMember){
       html += `<div class="panel" style="margin-top:16px"><h2>发布组织任务</h2>
@@ -352,6 +399,21 @@ function renderOrgTab(orgID, tab, ctx){
     } else {
       html += `<div class="err" style="margin-top:12px">非成员，无法发包。请先在「成员」页由组织主邀请。</div>`;
     }
+    el.innerHTML = html;
+    return;
+  }
+  if(tab==="orders"){
+    const titleById = {};
+    (tasks||[]).forEach(t=>{ titleById[t.id]=t.title; });
+    let html = `<div class="hint" style="margin-bottom:10px">企业版统一结算视图：所有以本组织名义发包产生的订单，托管资金从<b>组织钱包</b>冻结，结算释放回组织钱包。</div>`;
+    html += orders.length ? orders.map(o=>`<div class="item">
+      <div class="av">${esc((o.id||"?").slice(0,2))}</div>
+      <div class="grow"><div style="font-weight:600">${esc(titleById[o.task_id]||o.task_id)}</div>
+        <div class="hint mono">${esc(o.id)} · 接单方 ${esc(o.provider_id)} · 托管 ${esc(o.escrow_id||"-")}</div></div>
+      <div style="text-align:right;flex:0 0 auto"><div style="font-weight:700">${money(o.amount_cents)}</div>
+        <span class="status ${esc(o.status)}">${esc(o.status)}</span></div>
+    </div>`).join("")
+      : `<div class="empty">该组织暂无订单（先发布任务 → 切换接单方账号「接单」→ 组织主「托管」）</div>`;
     el.innerHTML = html;
     return;
   }
@@ -508,6 +570,16 @@ async function createWebhook(orgID){
   else msg.innerHTML=`<div class="err">失败：${esc(j?j.msg:"网络错误")}</div>`;
 }
 
+async function takeOrgTask(orgID, taskID){
+  const {r,j} = await api(`/api/v1/tasks/${taskID}/take`,{method:"POST",body:JSON.stringify({milestones:[]})});
+  if(r.ok && j && j.data){ toast("接单成功，订单待托管："+(j.data.id||"")); ORG_TAB="orders"; renderOrg(orgID); }
+  else toast("接单失败："+(j?j.msg:"网络错误"));
+}
+async function escrowOrgOrder(orgID, orderID){
+  const {r,j} = await api(`/api/v1/orders/${orderID}/escrow`,{method:"POST"});
+  if(r.ok && j && j.data){ toast("托管成功，组织钱包已冻结 "+money(j.data.amount_cents)); ORG_TAB="orders"; renderOrg(orgID); }
+  else toast("托管失败："+(j?j.msg:"网络错误"));
+}
 function toast(t){ const d=document.createElement("div"); d.className="toast"; d.textContent=t; document.body.appendChild(d);
   setTimeout(()=>d.remove(),2600); }
 

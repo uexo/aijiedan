@@ -1176,6 +1176,10 @@ func (h *Handler) handleOrgs(w http.ResponseWriter, r *http.Request, segs []stri
 		// 组织 Webhook 投递记录(验证事件已真实投递)。
 		h.writeJSON(w, 200, envelope{Code: 200, Msg: "ok", Data: h.Svc.Store.ListWebhookDeliveriesByOrg(segs[3])})
 
+	case len(segs) == 5 && segs[4] == "orders" && r.Method == http.MethodGet:
+		// 组织订单列表(企业版统一结算视图): GET /orgs/{id}/orders
+		h.writeJSON(w, 200, envelope{Code: 200, Msg: "ok", Data: h.Svc.GetOrgOrders(segs[3])})
+
 	default:
 		h.writeJSON(w, 404, envelope{Code: 404, Msg: "not found"})
 	}

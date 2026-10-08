@@ -518,6 +518,23 @@ func (s *mysqlStore) ListOrdersByUser(userID string) []*model.Order {
 	return out
 }
 
+func (s *mysqlStore) ListOrdersByOrg(orgID string) []*model.Order {
+	rows, err := s.db.Query("SELECT "+orderCols+" FROM `order` WHERE org_id=?", orgID)
+	if err != nil {
+		return []*model.Order{}
+	}
+	defer rows.Close()
+	out := make([]*model.Order, 0)
+	for rows.Next() {
+		o := &model.Order{}
+		if err := scanOrder(o, rows); err != nil {
+			return []*model.Order{}
+		}
+		out = append(out, o)
+	}
+	return out
+}
+
 func (s *mysqlStore) ListOrdersByTask(taskID string) []*model.Order {
 	rows, err := s.db.Query("SELECT "+orderCols+" FROM `order` WHERE task_id=?", taskID)
 	if err != nil {

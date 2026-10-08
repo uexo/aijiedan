@@ -1232,6 +1232,11 @@ func (s *Service) CreateOrgTask(orgID, operatorUID, title, category string, budg
 	return t, nil
 }
 
+// GetOrgOrders 列出组织的订单(企业版统一结算视图)。
+func (s *Service) GetOrgOrders(orgID string) []*model.Order {
+	return s.Store.ListOrdersByOrg(orgID)
+}
+
 // GetOrgTasks 列出组织发布的任务。
 func (s *Service) GetOrgTasks(orgID string) []*model.Task {
 	var out []*model.Task
