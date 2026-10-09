@@ -40,6 +40,22 @@ func (s *Service) Status(userID string) (bool, string, error) {
 	return s.prov.Status(userID)
 }
 
+// Readiness 返回 KYC 通道的生产就绪态(供 /api/v1/readiness 与运营「上线就绪」面板)。
+// 仅在显式选择真实厂商(HIVEGET_KYC_PROVIDER=real)时校验凭证; 否则为 mock 演示模式。
+func (s *Service) Readiness() (mode string, live bool, missing []string) {
+	p, ok := s.prov.(*RealProvider)
+	if !ok {
+		return "mock", false, nil
+	}
+	if p.APIKey == "" {
+		missing = append(missing, "HIVEGET_KYC_APIKEY")
+	}
+	if p.BaseURL == "" {
+		missing = append(missing, "HIVEGET_KYC_BASEURL")
+	}
+	return "real", len(missing) == 0, missing
+}
+
 // NewProvider 构造通道实现。
 func NewProvider() Provider {
 	if os.Getenv("HIVEGET_KYC_PROVIDER") == "real" {

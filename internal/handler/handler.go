@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -164,6 +165,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "compliance":
 		h.handleCompliance(w, r)
 		return
+	case "readiness":
+		if r.Method == http.MethodGet {
+			h.handleReadiness(w, r)
+			return
+		}
 	case "clarify":
 		h.handleClarify(w, r, segs)
 		return
@@ -894,6 +900,37 @@ func (h *Handler) handleCompliance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.writeJSON(w, 404, envelope{Code: 404, Msg: "not found"})
+}
+
+// ---- readiness (上线就绪态 / 真实方案2 checklist) ----
+// GET /api/v1/readiness 返回生产就绪态: 资金通道 / KYC 通道 / ICP 备案 / 合规四门 / 存储模式。
+// 仅暴露布尔与「缺失的环境变量名」, 不回显任何密钥值; 运营后台「上线就绪」面板据此渲染 checklist。
+func (h *Handler) handleReadiness(w http.ResponseWriter, r *http.Request) {
+	stMode := "memory"
+	if os.Getenv("HIVEGET_DB_DSN") != "" {
+		stMode = "mysql"
+	}
+	pMode, pLive, pMissing := h.Svc.Payment.Readiness()
+	kMode, kLive, kMissing := h.Svc.KYC.Readiness()
+	cs := h.Svc.Compliance.GetState()
+	gate := map[string]bool{}
+	if cs != nil {
+		gate["kyc"] = cs.Items[model.ItemKYC]
+		gate["tax_source"] = cs.Items[model.ItemTaxSource]
+		gate["escrow"] = cs.Items[model.ItemEscrow]
+		gate["icp"] = cs.Items[model.ItemICP]
+	}
+	icpFiled := gate["icp"]
+	// 生产就绪 = 真实资金通道就绪 + 真实KYC就绪 + 合规四门全开(税源/托管/ICP/实名)。
+	goLive := pLive && kLive && gate["tax_source"] && gate["escrow"] && icpFiled
+	h.writeJSON(w, 200, envelope{Code: 200, Data: map[string]any{
+		"storage_mode": stMode,
+		"payment":      map[string]any{"mode": pMode, "live": pLive, "missing": pMissing},
+		"kyc":          map[string]any{"mode": kMode, "live": kLive, "missing": kMissing},
+		"icp_filed":    icpFiled,
+		"compliance_gate": gate,
+		"go_live_ready":  goLive,
+	}})
 }
 
 // ---- admin (P3 运营看板) ----

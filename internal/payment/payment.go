@@ -58,6 +58,7 @@ func NewProvider() Provider {
 			SerialNo:      os.Getenv("HIVEGET_WECHAT_SERIAL"),
 			PrivateKeyPEM: os.Getenv("HIVEGET_WECHAT_KEY_PEM"),
 			NotifyURL:     os.Getenv("HIVEGET_WECHAT_NOTIFY"),
+			APIV3Key:      os.Getenv("HIVEGET_WECHAT_APIV3_KEY"),
 		}
 		p.live = p.AppID != "" && p.SerialNo != "" && p.PrivateKeyPEM != ""
 		if !p.live {
@@ -195,6 +196,7 @@ type WeChatProvider struct {
 	AppID         string
 	SerialNo      string
 	PrivateKeyPEM string
+	APIV3Key      string // 微信支付 APIv3 密钥, 用于回调报文 AES-256-GCM 解密
 	NotifyURL     string
 	live          bool
 	key           *rsa.PrivateKey // 懒加载缓存
@@ -374,6 +376,35 @@ func (p *WeChatProvider) Refund(escrowID string, toRequester int64) error {
 // isLive 真实通道标志。
 func (p *WeChatProvider) isLive() bool { return p.live }
 
+// Readiness 返回资金通道的生产就绪态(供 /api/v1/readiness 与运营「上线就绪」面板)。
+// 仅在商户号已设定(即选了微信通道)时校验其余凭证; 未设商户号视为 stub 演示模式。
+func (s *Service) Readiness() (mode string, live bool, missing []string) {
+	p, ok := s.prov.(*WeChatProvider)
+	if !ok {
+		return "stub", false, nil
+	}
+	if p.MchID == "" {
+		return "stub", false, nil
+	}
+	mode = "wechat"
+	if p.AppID == "" {
+		missing = append(missing, "HIVEGET_WECHAT_APPID")
+	}
+	if p.SerialNo == "" {
+		missing = append(missing, "HIVEGET_WECHAT_SERIAL")
+	}
+	if p.PrivateKeyPEM == "" {
+		missing = append(missing, "HIVEGET_WECHAT_KEY_PEM")
+	}
+	if p.APIV3Key == "" {
+		missing = append(missing, "HIVEGET_WECHAT_APIV3_KEY")
+	}
+	if p.NotifyURL == "" {
+		missing = append(missing, "HIVEGET_WECHAT_NOTIFY")
+	}
+	return mode, len(missing) == 0, missing
+}
+
 // Notify 微信支付结果通知(v3 回调)解析。
 // live=false 时退化为 stub: 直接按 JSON {out_trade_no, trade_state} 解析(便于本地验证接线)。
 // live=true 时的真实形态需: 用 APIv3 密钥(API_V3_KEY)对 resource.ciphertext 做 AES-256-GCM 解密,
@@ -390,6 +421,10 @@ func (p *WeChatProvider) Notify(body []byte) (string, bool) {
 		return n.OutTradeNo, n.TradeState == "SUCCESS" || n.TradeState == ""
 	}
 	// TODO(real): AES-256-GCM 解密 resource, 校验签名, 提取 out_trade_no/trade_state。
-	fmt.Println("[payment.wechat] 收到真实支付回调, 但 APIv3 解密骨架待接入(需 HIVEGET_WECHAT_APIV3_KEY)")
+	if p.APIV3Key == "" {
+		fmt.Println("[payment.wechat] 收到真实支付回调, 但 HIVEGET_WECHAT_APIV3_KEY 未配置, 无法解密 resource")
+		return "", false
+	}
+	fmt.Println("[payment.wechat] 收到真实支付回调, 但 APIv3 解密骨架待接入(需补全 AES-256-GCM 解密)")
 	return "", false
 }

@@ -161,6 +161,7 @@ function renderNav(){
   const tabs = [];
   tabs.push(`<a href="#dash" class="${location.hash.startsWith("#dash")?"on":""}">运营看板</a>`);
   tabs.push(`<a href="#orgs" class="${location.hash.startsWith("#org")?"on":""}">组织治理</a>`);
+  tabs.push(`<a href="#ready" class="${location.hash.startsWith("#ready")?"on":""}">上线就绪</a>`);
   document.getElementById("nav").innerHTML = tabs.join("");
 }
 async function loadCats(){
@@ -173,11 +174,76 @@ function catOptions(sel){
   return `<select class="inp" id="${sel}"><option value="">— 类目 —</option>${CATS.map(c=>`<option value="${esc(c.id)}">${esc(c.label)}</option>`).join("")}</select>`;
 }
 
+// ---- 上线就绪 (真实方案2 checklist) ----
+async function renderReady(){
+  const app = document.getElementById("app");
+  app.innerHTML = `<div class="section-title">上线就绪 · 真实方案2 <span class="tag">生产前置检查</span></div>
+    <div id="readybody"><div class="empty">加载中…</div></div>`;
+  const {r,j} = await api("/api/v1/readiness");
+  if(!r.ok || !j || !j.data){ app.innerHTML = `<div class="err">就绪态获取失败：${esc(j?j.msg:"网络错误")}</div>`; return; }
+  const d = j.data;
+  const goLive = d.go_live_ready;
+  const badge = goLive
+    ? `<span class="status approved">可上线</span>`
+    : `<span class="status rejected">待补齐</span>`;
+  const gate = d.compliance_gate || {};
+  function row(label, ok, detail){
+    const c = ok ? "good" : "bad";
+    const ic = ok ? "✓" : "✗";
+    return `<div class="item"><div class="av" style="background:${ok?'var(--good)':'var(--bad)'}">${ic}</div>
+      <div class="grow"><div style="font-weight:600">${esc(label)}</div>
+      <div class="hint mono">${esc(detail||"")}</div></div>
+      <span class="status ${ok?'approved':'rejected'}">${ok?'就绪':'缺失'}</span></div>`;
+  }
+  let html = `<div class="panel">
+    <h2>生产就绪总览 ${badge}</h2>
+    <div class="kv"><b>存储模式</b><span>${esc(d.storage_mode)}</span></div>
+    <div class="kv"><b>整体状态</b><span>${goLive?'全部前置已满足，可接入真实资金与实名':'仍有未满足项，当前为演示/模拟模式'}</span></div>
+  </div>`;
+
+  html += `<div class="panel"><h2>资金通道（微信支付 v3）</h2>`;
+  const p = d.payment || {};
+  html += row("资金通道模式 = " + (p.mode||"stub"), p.live===true,
+    p.live ? "已配置完整微信支付凭证，真实资金经微信冻结/分账/退款" :
+    (p.mode==="wechat" ? "已选微信通道但凭证不全：" + (p.missing||[]).join(", ") : "未配置 HIVEGET_WECHAT_MCHID，当前为 stub 模拟（不接真实资金）"));
+  html += `</div>`;
+
+  html += `<div class="panel"><h2>实名认证（KYC 厂商）</h2>`;
+  const k = d.kyc || {};
+  html += row("KYC 通道模式 = " + (k.mode||"mock"), k.live===true,
+    k.live ? "已接入真实 KYC 厂商，认证结果由厂商回调/轮询刷新" :
+    (k.mode==="real" ? "已选真实厂商但凭证不全：" + (k.missing||[]).join(", ") : "未设 HIVEGET_KYC_PROVIDER=real，当前为 mock（提交即过）"));
+  html += `</div>`;
+
+  html += `<div class="panel"><h2>合规四门（平台级闸门）</h2>`;
+  html += row("实名 KYC（平台级开关）", !!gate.kyc, "POST /api/v1/compliance {item:kyc,on:true}");
+  html += row("税源地签约 tax_source", !!gate.tax_source, "执行卡1 · 税源地合作模式（个体入驻绑定）");
+  html += row("支付托管 escrow", !!gate.escrow, "执行卡2 · 支付托管选型（微信支付）");
+  html += row("ICP 备案 icp", !!gate.icp, "执行卡3 · 备案流程（填备案号后由 A001 开启）");
+  html += `</div>`;
+
+  html += `<div class="panel"><h2>去生产前 · 需补齐的环境变量</h2>`;
+  const need = [];
+  if((p.mode==="wechat" && !p.live)) need.push(...(p.missing||[]));
+  if((k.mode==="real" && !k.live)) need.push(...(k.missing||[]));
+  if(need.length){
+    html += `<div class="hint">在启动进程前把这些变量注入环境（或写入 <b>.env</b>，见仓库 <b>.env.example</b>）：</div>
+      <div class="mono" style="margin-top:8px">${need.map(x=>`<span class="chip">${esc(x)}</span>`).join(" ")}</div>`;
+  } else {
+    html += `<div class="ok">无缺失环境变量。当前通道已处于真实模式（若 go_live 仍为否，请检查合规四门是否已全部由 A001 开启）。</div>`;
+  }
+  html += `<div class="hint" style="margin-top:10px">提示：模拟模式下可完整演示「撮合→接单→托管→交付→结算」闭环；仅资金与实名走模拟，不触真实资金与厂商。</div>`;
+  html += `</div>`;
+
+  document.getElementById("readybody").innerHTML = html;
+}
+
 // ---- 路由 ----
 function route(){
   const h = location.hash || "#dash";
   if(h.startsWith("#org/")) renderOrg(h.slice(5));
   else if(h.startsWith("#orgs")) renderOrgs();
+  else if(h.startsWith("#ready")) renderReady();
   else renderDash();
 }
 window.addEventListener("hashchange", ()=>{ renderNav(); route(); });
