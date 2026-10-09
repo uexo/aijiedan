@@ -925,6 +925,7 @@ func (h *Handler) handleReadiness(w http.ResponseWriter, r *http.Request) {
 	goLive := pLive && kLive && gate["tax_source"] && gate["escrow"] && icpFiled
 	h.writeJSON(w, 200, envelope{Code: 200, Data: map[string]any{
 		"storage_mode": stMode,
+		"embedding":    map[string]any{"mode": h.Svc.Embedder.Mode()},
 		"payment":      map[string]any{"mode": pMode, "live": pLive, "missing": pMissing},
 		"kyc":          map[string]any{"mode": kMode, "live": kLive, "missing": kMissing},
 		"icp_filed":    icpFiled,

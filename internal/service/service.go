@@ -37,10 +37,11 @@ type Service struct {
 	IM         *im.Service
 	Clarify    *clarify.Manager // P1-2 AI 澄清会话管理
 	Notifier   *notify.Service  // P2-3 通知中心
+	Embedder   match.Embedder   // M2 可插拔语义向量(词袋保底/可选LLM)
 }
 
 func New(st store.Store, comp *compliance.Service, pay *payment.Service, kycSvc *kyc.Service, imSvc *im.Service, cl *clarify.Manager, notifier *notify.Service) *Service {
-	return &Service{Store: st, Compliance: comp, Payment: pay, KYC: kycSvc, IM: imSvc, Clarify: cl, Notifier: notifier}
+	return &Service{Store: st, Compliance: comp, Payment: pay, KYC: kycSvc, IM: imSvc, Clarify: cl, Notifier: notifier, Embedder: match.NewEmbedder()}
 }
 
 // PublishResult 发单结果
@@ -91,9 +92,16 @@ func (s *Service) MatchTask(taskID string) []model.MatchRecord {
 		return nil
 	}
 	providers := s.Store.ListProviders()
+	// M2: 语义层走 Embedder(词袋保底/可选LLM), 批量向量化需求侧 + 供应侧, 再 per-pair 精排。
+	taskVec := s.embed([]string{s.taskDoc(t)})[0]
+	provDocs := make([]string, len(providers))
+	for i, p := range providers {
+		provDocs[i] = s.providerDoc(p)
+	}
+	provVecs := s.embed(provDocs)
 	recs := make([]model.MatchRecord, 0, len(providers))
-	for _, p := range providers {
-		score, reason := s.score(p, t)
+	for i, p := range providers {
+		score, reason := s.score(p, t, taskVec, provVecs[i])
 		if score <= 0 {
 			continue
 		}
@@ -133,12 +141,22 @@ func (s *Service) RecommendTasks(providerID string) []TaskRecommendation {
 		return nil
 	}
 	open := s.Store.ListOpenTasks()
-	recs := make([]TaskRecommendation, 0, len(open))
+	// 过滤掉自己发布的任务, 再批量向量化(需求侧), 供应侧向量只算一次。
+	feeds := make([]*model.Task, 0, len(open))
 	for _, t := range open {
-		if t.RequesterID == providerID {
-			continue
+		if t.RequesterID != providerID {
+			feeds = append(feeds, t)
 		}
-		score, reason := s.score(p, t)
+	}
+	taskDocs := make([]string, len(feeds))
+	for i, t := range feeds {
+		taskDocs[i] = s.taskDoc(t)
+	}
+	taskVecs := s.embed(taskDocs)
+	provVec := s.embed([]string{s.providerDoc(p)})[0]
+	recs := make([]TaskRecommendation, 0, len(feeds))
+	for i, t := range feeds {
+		score, reason := s.score(p, t, taskVecs[i], provVec)
 		if score <= 0 {
 			continue
 		}
@@ -166,9 +184,16 @@ func (s *Service) RecommendProviders(taskID string) []ProviderRecommendation {
 		return nil
 	}
 	providers := s.Store.ListProviders()
+	// M2: 需求侧向量一次, 供应侧批量向量化, 再 per-pair 精排。
+	taskVec := s.embed([]string{s.taskDoc(t)})[0]
+	provDocs := make([]string, len(providers))
+	for i, p := range providers {
+		provDocs[i] = s.providerDoc(p)
+	}
+	provVecs := s.embed(provDocs)
 	recs := make([]ProviderRecommendation, 0, len(providers))
-	for _, p := range providers {
-		score, reason := s.score(p, t)
+	for i, p := range providers {
+		score, reason := s.score(p, t, taskVec, provVecs[i])
 		if score <= 0 {
 			continue
 		}
@@ -197,6 +222,16 @@ func (s *Service) providerDoc(p *model.User) string {
 	return strings.ToLower(strings.Join(p.Skills, " ") + " " + p.Name + " " + string(p.Role))
 }
 
+// embed 批量向量化; LLM 模式调用失败自动回退词袋保底(BagOfWordsEmbedder 零依赖),
+// 保证语义召回永不挂死 —— 与项目「Stub 默认 + env 切换真实 Provider」范式一致。
+func (s *Service) embed(texts []string) []match.Embedding {
+	vecs, err := s.Embedder.Embed(texts)
+	if err != nil || len(vecs) != len(texts) {
+		vecs, _ = match.BagOfWordsEmbedder{}.Embed(texts)
+	}
+	return vecs
+}
+
 // avgRating 接单方历史平均评分(0-5)。基于 review 表中其作为被评价方(接单方)的记录实时计算。
 // P0-4 的评价数据由此反哺匹配权重, 形成「好服务 → 高评价 → 高曝光」反馈闭环。
 func (s *Service) avgRating(providerID string) float64 {
@@ -220,7 +255,7 @@ func (s *Service) avgRating(providerID string) float64 {
 //
 // 召回门槛: 技能未命中 且 语义<0.1 时返回 0(不推荐); 否则进入候选并精排。
 // 这样即便技能标签未精确字面命中, 只要需求描述与技能画像语义接近(余弦≥0.1)仍可被召回。
-func (s *Service) score(p *model.User, t *model.Task) (float64, string) {
+func (s *Service) score(p *model.User, t *model.Task, taskVec, provVec match.Embedding) (float64, string) {
 	hay := s.taskDoc(t)
 	hits := make([]string, 0)
 	for _, sk := range p.Skills {
@@ -233,7 +268,7 @@ func (s *Service) score(p *model.User, t *model.Task) (float64, string) {
 		skillScore = 30
 	}
 
-	sem := match.CosineSim(hay, s.providerDoc(p)) // 0-1
+	sem := taskVec.Cosine(provVec) // 0-1, 走 Embedder(词袋/LLM 统一)
 	semScore := sem * 25
 
 	creditScore := float64(p.CreditScore) / 100 * 20
@@ -1480,9 +1515,16 @@ func (s *Service) SearchTasks(providerID string, f store.TaskFilter) []*model.Ta
 	if f.Sort == "relevance" && providerID != "" {
 		p, ok := s.Store.GetUser(providerID)
 		if ok && p.Role == model.RoleProvider {
+			// M2: 批量向量化候选任务(需求侧) + 接单方(供应侧), 再按匹配分排序, 口径与撮合一致。
+			docs := make([]string, len(out))
+			for i, t := range out {
+				docs[i] = s.taskDoc(t)
+			}
+			taskVecs := s.embed(docs)
+			provVec := s.embed([]string{s.providerDoc(p)})[0]
 			sort.SliceStable(out, func(i, j int) bool {
-				si, _ := s.score(p, out[i])
-				sj, _ := s.score(p, out[j])
+				si, _ := s.score(p, out[i], taskVecs[i], provVec)
+				sj, _ := s.score(p, out[j], taskVecs[j], provVec)
 				return si > sj
 			})
 		}

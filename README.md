@@ -406,7 +406,7 @@ python smoke_test.py
 2. **资金**：将 `payment.Service` 替换为微信支付「担保交易下单 + 服务商分账」，严禁二清/资金池。
 3. **IM**：将 `im.Bus` 替换为腾讯云 IM SDK（离线推送 + 已读回执 + 内容审核回写）。
 4. **合规**：`compliance.State.Items` 改为由真实签约状态（备案回执 / 税源地协议 / 支付开通凭证）驱动，而非 admin 手动翻转。
-5. **匹配**：M1 已落地轻量语义召回（词袋余弦，零依赖）+ 多因子精排 + 评价反馈闭环；M2 将语义层升级为 Embedding 向量化（结合 P1-2 LLM 澄清后的结构化 spec），进一步提升中文需求的语义召回精度。
+5. **匹配**：M1 已落地轻量语义召回（词袋余弦，零依赖）+ 多因子精排 + 评价反馈闭环；**M2 已完成**——语义层抽象为可插拔 `Embedder`（`internal/match/embed.go`）：默认 `BagOfWordsEmbedder` 复用 M1 词袋向量（行为完全等价、零依赖保底），设 `HIVEGET_EMBEDDING_MODE=llm` + `HIVEGET_EMBEDDING_API` 即切换 OpenAI 兼容 `/embeddings` 稠密向量（支持 OpenAI/Ollama/自建），调用失败自动回退词袋，召回不挂。召回入口（MatchTask / RecommendTasks / RecommendProviders）统一 batch embed 后 per-pair 向量余弦；需求侧文档 `taskDoc` 已融合 P1-2 澄清后的 `SpecObj`（Deliverables/RequiredFormat/StyleRef/Samples），spec 越完整语义越聚焦。`GET /api/v1/readiness` 返回 `embedding.mode`。
 
 ## 重要声明
 
