@@ -369,9 +369,19 @@ P3 企业版从「最小骨架」推向可商用：组织作为统一结算主�
 
 ## 合规闸门演示（一键复现）
 
-直接跑冒烟测试即可完整演示拦截→翻转→放行：
+一键跑完整 MySQL 模式端到端冒烟（自动重置库 → 构建 → 起服务 → 全链路断言 → 停服务）：
 
 ```bash
+bash e2e_mysql.sh          # 默认 python 需能 import pymysql(托管 venv)
+PYTHON=/path/to/venv/python bash e2e_mysql.sh
+```
+
+> 密钥安全：脚本不硬编码密码，从 `.env`（已 gitignore）或环境变量读 `HIVEGET_DB_PASSWORD` / `HIVEGET_DB_DSN`；没有 `.env` 时复制 `.env.example` 为 `.env` 填写即可。当前 MySQL 模式全链路 **218/218 PASS**（含 M2 语义匹配升级后的批量向量召回回归）。
+
+手动分步演示：
+
+```bash
+python db_reset.py         # 先重置 MySQL(纪律要求)
 go build -o hiveget.exe . && ./hiveget.exe &
 python smoke_test.py
 ```

@@ -782,11 +782,11 @@ check("24.3 邀请成员 P002", s == 200, str(s))
 
 # 24.4 非 owner 充值被 403 (用 R001)
 tr5, _ = login("R001")
-s, d = call("POST", f"/api/v1/orgs/{org_id}/wallet", token=tr5, body={"amount_cents": 100000})
+s, d = call("POST", f"/api/v1/orgs/{org_id}/wallet/deposit", token=tr5, body={"amount_cents": 100000})
 check("24.4 非 owner 充值 403", s == 403, str(s))
 
 # 24.5 owner 充值 100000 -> 余额 100000
-s, d = call("POST", f"/api/v1/orgs/{org_id}/wallet", token=tp1, body={"amount_cents": 100000})
+s, d = call("POST", f"/api/v1/orgs/{org_id}/wallet/deposit", token=tp1, body={"amount_cents": 100000})
 w1 = d.get("data", {})
 check("24.5 owner 充值后余额=100000", s == 200 and w1.get("balance_cents") == 100000, str(w1))
 
