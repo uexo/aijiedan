@@ -581,8 +581,12 @@ func (h *Handler) handleOrders(w http.ResponseWriter, r *http.Request, segs []st
 					SevereMismatch bool                   `json:"severe_mismatch"`
 				}
 				_ = json.NewDecoder(r.Body).Decode(&body)
-				res := h.Svc.AcceptDelivery(segs[3], c.UserID, body.Acceptance, body.SevereMismatch)
-				if res.Block != nil {
+			res := h.Svc.AcceptDelivery(segs[3], c.UserID, body.Acceptance, body.SevereMismatch)
+			if res.RevisionRequested {
+				h.writeJSON(w, 200, envelope{Code: 200, Msg: "验收已提交：存在未达标项，已打回接单方修正后重新交付", Data: res.Order})
+				return
+			}
+			if res.Block != nil {
 					h.writeJSON(w, http.StatusConflict, settleBlockEnvelope{
 						Code: 409, Msg: "验收通过, 但结算被合规拦截(订单转待结算): " + res.Block.Reason,
 						Order: res.Order, Missing: res.Block.Missing, CardRef: res.Block.CardRef,

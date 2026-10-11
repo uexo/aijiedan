@@ -213,6 +213,7 @@ function renderAcceptance(o,task,items,delivMap,isReq,isProv){
     return `<div class="section-title">🔍 验收比对（先逐项核对，再判定）</div>
       <div class="glass card card-lg">
         <div class="acpt">${rows}</div>
+        <div class="muted tiny" id="acceptHint" style="margin-top:8px">全部勾选「达标」→ 验收并结算放款；存在未勾选（未达标）项 → 该项打回接单方修正后重新提交，订单不结算</div>
         <label class="severe"><input type="checkbox" id="severeChk"> 判定为「需求与完成清单严重不符」（勾选后将以纠纷仲裁处理，而非直接验收）</label>
         <div class="actions" style="margin-top:14px">
           <button class="btn btn-primary" id="acceptBtn">验收并结算</button>
@@ -220,6 +221,22 @@ function renderAcceptance(o,task,items,delivMap,isReq,isProv){
           <button class="btn btn-danger hidden" id="disputeBtn">发起纠纷</button>
         </div>
       </div>`;
+  }
+  // 打回修正视图：存在未达标项，订单已回到 delivering，双方可见判定结果
+  if(s==="delivering" && (o.acceptance||[]).length && items.length){
+    const acc=o.acceptance||[];
+    const amap={};acc.forEach(a=>amap[a.item_id]=a);
+    const failCnt=acc.filter(a=>!a.pass).length;
+    let rows=items.map(it=>{
+      const a=amap[it.id];
+      if(!a) return `<div class="acpt-row"><div class="ai-req"><span class="rid">${esc(it.id)}</span>${esc(it.desc)}</div><div class="ai-prov"><span class="muted">本轮未判定</span></div><div class="passchk">-</div></div>`;
+      const pass=a.pass;
+      return `<div class="acpt-row"><div class="ai-req"><span class="rid">${esc(it.id)}</span>${esc(it.desc)}</div><div class="ai-prov">验收${pass?`<span class="prov-done">达标</span>`:`<span class="prov-miss">未达标</span>`}${a.note?` · ${esc(a.note)}`:""}</div><div class="passchk">${pass?'✓':'✗'}</div></div>`;
+    }).join("");
+    const hint=isProv
+      ?`<div class="banner-danger">您有 ${failCnt} 项验收未达标，请修正后在下方重新提交交付（订单未结算，托管资金冻结中）</div>`
+      :`<div class="banner-danger">存在 ${failCnt} 项未达标，已打回接单方修正；达标项已确认，全部达标后将自动结算</div>`;
+    return `<div class="section-title">🔍 验收比对结果（修正中）</div><div class="glass card card-lg">${hint}<div class="acpt">${rows}</div></div>`;
   }
   if(s==="completed" && items.length){
     const acc=o.acceptance||[];
@@ -272,6 +289,15 @@ function bindOrderEvents(o,isReq,isProv,items,delivMap){
     const a=$("#acceptBtn");
     if(a) a.classList.toggle("hidden",severe.checked);
   };
+  // 达标勾选联动：全达标→「验收并结算」；有未达标→「提交验收（未达标项打回修正）」
+  const syncAcceptLabel=()=>{
+    const a=$("#acceptBtn"); if(!a) return;
+    const boxes=document.querySelectorAll(".acpt-pass");
+    const allPass=[...boxes].every(c=>c.checked);
+    a.textContent = boxes.length && !allPass ? "提交验收（未达标项将打回修正）" : "验收并结算";
+  };
+  document.querySelectorAll(".acpt-pass").forEach(c=>{ c.onchange=syncAcceptLabel; });
+  syncAcceptLabel();
 
   const rv=$("#rvBtn");
   if(rv) rv.onclick=async()=>{

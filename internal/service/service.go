@@ -568,9 +568,10 @@ func (s *Service) RequestRevision(orderID, requesterID, note string) *compliance
 
 // SettleResult 验收结算结果
 type SettleResult struct {
-	Order    *model.Order
-	Released bool
-	Block    *compliance.Block // 合规拦截(非nil表示结算被拦, 订单转 pending_settlement)
+	Order             *model.Order
+	Released          bool
+	Block             *compliance.Block // 合规拦截(非nil表示结算被拦, 订单转 pending_settlement)
+	RevisionRequested bool              // 存在未达标项: 已打回接单方修正, 未结算
 }
 
 // AcceptDelivery 需求方验收交付。验收通过后尝试结算放款。
@@ -594,7 +595,32 @@ func (s *Service) AcceptDelivery(orderID, requesterID string, items []model.Acce
 	o.Acceptance = items
 	o.SevereMismatch = severeMismatch
 	o.AcceptedAt = model.Now()
-	// 标记最新交付为已接受
+	// 存在未达标项: 不结算、不打完成标签, 订单打回接单方修正后重新提交。
+	var failed []model.AcceptanceItem
+	if len(items) > 0 {
+		for _, it := range items {
+			if !it.Pass {
+				failed = append(failed, it)
+			}
+		}
+	}
+	if len(failed) > 0 {
+		ds := s.Store.ListDeliveriesByOrder(orderID)
+		if len(ds) > 0 {
+			ds[len(ds)-1].Status = "rejected"
+			s.Store.PutDelivery(ds[len(ds)-1])
+		}
+		o.Status = model.OrderDelivering
+		s.Store.PutOrder(o)
+		var names []string
+		for _, f := range failed {
+			names = append(names, f.ItemID)
+		}
+		s.Notifier.Notify(o.ProviderID, model.ChannelInApp, "验收未达标",
+			fmt.Sprintf("订单 %s 存在 %d 项未达标(%s)，请修正后重新提交交付。", o.ID, len(failed), strings.Join(names, "、")))
+		return &SettleResult{Order: o, RevisionRequested: true}
+	}
+	// 全部达标: 标记最新交付为已接受
 	ds := s.Store.ListDeliveriesByOrder(orderID)
 	if len(ds) > 0 {
 		ds[len(ds)-1].Status = "accepted"
