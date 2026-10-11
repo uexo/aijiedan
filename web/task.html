@@ -21,6 +21,10 @@
   .revbox{margin-top:14px;padding:16px;background:var(--color-muted);border-radius:var(--radius);display:none}
   .revbox.show{display:block}
   .deliv{font-size:.88rem;padding:12px;border-left:3px solid var(--color-primary);background:var(--glass-bg);border-radius:8px;margin-bottom:10px}
+  .deliv-head{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+  .deliv-head .round{font-weight:700}
+  .deliv-head .meta{margin-left:auto;font-size:.78rem;color:var(--color-muted-foreground)}
+  .deliv-body{white-space:pre-wrap;word-break:break-word;line-height:1.5}
 </style>
 </head>
 <body>
@@ -42,6 +46,7 @@ function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");se
 function money(c){return "¥"+(c/100).toLocaleString("zh-CN");}
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 function statusPill(s){return `<span class="status ${esc(s)}">${esc(s)}</span>`;}
+function fmtTime(ms){if(!ms)return"-";try{const d=new Date(ms);const p=n=>String(n).padStart(2,"0");return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;}catch(e){return String(ms);}}
 async function api(path,opts={}){
   try{const r=await fetch(API+path,{method:opts.method||"GET",headers:{"Content-Type":"application/json","Authorization":"Bearer "+TOKEN},body:opts.body?JSON.stringify(opts.body):undefined});
   let j=null;try{j=await r.json()}catch(e){}return {r,j};}catch(e){return {r:{ok:false},j:{msg:String(e)}};}
@@ -100,7 +105,7 @@ async function renderOrder(id){
   </div>
   <div class="actions" id="acts">${actionButtons(o,isReq,isProv)}</div>
   <h3 style="margin:18px 0 10px">交付记录（${deliveries.length}）</h3>
-  ${deliveries.length?deliveries.map(d=>`<div class="deliv"><b>${esc(d.created_at||"")}</b> · ${esc(d.note||"已交付")}</div>`).join(""):`<div class="muted tiny">暂无交付记录</div>`}
+  ${deliveries.length?deliveries.map(d=>`<div class="deliv"><div class="deliv-head"><span class="round">第 ${esc(d.round||1)} 轮</span>${statusPill(d.status)}<span class="meta">${fmtTime(d.created_at)}</span></div><div class="deliv-body">${esc(d.content||"（无说明）")}</div></div>`).join(""):`<div class="muted tiny">暂无交付记录</div>`}
   <div class="revbox" id="revbox">
     <div class="field"><label class="label">评分（1-5）</label><input class="input" id="rv_score" type="number" min="1" max="5" value="5"></div>
     <div class="field"><label class="label">评价内容</label><textarea class="textarea" id="rv_comment" placeholder="评价对方…"></textarea></div>
@@ -136,7 +141,7 @@ async function onAct(act,o,isReq,isProv,id){
   const map={escrow:"托管资金",deliver:"提交交付",accept:"验收结算",revise:"打回重做",settle:"补结算"};
   let path="/orders/"+encodeURIComponent(id),body={};
   if(act==="escrow") path+="/escrow";
-  if(act==="deliver"){path+="/deliver";body={note:prompt("交付说明：")||""};}
+  if(act==="deliver"){path+="/deliver";body={content:prompt("交付说明（可贴下载链接/提取码）：")||""};}
   if(act==="accept") path+="/accept";
   if(act==="revise") path+="/revise";
   if(act==="settle") path+="/settle";
