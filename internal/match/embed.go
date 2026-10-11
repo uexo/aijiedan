@@ -20,6 +20,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"hiveget/internal/aihttp"
 )
 
 // Embedding 统一向量抽象: 内部实现可稀疏(词袋)或稠密(LLM), 自带余弦计算,
@@ -148,7 +150,7 @@ type embedResp struct {
 // Embed 实现 Embedder: 调用 {BaseURL}/embeddings, 批量取回稠密向量。
 func (e *LLMEmbedder) Embed(texts []string) ([]Embedding, error) {
 	if e.Client == nil {
-		e.Client = &http.Client{Timeout: 15 * time.Second}
+		e.Client = aihttp.New(15 * time.Second)
 	}
 	body, err := json.Marshal(embedReq{Model: e.Model, Input: texts})
 	if err != nil {

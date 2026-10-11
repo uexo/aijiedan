@@ -258,6 +258,9 @@ type Order struct {
 	Acceptance     []AcceptanceItem `json:"acceptance,omitempty"`      // 各需求项验收结果
 	SevereMismatch bool             `json:"severe_mismatch,omitempty"` // 需求方判定需求与完成清单严重不符(前置条件: 才可发起纠纷)
 	AcceptedAt     int64            `json:"accepted_at,omitempty"`    // 验收时间
+
+	// B2 自动报价: 接单方接单时填写的预期报价(分), 0 表示未填。供需求方比对其发布的预算, 作为协商依据。
+	ProviderQuoteCents int64 `json:"provider_quote_cents,omitempty"`
 }
 
 // Delivery 交付物(支持多轮改稿)

@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"hiveget/internal/aihttp"
 	"hiveget/internal/model"
 )
 
@@ -157,7 +158,12 @@ func (c *OpenAIClient) chatOnce(ctx context.Context, sys string, hist []Message)
 }
 
 func (c *OpenAIClient) Chat(ctx context.Context, sys string, hist []Message) (string, error) {
-	return c.chatOnce(ctx, sys, hist)
+	r, err := c.chatOnce(ctx, sys, hist)
+	if err != nil {
+		// 联网失败 / 超时 / 解析异常: 回退规则化澄清回复, 保证对话不中断(绝不挂)。
+		return StubClient{}.Chat(ctx, sys, hist)
+	}
+	return r, nil
 }
 
 func (c *OpenAIClient) Extract(ctx context.Context, sys string, hist []Message) (*ExtractedSpec, error) {
@@ -186,7 +192,7 @@ func NewClient() LLMClient {
 		if modelName == "" {
 			modelName = "gpt-4o-mini"
 		}
-		return &OpenAIClient{BaseURL: base, APIKey: key, Model: modelName, HTTP: &http.Client{Timeout: 30 * time.Second}}
+		return &OpenAIClient{BaseURL: base, APIKey: key, Model: modelName, HTTP: aihttp.New(30 * time.Second)}
 	}
 	return StubClient{}
 }
@@ -240,6 +246,14 @@ type Manager struct {
 
 func NewManager() *Manager {
 	return &Manager{sessions: map[string]*Session{}, client: NewClient()}
+}
+
+// Mode 返回当前 LLM 实现标识: "llm"(已配 API Key) 或 "stub"(规则化离线兜底)。
+func (m *Manager) Mode() string {
+	if _, ok := m.client.(*OpenAIClient); ok {
+		return "llm"
+	}
+	return "stub"
 }
 
 // Start 新建会话并发起首轮澄清(传入初始需求文本)。返回会话(含首轮回复与草稿)。

@@ -103,6 +103,10 @@ ALTER TABLE `order`
   ADD COLUMN `severe_mismatch`  TINYINT(1)  NOT NULL DEFAULT 0,
   ADD COLUMN `accepted_at`      BIGINT      NOT NULL DEFAULT 0;
 
+-- B2 自动报价: order 表存储接单方预期报价(分)
+ALTER TABLE `order`
+  ADD COLUMN `provider_quote_cents` BIGINT NOT NULL DEFAULT 0;
+
 -- B方案(验收清单比对): task 表存储结构化需求清单
 ALTER TABLE `task`
   ADD COLUMN `items_json`  JSON  NULL;

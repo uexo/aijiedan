@@ -56,6 +56,11 @@
   .item-form .if-row .if-desc{font-weight:600}
   input.if-note,input.if-link{width:100%}
   .hidden{display:none !important}
+  .quote-range{display:flex;align-items:baseline;gap:10px;font-weight:800;font-size:1.6rem;color:var(--color-primary)}
+  .quote-range .q-arrow{color:var(--color-muted-foreground);font-weight:600}
+  .quote-range .q-min,.quote-range .q-max{letter-spacing:-.5px}
+  .quote-reason{margin:12px 0 4px;padding-left:18px;color:var(--color-muted-foreground);font-size:.84rem;line-height:1.7}
+  .quote-reason li{margin-bottom:2px}
 </style>
 </head>
 <body>
@@ -117,12 +122,35 @@ async function renderTask(id){
       `</div></div>`;
   }
   if(ME.role==="provider"&&(t.status||"open")==="open"){
-    html+=`<div class="actions"><button class="btn btn-primary" id="takeBtn">接单</button></div>`;
+    html+=`<div class="section-title">🤖 AI 建议报价（接单方）</div>
+      <div class="glass card card-lg" id="quoteCard"><div class="muted">正在为你估算合理报价…</div></div>
+      <div class="actions"><button class="btn btn-primary" id="takeBtn">仅接单（不报价）</button></div>`;
   }
   $("#main").innerHTML=html;
+  if(ME.role==="provider"&&(t.status||"open")==="open"){ loadQuote(id,t); }
   if($("#takeBtn")) $("#takeBtn").onclick=async()=>{
     const {r,j}=await api("/tasks/"+encodeURIComponent(id)+"/take",{method:"POST",body:{milestones:[]}});
     if(r.ok){toast("接单成功，等待需求方托管");location.href="app.html#myorders";}
+    else toast((j&&j.msg)||"接单失败");
+  };
+}
+
+// loadQuote 接单方视角：拉取 AI 建议报价并渲染（含采纳为报价后接单）。
+async function loadQuote(id,t){
+  const card=$("#quoteCard"); if(!card) return;
+  const {r,j}=await api("/quote",{method:"POST",body:{task_id:id}});
+  if(!r.ok){ card.innerHTML=`<div class="muted">建议报价暂不可用：${(j&&j.msg)||""}</div>`; return; }
+  const q=j.data;
+  const below=q.below_estimate?`<div class="banner-danger">⚠️ 需求方预算 ${money(t.budget_cents||0)} 低于建议下限，建议还价或审慎承接</div>`:"";
+  card.innerHTML=`<div class="quote-range"><span class="q-min">${money(q.min_cents)}</span><span class="q-arrow">～</span><span class="q-max">${money(q.max_cents)}</span></div>
+    <div class="muted tiny">建议锚定价 ${money(q.anchor_cents)}（基于类目 / 复杂度 / 紧急度 / 你的成交与口碑画像）</div>
+    <ul class="quote-reason">${(q.rationale||[]).map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
+    ${below}
+    <button class="btn btn-ghost" id="adoptQuote">采纳建议并接单（${money(q.anchor_cents)}）</button>`;
+  const ab=$("#adoptQuote");
+  if(ab) ab.onclick=async()=>{
+    const {r,j}=await api("/tasks/"+encodeURIComponent(id)+"/take",{method:"POST",body:{milestones:[],provider_quote_cents:q.anchor_cents}});
+    if(r.ok){toast("已采纳 AI 建议报价并接单，等待需求方托管");location.href="app.html#myorders";}
     else toast((j&&j.msg)||"接单失败");
   };
 }
@@ -147,6 +175,7 @@ async function renderOrder(id){
     <div class="kv"><span class="k">金额</span><span class="v">${money(o.amount_cents||0)}</span></div>
     <div class="kv"><span class="k">需求方</span><span class="v">${esc(o.requester_id)}</span></div>
     <div class="kv"><span class="k">接单方</span><span class="v">${esc(o.provider_id)}</span></div>
+    ${(o.provider_quote_cents)?`<div class="kv"><span class="k">接单方报价</span><span class="v">${money(o.provider_quote_cents)}</span></div>`:""}
     ${o.escrow_id?`<div class="kv"><span class="k">托管号</span><span class="v mono">${esc(o.escrow_id)}</span></div>`:""}
   </div>`;
 

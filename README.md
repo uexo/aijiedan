@@ -435,7 +435,7 @@ python smoke_test.py
 
 为让"去生产前还差什么"一目了然，提供两处一致的检查入口：
 
-- **端点**：`GET /api/v1/readiness`（无需登录），返回 `storage_mode` / `payment{mode,live,missing}` / `kyc{mode,live,missing}` / `icp_filed` / `compliance_gate` / `go_live_ready`。仅回显布尔与**缺失的环境变量名**，绝不回显密钥值。
+- **端点**：`GET /api/v1/readiness`（无需登录），返回 `storage_mode` / `embedding{mode}` / `clarify{mode}` / `payment{mode,live,missing}` / `kyc{mode,live,missing}` / `icp_filed` / `compliance_gate` / `go_live_ready`。仅回显布尔与**缺失的环境变量名**，绝不回显密钥值。
 - **运营后台**：运营看板新增「**上线就绪**」标签页（`#ready`，A001 登录后可见），按资金通道 / KYC / 合规四门逐项打勾，并列出当前通道下**仍需补齐的环境变量**清单，直接对照 `.env.example` 填充即可。
 
 判定 `go_live_ready = 真实资金通道就绪 && 真实KYC就绪 && 合规四门全开`。当前演示态（未填微信/KYC 凭证）恒为 `false`，业务闭环仍可在 stub/mock 下完整跑通。
@@ -458,6 +458,18 @@ python smoke_test.py
 3. **IM**：将 `im.Bus` 替换为腾讯云 IM SDK（离线推送 + 已读回执 + 内容审核回写）。
 4. **合规**：`compliance.State.Items` 改为由真实签约状态（备案回执 / 税源地协议 / 支付开通凭证）驱动，而非 admin 手动翻转。
 5. **匹配**：M1 已落地轻量语义召回（词袋余弦，零依赖）+ 多因子精排 + 评价反馈闭环；**M2 已完成**——语义层抽象为可插拔 `Embedder`（`internal/match/embed.go`）：默认 `BagOfWordsEmbedder` 复用 M1 词袋向量（行为完全等价、零依赖保底），设 `HIVEGET_EMBEDDING_MODE=llm` + `HIVEGET_EMBEDDING_API` 即切换 OpenAI 兼容 `/embeddings` 稠密向量（支持 OpenAI/Ollama/自建），调用失败自动回退词袋，召回不挂。召回入口（MatchTask / RecommendTasks / RecommendProviders）统一 batch embed 后 per-pair 向量余弦；需求侧文档 `taskDoc` 已融合 P1-2 澄清后的 `SpecObj`（Deliverables/RequiredFormat/StyleRef/Samples），spec 越完整语义越聚焦。`GET /api/v1/readiness` 返回 `embedding.mode`。
+
+## 启用真实大模型（AI 能力升级 · B1）
+
+HiveGet 的「AI 语义匹配」与「AI 需求澄清」默认以**零依赖保底版**运行（词袋语义 + 正则澄清），无需任何外部 Key 即可演示。配置环境变量即从保底版升级为真实大模型版，**联网失败 / 超时自动回退保底版，绝不挂**。
+
+| 能力 | 触发变量 | 行为 |
+|---|---|---|
+| 需求澄清（`/clarify`） | `HIVEGET_LLM_API_KEY` | 非空即调 OpenAI 兼容 `/v1/chat/completions`；`Chat` 与 `Extract` 任一失败均回退规则化兜底 |
+| 语义匹配（`MatchTask`/`RecommendTasks`/`RecommendProviders`） | `HIVEGET_EMBEDDING_MODE=llm` + `HIVEGET_EMBEDDING_API` | 调 `/embeddings` 产出稠密向量；`Service.embed` 失败自动回退词袋 |
+| 联网代理 | `HIVEGET_AI_PROXY`（或系统 `HTTP_PROXY`/`HTTPS_PROXY`） | 适配中国大陆访问 OpenAI / DeepSeek / 本地 Ollama 等 |
+
+`GET /api/v1/readiness` 实时回显当前生效模式：`clarify.mode ∈ {stub, llm}`、`embedding.mode ∈ {bag-of-words, llm}`。
 
 ## 重要声明
 

@@ -425,16 +425,16 @@ func (s *mysqlStore) ListMatchesByTask(taskID string) []*model.MatchRecord {
 func (s *mysqlStore) PutOrder(o *model.Order) {
 	mil, _ := json.Marshal(o.Milestones)
 	acc, _ := json.Marshal(o.Acceptance)
-	_, _ = s.db.Exec(`INSERT INTO ` + "`order`" + ` (id,task_id,requester_id,org_id,provider_id,match_id,amount_cents,status,escrow_id,settled,max_revisions,milestones,settlement_mode,refund_cents,refund_pct,cancelled_by,cancel_reason,cancelled_at,dispute_reason,disputed_by,disputed_at,resolved_by,resolved_at,resolved_note,acceptance_json,severe_mismatch,accepted_at,created_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-		ON DUPLICATE KEY UPDATE task_id=VALUES(task_id),requester_id=VALUES(requester_id),org_id=VALUES(org_id),provider_id=VALUES(provider_id),match_id=VALUES(match_id),amount_cents=VALUES(amount_cents),status=VALUES(status),escrow_id=VALUES(escrow_id),settled=VALUES(settled),max_revisions=VALUES(max_revisions),milestones=VALUES(milestones),settlement_mode=VALUES(settlement_mode),refund_cents=VALUES(refund_cents),refund_pct=VALUES(refund_pct),cancelled_by=VALUES(cancelled_by),cancel_reason=VALUES(cancel_reason),cancelled_at=VALUES(cancelled_at),dispute_reason=VALUES(dispute_reason),disputed_by=VALUES(disputed_by),disputed_at=VALUES(disputed_at),resolved_by=VALUES(resolved_by),resolved_at=VALUES(resolved_at),resolved_note=VALUES(resolved_note),acceptance_json=VALUES(acceptance_json),severe_mismatch=VALUES(severe_mismatch),accepted_at=VALUES(accepted_at)`,
+	_, _ = s.db.Exec(`INSERT INTO ` + "`order`" + ` (id,task_id,requester_id,org_id,provider_id,match_id,amount_cents,status,escrow_id,settled,max_revisions,milestones,settlement_mode,refund_cents,refund_pct,cancelled_by,cancel_reason,cancelled_at,dispute_reason,disputed_by,disputed_at,resolved_by,resolved_at,resolved_note,acceptance_json,severe_mismatch,accepted_at,created_at,provider_quote_cents)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		ON DUPLICATE KEY UPDATE task_id=VALUES(task_id),requester_id=VALUES(requester_id),org_id=VALUES(org_id),provider_id=VALUES(provider_id),match_id=VALUES(match_id),amount_cents=VALUES(amount_cents),status=VALUES(status),escrow_id=VALUES(escrow_id),settled=VALUES(settled),max_revisions=VALUES(max_revisions),milestones=VALUES(milestones),settlement_mode=VALUES(settlement_mode),refund_cents=VALUES(refund_cents),refund_pct=VALUES(refund_pct),cancelled_by=VALUES(cancelled_by),cancel_reason=VALUES(cancel_reason),cancelled_at=VALUES(cancelled_at),dispute_reason=VALUES(dispute_reason),disputed_by=VALUES(disputed_by),disputed_at=VALUES(disputed_at),resolved_by=VALUES(resolved_by),resolved_at=VALUES(resolved_at),resolved_note=VALUES(resolved_note),acceptance_json=VALUES(acceptance_json),severe_mismatch=VALUES(severe_mismatch),accepted_at=VALUES(accepted_at),provider_quote_cents=VALUES(provider_quote_cents)`,
 		o.ID, o.TaskID, o.RequesterID, o.OrgID, o.ProviderID, o.MatchID, o.AmountCents, o.Status, o.EscrowID, boolToInt(o.Settled),
 		o.MaxRevisions, nullStr(string(mil)), o.SettlementMode, o.RefundCents, o.RefundPct,
 		nullStr(o.CancelledBy), nullStr(o.CancelReason), o.CancelledAt, nullStr(o.DisputeReason), nullStr(o.DisputedBy), o.DisputedAt,
-		nullStr(o.ResolvedBy), o.ResolvedAt, nullStr(o.ResolvedNote), nullStr(string(acc)), boolToInt(o.SevereMismatch), o.AcceptedAt, o.CreatedAt)
+		nullStr(o.ResolvedBy), o.ResolvedAt, nullStr(o.ResolvedNote), nullStr(string(acc)), boolToInt(o.SevereMismatch), o.AcceptedAt, o.CreatedAt, o.ProviderQuoteCents)
 }
 // orderCols SELECT 列(顺序须与 scanOrder 一致)
-const orderCols = "id,task_id,requester_id,org_id,provider_id,match_id,amount_cents,status,escrow_id,settled,max_revisions,milestones,settlement_mode,refund_cents,refund_pct,cancelled_by,cancel_reason,cancelled_at,dispute_reason,disputed_by,disputed_at,resolved_by,resolved_at,resolved_note,acceptance_json,severe_mismatch,accepted_at,created_at"
+const orderCols = "id,task_id,requester_id,org_id,provider_id,match_id,amount_cents,status,escrow_id,settled,max_revisions,milestones,settlement_mode,refund_cents,refund_pct,cancelled_by,cancel_reason,cancelled_at,dispute_reason,disputed_by,disputed_at,resolved_by,resolved_at,resolved_note,acceptance_json,severe_mismatch,accepted_at,created_at,provider_quote_cents"
 
 // scanOrder 把一行扫描进 *model.Order(列顺序见 orderCols)。row 满足 sql.Row/sql.Rows 的 Scan 接口。
 func scanOrder(o *model.Order, row interface{ Scan(...interface{}) error }) error {
@@ -442,7 +442,7 @@ func scanOrder(o *model.Order, row interface{ Scan(...interface{}) error }) erro
 	var settled, maxRev, refundPct, severeMismatch int
 	var refundCents, cancelledAt, disputedAt, resolvedAt, acceptedAt int64
 	var mil []byte
-	if err := row.Scan(&o.ID, &o.TaskID, &o.RequesterID, &o.OrgID, &o.ProviderID, &o.MatchID, &o.AmountCents, &o.Status, &escrow, &settled, &maxRev, &mil, &mode, &refundCents, &refundPct, &cancelBy, &cancelReason, &cancelledAt, &disputeReason, &disputedBy, &disputedAt, &resolvedBy, &resolvedAt, &resolvedNote, &acceptance, &severeMismatch, &acceptedAt, &o.CreatedAt); err != nil {
+	if err := row.Scan(&o.ID, &o.TaskID, &o.RequesterID, &o.OrgID, &o.ProviderID, &o.MatchID, &o.AmountCents, &o.Status, &escrow, &settled, &maxRev, &mil, &mode, &refundCents, &refundPct, &cancelBy, &cancelReason, &cancelledAt, &disputeReason, &disputedBy, &disputedAt, &resolvedBy, &resolvedAt, &resolvedNote, &acceptance, &severeMismatch, &acceptedAt, &o.CreatedAt, &o.ProviderQuoteCents); err != nil {
 		return err
 	}
 	o.EscrowID = escrow.String

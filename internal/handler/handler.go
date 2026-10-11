@@ -174,6 +174,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "clarify":
 		h.handleClarify(w, r, segs)
 		return
+	case "quote":
+		h.handleQuote(w, r, segs)
+		return
 	case "wallet":
 		h.handleWallet(w, r, segs)
 		return
@@ -435,10 +438,11 @@ func (h *Handler) handleTasks(w http.ResponseWriter, r *http.Request, segs []str
 			return
 		}
 		var body struct {
-			Milestones []model.Milestone `json:"milestones"`
+			Milestones        []model.Milestone `json:"milestones"`
+			ProviderQuoteCents int64             `json:"provider_quote_cents"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		res := h.Svc.TakeTask(segs[3], c.UserID, body.Milestones)
+		res := h.Svc.TakeTask(segs[3], c.UserID, body.Milestones, body.ProviderQuoteCents)
 		if res.Block != nil {
 			h.writeBlock(w, res.Block)
 			return
@@ -462,10 +466,11 @@ func (h *Handler) handleMatches(w http.ResponseWriter, r *http.Request, segs []s
 			return
 		}
 		var body struct {
-			Milestones []model.Milestone `json:"milestones"`
+			Milestones         []model.Milestone `json:"milestones"`
+			ProviderQuoteCents int64             `json:"provider_quote_cents"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		res := h.Svc.AcceptMatch(segs[3], c.UserID, body.Milestones)
+		res := h.Svc.AcceptMatch(segs[3], c.UserID, body.Milestones, body.ProviderQuoteCents)
 		if res.Block != nil {
 			h.writeBlock(w, res.Block)
 			return
@@ -950,12 +955,46 @@ func (h *Handler) handleReadiness(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, 200, envelope{Code: 200, Data: map[string]any{
 		"storage_mode": stMode,
 		"embedding":    map[string]any{"mode": h.Svc.Embedder.Mode()},
+		"clarify":      map[string]any{"mode": h.Svc.Clarify.Mode()},
 		"payment":      map[string]any{"mode": pMode, "live": pLive, "missing": pMissing},
 		"kyc":          map[string]any{"mode": kMode, "live": kLive, "missing": kMissing},
 		"icp_filed":    icpFiled,
 		"compliance_gate": gate,
 		"go_live_ready":  goLive,
 	}})
+}
+
+// ---- quote (B2 接单方自动报价) ----
+
+// handleQuote 接单方获取某需求的 AI 建议报价区间。
+// POST /api/v1/quote  body: {"task_id":"..."}  → 返回 quote.Quote(区间/理由/Basis)。
+func (h *Handler) handleQuote(w http.ResponseWriter, r *http.Request, segs []string) {
+	if r.Method != http.MethodPost {
+		h.writeJSON(w, 405, envelope{Code: 405, Msg: "method not allowed"})
+		return
+	}
+	c, ok := h.requireAuth(w, r)
+	if !ok {
+		return
+	}
+	if c.Role != string(model.RoleProvider) {
+		h.writeJSON(w, 403, envelope{Code: 403, Msg: "仅接单方可查询建议报价"})
+		return
+	}
+	var body struct {
+		TaskID string `json:"task_id"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	if body.TaskID == "" {
+		h.writeJSON(w, 400, envelope{Code: 400, Msg: "task_id 必填"})
+		return
+	}
+	q, err := h.Svc.SuggestQuote(body.TaskID, c.UserID)
+	if err != nil {
+		h.writeJSON(w, 404, envelope{Code: 404, Msg: err.Error()})
+		return
+	}
+	h.writeJSON(w, 200, envelope{Code: 200, Msg: "ok", Data: q})
 }
 
 // ---- admin (P3 运营看板) ----

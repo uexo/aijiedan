@@ -25,6 +25,7 @@ import (
 	"hiveget/internal/model"
 	"hiveget/internal/notify"
 	"hiveget/internal/payment"
+	"hiveget/internal/quote"
 	"hiveget/internal/store"
 )
 
@@ -309,7 +310,7 @@ type AcceptResult struct {
 
 // AcceptMatch 接单方应征推荐并生成订单(待托管)。受 ActAcceptTask 闸门(需KYC+税源)。
 // milestones 可选: 传入则进入里程碑分阶段结算模式(金额之和须等于订单预算), 否则一次性结算。
-func (s *Service) AcceptMatch(matchID, providerID string, milestones []model.Milestone) *AcceptResult {
+func (s *Service) AcceptMatch(matchID, providerID string, milestones []model.Milestone, providerQuoteCents int64) *AcceptResult {
 	m, ok := s.Store.GetMatch(matchID)
 	if !ok {
 		return &AcceptResult{Block: &compliance.Block{Reason: "匹配记录不存在"}}
@@ -361,6 +362,7 @@ func (s *Service) AcceptMatch(matchID, providerID string, milestones []model.Mil
 		Milestones:    ms,
 		SettlementMode: mode,
 		CreatedAt:     model.Now(),
+		ProviderQuoteCents: providerQuoteCents,
 	}
 	s.Store.PutOrder(o)
 	// P2-2: 订单建立后自动建会话并推送系统通知, 双方可在 IM 沟通需求细节与交付标准。
@@ -371,10 +373,51 @@ func (s *Service) AcceptMatch(matchID, providerID string, milestones []model.Mil
 	return &AcceptResult{Order: o}
 }
 
+// SuggestQuote B2 自动报价：依据任务特征 + 接单方画像给出建议报价区间。
+// providerID 用于取历史成交均价与互评星级；返回 nil 表示任务/用户不存在。
+func (s *Service) SuggestQuote(taskID, providerID string) (*quote.Quote, error) {
+	t, ok := s.Store.GetTask(taskID)
+	if !ok {
+		return nil, fmt.Errorf("需求不存在")
+	}
+	if _, ok := s.Store.GetUser(providerID); !ok {
+		return nil, fmt.Errorf("用户不存在")
+	}
+	avg := s.providerAvgNet(providerID)
+	rating := s.avgRating(providerID)
+	inp := quote.Input{
+		Category:             t.Category,
+		Spec:                 t.Spec + " " + t.SpecObj.Deliverables + " " + t.SpecObj.RequiredFormat,
+		ItemsCount:           len(t.SpecObj.Items),
+		DeadlineAt:           t.SpecObj.DeadlineAt,
+		RequesterBudgetCents: t.BudgetCents,
+		ProviderRating:       rating,
+		ProviderAvgDealCents: avg,
+	}
+	return quote.Suggest(inp), nil
+}
+
+// providerAvgNet 接单方已完成且已结算订单的「净收入」均值(分)。
+// 平台佣金 10%，接单方实收 = 订单金额 × 0.9。
+func (s *Service) providerAvgNet(providerID string) int64 {
+	orders := s.Store.ListOrdersByUser(providerID)
+	var sum, n int64
+	for _, o := range orders {
+		if o.ProviderID == providerID && o.Status == model.OrderCompleted && o.Settled {
+			sum += o.AmountCents * 9 / 10
+			n++
+		}
+	}
+	if n == 0 {
+		return 0
+	}
+	return sum / n
+}
+
 // TakeTask 接单方从需求大厅主动认领 open 任务并直接生成订单(待托管)。
 // 与 AcceptMatch 的区别: 不经过 AI 推荐(match), 适合 provider 浏览大厅主动抢单。
 // 受 ActAcceptTask 闸门(需 KYC+税源); 任务须为 open 且非本人发布; 里程碑金额和须等于预算; 先到先得(接单后任务转 matched)。
-func (s *Service) TakeTask(taskID, providerID string, milestones []model.Milestone) *AcceptResult {
+func (s *Service) TakeTask(taskID, providerID string, milestones []model.Milestone, providerQuoteCents int64) *AcceptResult {
 	t, ok := s.Store.GetTask(taskID)
 	if !ok {
 		return &AcceptResult{Block: &compliance.Block{Reason: "需求不存在"}}
@@ -424,6 +467,7 @@ func (s *Service) TakeTask(taskID, providerID string, milestones []model.Milesto
 		Milestones:     ms,
 		SettlementMode: mode,
 		CreatedAt:      model.Now(),
+		ProviderQuoteCents: providerQuoteCents,
 	}
 	s.Store.PutOrder(o)
 	// P2-2: 订单建立后自动建会话并推送系统通知。
