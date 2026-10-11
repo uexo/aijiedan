@@ -5,6 +5,7 @@ package handler
 import (
 	_ "embed"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -372,23 +373,37 @@ func (h *Handler) handleTasks(w http.ResponseWriter, r *http.Request, segs []str
 			return
 		}
 		var body struct {
-			Title          string `json:"title"`
-			Category       string `json:"category"`
-			BudgetCents    int64  `json:"budget_cents"`
-			Spec           string `json:"spec"`
-			Deliverables   string `json:"deliverables"`
-			RequiredFormat string `json:"required_format"`
-			DeadlineAt     int64  `json:"deadline_at"`
-			StyleRef       string `json:"style_ref"`
-			Samples        string `json:"samples"`
+			Title          string                 `json:"title"`
+			Category       string                 `json:"category"`
+			BudgetCents    int64                  `json:"budget_cents"`
+			Spec           string                 `json:"spec"`
+			Deliverables   string                 `json:"deliverables"`
+			RequiredFormat string                 `json:"required_format"`
+			DeadlineAt     int64                  `json:"deadline_at"`
+			StyleRef       string                 `json:"style_ref"`
+			Samples        string                 `json:"samples"`
+			Items          []model.RequirementItem `json:"items"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
+		// 服务端为需求清单项分配稳定 ID(R1,R2,...), 便于交付/验收逐项对齐。
+		items := make([]model.RequirementItem, 0, len(body.Items))
+		for _, it := range body.Items {
+			if strings.TrimSpace(it.Desc) == "" {
+				continue
+			}
+			id := it.ID
+			if id == "" {
+				id = fmt.Sprintf("R%d", len(items)+1)
+			}
+			items = append(items, model.RequirementItem{ID: id, Desc: it.Desc})
+		}
 		specObj := model.TaskSpec{
 			Deliverables:   body.Deliverables,
 			RequiredFormat: body.RequiredFormat,
 			DeadlineAt:     body.DeadlineAt,
 			StyleRef:       body.StyleRef,
 			Samples:        body.Samples,
+			Items:          items,
 		}
 		res := h.Svc.PublishTask(c.UserID, body.Title, body.Category, body.BudgetCents, body.Spec, specObj)
 		if res.Block != nil {
@@ -491,16 +506,18 @@ func (h *Handler) handleOrders(w http.ResponseWriter, r *http.Request, segs []st
 		h.writeJSON(w, 200, envelope{Code: 200, Data: orders})
 		return
 	}
-	if len(segs) == 4 && r.Method == http.MethodGet { // 订单详情(含匹配与交付)
+	if len(segs) == 4 && r.Method == http.MethodGet { // 订单详情(含任务/匹配与交付)
 		o, ok := h.Svc.Store.GetOrder(segs[3])
 		if !ok {
 			h.writeJSON(w, 404, envelope{Code: 404, Msg: "订单不存在"})
 			return
 		}
+		task, _ := h.Svc.Store.GetTask(o.TaskID)
 		matches := h.Svc.Store.ListMatchesByTask(o.TaskID)
 		deliveries := h.Svc.Store.ListDeliveriesByOrder(o.ID)
 		h.writeJSON(w, 200, envelope{Code: 200, Data: map[string]interface{}{
 			"order":      o,
+			"task":       task,
 			"matches":    matches,
 			"deliveries": deliveries,
 		}})
@@ -544,10 +561,11 @@ func (h *Handler) handleOrders(w http.ResponseWriter, r *http.Request, segs []st
 					return
 				}
 				var body struct {
-					Content string `json:"content"`
+					Content string                 `json:"content"`
+					Items   []model.DeliveryItem   `json:"items"`
 				}
 				_ = json.NewDecoder(r.Body).Decode(&body)
-				d, b := h.Svc.SubmitDelivery(segs[3], c.UserID, body.Content)
+				d, b := h.Svc.SubmitDelivery(segs[3], c.UserID, body.Content, body.Items)
 				if b != nil {
 					h.writeBlock(w, b)
 					return
@@ -558,7 +576,12 @@ func (h *Handler) handleOrders(w http.ResponseWriter, r *http.Request, segs []st
 				if !ok {
 					return
 				}
-				res := h.Svc.AcceptDelivery(segs[3], c.UserID)
+				var body struct {
+					Acceptance     []model.AcceptanceItem `json:"acceptance"`
+					SevereMismatch bool                   `json:"severe_mismatch"`
+				}
+				_ = json.NewDecoder(r.Body).Decode(&body)
+				res := h.Svc.AcceptDelivery(segs[3], c.UserID, body.Acceptance, body.SevereMismatch)
 				if res.Block != nil {
 					h.writeJSON(w, http.StatusConflict, settleBlockEnvelope{
 						Code: 409, Msg: "验收通过, 但结算被合规拦截(订单转待结算): " + res.Block.Reason,

@@ -9,10 +9,11 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="design-system.css"/>
 <style>
+  :root{--c-danger:#DC2626;--c-success:#16A34A;--c-danger-soft:rgba(220,38,38,.08);}
   .appbar{position:sticky;top:0;z-index:50;height:var(--nav-h);background:var(--glass-bg-strong);backdrop-filter:blur(14px);border-bottom:1px solid var(--color-border);display:flex;align-items:center;padding:0 18px;gap:14px}
   .appbar .brand{font-weight:800;display:flex;align-items:center;gap:9px}
   .appbar .logo{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--color-primary),var(--color-accent));color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900}
-  .main{padding:26px;max-width:860px;margin:0 auto}
+  .main{padding:26px;max-width:880px;margin:0 auto}
   .kv{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px dashed var(--color-border);font-size:.92rem}
   .kv:last-child{border-bottom:none}
   .kv .k{color:var(--color-muted-foreground)}
@@ -24,7 +25,37 @@
   .deliv-head{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap}
   .deliv-head .round{font-weight:700}
   .deliv-head .meta{margin-left:auto;font-size:.78rem;color:var(--color-muted-foreground)}
-  .deliv-body{white-space:pre-wrap;word-break:break-word;line-height:1.5}
+  .deliv-body{white-space:pre-wrap;word-break:break-word;line-height:1.5;margin-bottom:8px}
+  .deliv-items{display:flex;flex-direction:column;gap:6px}
+  .di{display:flex;gap:8px;align-items:flex-start;padding:7px 9px;background:var(--color-muted);border-radius:7px;font-size:.84rem}
+  .di .di-id{font-weight:700;color:var(--color-primary);min-width:24px}
+  .di .di-txt{flex:1;white-space:pre-wrap;word-break:break-word}
+  .di .di-x{color:var(--c-danger);font-weight:700}
+  .di .di-v{color:var(--c-success);font-weight:700}
+  .reqlist{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+  .reqitem{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;background:var(--glass-bg);border:1px solid var(--color-border);border-radius:8px}
+  .reqitem .rid{font-weight:800;color:var(--color-primary);min-width:30px}
+  .reqitem .rdesc{flex:1;font-weight:600;line-height:1.45}
+  .section-title{margin:22px 0 10px;font-size:1.02rem;font-weight:700;display:flex;align-items:center;gap:8px}
+  /* 验收比对 */
+  .acpt{border:1px solid var(--color-border);border-radius:12px;overflow:hidden;margin-top:10px}
+  .acpt-row{display:grid;grid-template-columns:1.2fr 1fr auto;gap:12px;padding:12px 14px;border-bottom:1px solid var(--color-border);align-items:start}
+  .acpt-row:last-child{border-bottom:none}
+  .acpt-row .ai-req{font-weight:600;line-height:1.45}
+  .acpt-row .ai-req .rid{color:var(--color-primary);font-weight:800;margin-right:6px}
+  .acpt-row .ai-prov{font-size:.84rem;color:var(--color-muted-foreground);white-space:pre-wrap;word-break:break-word;background:var(--color-muted);padding:8px 10px;border-radius:8px}
+  .acpt-row .ai-prov .prov-done{color:var(--c-success);font-weight:700}
+  .acpt-row .ai-prov .prov-miss{color:var(--c-danger);font-weight:700}
+  .passchk{display:flex;align-items:center;gap:6px;white-space:nowrap;font-weight:600;cursor:pointer;user-select:none}
+  .severe{display:flex;align-items:flex-start;gap:10px;margin-top:14px;padding:13px 15px;background:var(--c-danger-soft);border:1px solid var(--c-danger);border-radius:12px;color:var(--c-danger);font-weight:600}
+  .severe input{margin-top:3px}
+  .banner-danger{margin-top:12px;padding:12px 14px;background:var(--c-danger-soft);border:1px solid var(--c-danger);border-radius:12px;color:var(--c-danger);font-weight:700}
+  .banner-ok{margin-top:12px;padding:12px 14px;background:rgba(22,163,74,.08);border:1px solid var(--c-success);border-radius:12px;color:var(--c-success);font-weight:700}
+  .item-form{margin-top:12px;padding:14px;background:var(--color-muted);border-radius:12px}
+  .item-form .if-row{display:grid;grid-template-columns:130px 1fr auto;gap:8px;align-items:center;margin-bottom:8px;font-size:.86rem}
+  .item-form .if-row .if-desc{font-weight:600}
+  input.if-note,input.if-link{width:100%}
+  .hidden{display:none !important}
 </style>
 </head>
 <body>
@@ -47,6 +78,7 @@ function money(c){return "¥"+(c/100).toLocaleString("zh-CN");}
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 function statusPill(s){return `<span class="status ${esc(s)}">${esc(s)}</span>`;}
 function fmtTime(ms){if(!ms)return"-";try{const d=new Date(ms);const p=n=>String(n).padStart(2,"0");return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;}catch(e){return String(ms);}}
+
 async function api(path,opts={}){
   try{const r=await fetch(API+path,{method:opts.method||"GET",headers:{"Content-Type":"application/json","Authorization":"Bearer "+TOKEN},body:opts.body?JSON.stringify(opts.body):undefined});
   let j=null;try{j=await r.json()}catch(e){}return {r,j};}catch(e){return {r:{ok:false},j:{msg:String(e)}};}
@@ -63,10 +95,13 @@ async function api(path,opts={}){
   else $("#main").innerHTML=`<div class="empty glass card">缺少参数</div>`;
 })();
 
+function reqItemsOf(task){return (task&&task.spec_obj&&task.spec_obj.items)||[];}
+
 async function renderTask(id){
   const {r,j}=await api("/tasks/"+encodeURIComponent(id));
   if(!r.ok||!j.data){$("#main").innerHTML=`<div class="empty glass card">任务不存在</div>`;return;}
   const t=j.data.task||j.data;
+  const items=reqItemsOf(t);
   let html=`<div class="page-head"><h2>${esc(t.title)}</h2>${statusPill(t.status||"open")}</div>
   <div class="glass card card-lg">
     <div class="kv"><span class="k">任务 ID</span><span class="v mono">${esc(t.id)}</span></div>
@@ -76,6 +111,11 @@ async function renderTask(id){
     <div class="kv"><span class="k">需求描述</span><span class="v">${esc(t.spec||"-")}</span></div>
     ${(t.spec_obj&&t.spec_obj.deliverables)?`<div class="kv"><span class="k">交付物</span><span class="v">${esc(t.spec_obj.deliverables)}</span></div>`:""}
   </div>`;
+  if(items.length){
+    html+=`<div class="section-title">📋 需求清单（验收标尺）</div><div class="glass card card-lg"><div class="reqlist">`+
+      items.map(it=>`<div class="reqitem"><span class="rid">${esc(it.id)}</span><span class="rdesc">${esc(it.desc)}</span></div>`).join("")+
+      `</div></div>`;
+  }
   if(ME.role==="provider"&&(t.status||"open")==="open"){
     html+=`<div class="actions"><button class="btn btn-primary" id="takeBtn">接单</button></div>`;
   }
@@ -91,59 +131,217 @@ async function renderOrder(id){
   const {r,j}=await api("/orders/"+encodeURIComponent(id));
   if(!r.ok||!j.data){$("#main").innerHTML=`<div class="empty glass card">订单不存在</div>`;return;}
   const o=j.data.order||j.data;
+  const task=j.data.task||{};
   const deliveries=j.data.deliveries||[];
   const isReq=(o.requester_id===ME.uid), isProv=(o.provider_id===ME.uid);
   const rr=await api("/orders/"+encodeURIComponent(id)+"/reviews");
   const reviews=(rr.r.ok&&rr.j.data&&rr.j.data.reviews)?rr.j.data.reviews:[];
-  const html=`<div class="page-head"><h2>订单 ${esc(o.id)}</h2>${statusPill(o.status)}</div>
+  const items=reqItemsOf(task);
+  const last=deliveries.length?deliveries[deliveries.length-1]:null;
+  const delivMap={};(last&&last.items?last.items:[]).forEach(d=>delivMap[d.item_id]=d);
+  o._delivMap=delivMap; o._lastContent=(last&&last.content)||"";
+
+  let html=`<div class="page-head"><h2>订单 ${esc(o.id)}</h2>${statusPill(o.status)}</div>
   <div class="glass card card-lg">
     <div class="kv"><span class="k">任务</span><span class="v mono">${esc(o.task_id)}</span></div>
     <div class="kv"><span class="k">金额</span><span class="v">${money(o.amount_cents||0)}</span></div>
     <div class="kv"><span class="k">需求方</span><span class="v">${esc(o.requester_id)}</span></div>
     <div class="kv"><span class="k">接单方</span><span class="v">${esc(o.provider_id)}</span></div>
     ${o.escrow_id?`<div class="kv"><span class="k">托管号</span><span class="v mono">${esc(o.escrow_id)}</span></div>`:""}
-  </div>
-  <div class="actions" id="acts">${actionButtons(o,isReq,isProv)}</div>
-  <h3 style="margin:18px 0 10px">交付记录（${deliveries.length}）</h3>
-  ${deliveries.length?deliveries.map(d=>`<div class="deliv"><div class="deliv-head"><span class="round">第 ${esc(d.round||1)} 轮</span>${statusPill(d.status)}<span class="meta">${fmtTime(d.created_at)}</span></div><div class="deliv-body">${esc(d.content||"（无说明）")}</div></div>`).join(""):`<div class="muted tiny">暂无交付记录</div>`}
-  <div class="revbox" id="revbox">
+  </div>`;
+
+  // 需求清单（始终展示，作为比对标尺）
+  if(items.length){
+    html+=`<div class="section-title">📋 需求清单</div><div class="glass card card-lg"><div class="reqlist">`+
+      items.map(it=>`<div class="reqitem"><span class="rid">${esc(it.id)}</span><span class="rdesc">${esc(it.desc)}</span></div>`).join("")+
+      `</div></div>`;
+  }
+
+  html+=`<div class="actions" id="acts">${actionButtons(o,isReq,isProv)}</div>`;
+
+  // 交付记录（逐轮 + 逐需求项）
+  html+=`<div class="section-title">📦 交付记录（${deliveries.length}）</div>`;
+  html+= deliveries.length? deliveries.map(d=>{
+    const di=(d.items||[]).map(it=>{
+      const ok=!!it.done;
+      return `<div class="di"><span class="di-id">${esc(it.item_id)}</span><span class="di-txt">${esc(it.note||"(无说明)")}${it.link?` · <a href="${esc(it.link)}" target="_blank" rel="noopener">链接</a>`:""}</span><span class="${ok?'di-v':'di-x'}">${ok?'✓':'✗'}</span></div>`;
+    }).join("");
+    return `<div class="deliv"><div class="deliv-head"><span class="round">第 ${esc(d.round||1)} 轮</span>${statusPill(d.status)}<span class="meta">${fmtTime(d.created_at)}</span></div>${d.content?`<div class="deliv-body">${esc(d.content)}</div>`:""}${di?`<div class="deliv-items">${di}</div>`:""}</div>`;
+  }).join("") : `<div class="muted tiny">暂无交付记录</div>`;
+
+  // 验收比对区（需求方待验收 / 已完成展示结果 / 纠纷展示裁定）
+  html+= renderAcceptance(o, task, items, delivMap, isReq, isProv);
+
+  // 纠纷 / 仲裁信息
+  if(o.status==="disputed"||o.resolved_at){
+    html+=`<div class="section-title">⚖️ 纠纷与仲裁</div><div class="glass card card-lg">`;
+    html+=`<div class="kv"><span class="k">纠纷事由</span><span class="v" style="text-align:left;font-weight:600">${esc(o.dispute_reason||"-")}</span></div>`;
+    if(o.resolved_at){
+      html+=`<div class="kv"><span class="k">仲裁结果</span><span class="v" style="text-align:left;font-weight:600">退款 ${o.refund_pct||0}%（${money(o.refund_cents||0)}）</span></div>`;
+      html+=`<div class="kv"><span class="k">裁决说明</span><span class="v" style="text-align:left;font-weight:600">${esc(o.resolved_note||"-")}</span></div>`;
+    } else {
+      html+=`<div class="banner-danger">纠纷处理中，等待运营仲裁结案</div>`;
+    }
+    html+=`</div>`;
+  }
+
+  // 评价
+  html+=`<div class="revbox" id="revbox">
     <div class="field"><label class="label">评分（1-5）</label><input class="input" id="rv_score" type="number" min="1" max="5" value="5"></div>
     <div class="field"><label class="label">评价内容</label><textarea class="textarea" id="rv_comment" placeholder="评价对方…"></textarea></div>
     <button class="btn btn-primary" id="rvBtn">提交评价</button>
-  </div>
-  ${reviews.length?`<h3 style="margin:18px 0 10px">双方评价</h3>`+reviews.map(rv=>`<div class="item"><div class="av">${esc((rv.reviewer_id||"?").slice(0,2))}</div><div class="grow"><div class="ttl">${esc(rv.reviewer_id)} · ${rv.score||0}★</div><div class="sub">${esc(rv.comment||"")}</div></div></div>`).join(""):""}`;
+  </div>`;
+  html+= reviews.length?`<div class="section-title">💬 双方评价</div>`+reviews.map(rv=>`<div class="item"><div class="av">${esc((rv.reviewer_id||"?").slice(0,2))}</div><div class="grow"><div class="ttl">${esc(rv.reviewer_id)} · ${rv.score||0}★</div><div class="sub">${esc(rv.comment||"")}</div></div></div>`).join("") : "";
+
   $("#main").innerHTML=html;
-  const acts=$("#acts");
-  if(acts) acts.querySelectorAll("button[data-act]").forEach(b=>b.onclick=()=>onAct(b.dataset.act,o,isReq,isProv,id));
+  bindOrderEvents(o,isReq,isProv,items,delivMap);
 }
+
+// 验收比对：需求方待验收→可逐项勾选 + 严重不符判定；已完成→只读结果；其余→提示
+function renderAcceptance(o,task,items,delivMap,isReq,isProv){
+  const s=o.status;
+  if(s==="delivered" && isReq && items.length){
+    let rows=items.map(it=>{
+      const d=delivMap[it.id]||{};
+      const done=!!d.done;
+      return `<div class="acpt-row">
+        <div class="ai-req"><span class="rid">${esc(it.id)}</span>${esc(it.desc)}</div>
+        <div class="ai-prov">${done?`<span class="prov-done">已完成</span>`:`<span class="prov-miss">未完成</span>`} ${esc(d.note||"")}${d.link?` · <a href="${esc(d.link)}" target="_blank" rel="noopener">链接</a>`:""}</div>
+        <label class="passchk"><input type="checkbox" class="acpt-pass" data-id="${esc(it.id)}" ${done?'checked':''}> 达标</label>
+      </div>`;
+    }).join("");
+    return `<div class="section-title">🔍 验收比对（先逐项核对，再判定）</div>
+      <div class="glass card card-lg">
+        <div class="acpt">${rows}</div>
+        <label class="severe"><input type="checkbox" id="severeChk"> 判定为「需求与完成清单严重不符」（勾选后将以纠纷仲裁处理，而非直接验收）</label>
+        <div class="actions" style="margin-top:14px">
+          <button class="btn btn-primary" id="acceptBtn">验收并结算</button>
+          <button class="btn btn-ghost" id="reviseBtn">打回重做</button>
+          <button class="btn btn-danger hidden" id="disputeBtn">发起纠纷</button>
+        </div>
+      </div>`;
+  }
+  if(s==="completed" && items.length){
+    const acc=o.acceptance||[];
+    const amap={};acc.forEach(a=>amap[a.item_id]=a);
+    let rows=items.map(it=>{
+      const a=amap[it.id];
+      const pass=(a?a.pass:true);
+      return `<div class="acpt-row"><div class="ai-req"><span class="rid">${esc(it.id)}</span>${esc(it.desc)}</div><div class="ai-prov">验收${pass?`<span class="prov-done">达标</span>`:`<span class="prov-miss">未达标</span>`}${a&&a.note?` · ${esc(a.note)}`:""}</div><div class="passchk">${pass?'✓':'✗'}</div></div>`;
+    }).join("");
+    let banner=o.severe_mismatch?`<div class="banner-danger">需求方曾判定：需求与完成清单严重不符（已按纠纷/协商处理）</div>`:`<div class="banner-ok">验收通过，已结算</div>`;
+    return `<div class="section-title">🔍 验收比对结果</div><div class="glass card card-lg">${banner}<div class="acpt">${rows}</div></div>`;
+  }
+  return "";
+}
+
 function actionButtons(o,isReq,isProv){
   const s=o.status,b=[];
   if(isReq&&s==="pending_escrow") b.push(`<button class="btn btn-primary" data-act="escrow">托管资金</button>`);
-  if(isProv&&s==="active") b.push(`<button class="btn btn-primary" data-act="deliver">提交交付</button>`);
-  if(isReq&&s==="delivered") b.push(`<button class="btn btn-primary" data-act="accept">验收并结算</button><button class="btn btn-ghost" data-act="revise">打回重做</button>`);
+  if(isProv&&(s==="active"||s==="delivering")) b.push(`<button class="btn btn-primary" id="deliverToggle">提交交付</button>`);
   if(isReq&&s==="pending_settlement") b.push(`<button class="btn btn-primary" data-act="settle">补结算</button>`);
   if(s==="completed") b.push(`<button class="btn btn-accent" data-act="review">评价对方</button>`);
   return b.join("")||`<span class="muted tiny">当前状态无可执行操作</span>`;
 }
-async function onAct(act,o,isReq,isProv,id){
-  if(act==="review"){
-    $("#revbox").classList.add("show");
-    const btn=$("#rvBtn");if(!btn)return;
-    btn.onclick=async()=>{
-      const rating=parseInt($("#rv_score").value||"5",10);
-      const comment=$("#rv_comment").value.trim();
-      const reviewee=isReq?o.provider_id:o.requester_id;
-      const {r,j}=await api("/orders/"+encodeURIComponent(id)+"/review",{method:"POST",body:{rating,comment,reviewee_id:reviewee}});
-      toast((r.ok&&j.msg)||(j&&j.msg)||"评价失败");if(r.ok)location.reload();
-    };
-    return;
+
+function bindOrderEvents(o,isReq,isProv,items,delivMap){
+  const acts=$("#acts");
+  if(acts) acts.querySelectorAll("button[data-act]").forEach(b=>b.onclick=()=>onAct(b.dataset.act,o,isReq,isProv,o.id));
+
+  // 提交交付：展开按项表单
+  const dt=$("#deliverToggle");
+  if(dt) dt.onclick=()=>openDeliverForm(o,items,dt);
+
+  // 验收比对按钮
+  const acceptBtn=$("#acceptBtn");
+  if(acceptBtn) acceptBtn.onclick=()=>submitAccept(o,false);
+  const reviseBtn=$("#reviseBtn");
+  if(reviseBtn) reviseBtn.onclick=()=>submitRevise(o);
+  const disputeBtn=$("#disputeBtn");
+  if(disputeBtn) disputeBtn.onclick=()=>submitDispute(o);
+  const severe=$("#severeChk");
+  if(severe) severe.onchange=()=>{
+    const d=$("#disputeBtn");
+    if(d) d.classList.toggle("hidden",!severe.checked);
+    const a=$("#acceptBtn");
+    if(a) a.classList.toggle("hidden",severe.checked);
+  };
+
+  const rv=$("#rvBtn");
+  if(rv) rv.onclick=async()=>{
+    const rating=parseInt($("#rv_score").value||"5",10);
+    const comment=$("#rv_comment").value.trim();
+    const reviewee=isReq?o.provider_id:o.requester_id;
+    const {r,j}=await api("/orders/"+encodeURIComponent(o.id)+"/review",{method:"POST",body:{rating,comment,reviewee_id:reviewee}});
+    toast((r.ok&&j.msg)||(j&&j.msg)||"评价失败");if(r.ok)location.reload();
+  };
+}
+
+function openDeliverForm(o,items,btn){
+  const existing=$("#deliverForm");
+  if(existing){existing.remove();return;}
+  const id=o.id;
+  let rows="";
+  if(items.length){
+    rows=items.map(it=>{
+      const d=(o._delivMap&&o._delivMap[it.id])||{};
+      return `<div class="if-row"><span class="if-desc">${esc(it.id)} ${esc(it.desc)}</span>
+        <span><input class="input if-note" placeholder="完成说明" value="${esc(d.note||"")}"><input class="input if-link" placeholder="交付链接(可选)" value="${esc(d.link||"")}"></span>
+        <label class="passchk"><input type="checkbox" class="if-done" ${d.done?'checked':''}> 完成</label></div>`;
+    }).join("");
   }
-  const map={escrow:"托管资金",deliver:"提交交付",accept:"验收结算",revise:"打回重做",settle:"补结算"};
+  const form=document.createElement("div");
+  form.id="deliverForm";
+  form.className="item-form";
+  form.innerHTML=`<div class="field"><label class="label">交付总说明</label><textarea class="textarea" id="dv_content" placeholder="整体交付说明（可贴下载链接/提取码）">${esc((o._lastContent)||"")}</textarea></div>`+
+    (rows?`<div class="field"><label class="label">逐项完成情况</label>${rows}</div>`:"")+
+    `<button class="btn btn-primary" id="dv_submit">确认提交交付</button> <button class="btn btn-ghost" id="dv_cancel">取消</button>`;
+  btn.insertAdjacentElement("afterend",form);
+  $("#dv_cancel").onclick=()=>form.remove();
+  $("#dv_submit").onclick=async()=>{
+    const content=$("#dv_content").value.trim();
+    let dvItems=[];
+    if(items.length){
+      form.querySelectorAll(".if-row").forEach(row=>{
+        const desc=row.querySelector(".if-desc").textContent.split(" ")[0]; // 取 item id
+        const itemId=desc.trim();
+        const note=row.querySelector(".if-note").value.trim();
+        const link=row.querySelector(".if-link").value.trim();
+        const done=row.querySelector(".if-done").checked;
+        dvItems.push({item_id:itemId,done,note,link});
+      });
+    }
+    const {r,j}=await api("/orders/"+encodeURIComponent(id)+"/deliver",{method:"POST",body:{content,items:dvItems}});
+    toast((r.ok&&j.msg)||(j&&j.msg)||"交付失败");if(r.ok)location.reload();
+  };
+}
+
+async function submitAccept(o,severe){
+  const items=[];
+  document.querySelectorAll(".acpt-pass").forEach(c=>{
+    items.push({item_id:c.dataset.id,pass:c.checked,note:""});
+  });
+  const {r,j}=await api("/orders/"+encodeURIComponent(o.id)+"/accept",{method:"POST",body:{acceptance:items,severe_mismatch:severe}});
+  toast((r.ok&&j.msg)||(j&&j.msg)||"验收失败");if(r.ok)location.reload();
+}
+
+async function submitRevise(o){
+  const note=prompt("打回重做意见（可选）：")||"";
+  const {r,j}=await api("/orders/"+encodeURIComponent(o.id)+"/revise",{method:"POST",body:{note}});
+  toast((r.ok&&j.msg)||(j&&j.msg)||"打回失败");if(r.ok)location.reload();
+}
+
+async function submitDispute(o){
+  const reason=prompt("请说明纠纷事由（需求与完成清单严重不符的具体情况）：");
+  if(!reason)return;
+  const {r,j}=await api("/orders/"+encodeURIComponent(o.id)+"/dispute",{method:"POST",body:{reason}});
+  toast((r.ok&&j.msg)||(j&&j.msg)||"发起纠纷失败");if(r.ok)location.reload();
+}
+
+async function onAct(act,o,isReq,isProv,id){
+  const map={escrow:"托管资金",settle:"补结算",review:"评价"};
   let path="/orders/"+encodeURIComponent(id),body={};
   if(act==="escrow") path+="/escrow";
-  if(act==="deliver"){path+="/deliver";body={content:prompt("交付说明（可贴下载链接/提取码）：")||""};}
-  if(act==="accept") path+="/accept";
-  if(act==="revise") path+="/revise";
   if(act==="settle") path+="/settle";
   const {r,j}=await api(path,{method:"POST",body});
   toast((r.ok&&j.msg)||(j&&j.msg)||(map[act]+"失败"));if(r.ok)location.reload();

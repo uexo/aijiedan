@@ -512,7 +512,7 @@ func (s *Service) OnPaymentNotify(body []byte) (orderID string, ok bool) {
 }
 
 // SubmitDelivery 接单方提交交付物(支持多轮, 受改稿轮次上限约束)。订单进入待验收(delivered)。
-func (s *Service) SubmitDelivery(orderID, providerID, content string) (*model.Delivery, *compliance.Block) {
+func (s *Service) SubmitDelivery(orderID, providerID, content string, items []model.DeliveryItem) (*model.Delivery, *compliance.Block) {
 	o, ok := s.Store.GetOrder(orderID)
 	if !ok {
 		return nil, &compliance.Block{Reason: "订单不存在"}
@@ -532,6 +532,7 @@ func (s *Service) SubmitDelivery(orderID, providerID, content string) (*model.De
 		OrderID:   orderID,
 		Round:     round,
 		Content:   content,
+		Items:     items,
 		Status:    "submitted",
 		CreatedAt: model.Now(),
 	}
@@ -573,8 +574,9 @@ type SettleResult struct {
 }
 
 // AcceptDelivery 需求方验收交付。验收通过后尝试结算放款。
+// items: 需求方对各需求项(Deliverables 清单)的逐项判定(留痕); severeMismatch: 是否判定需求与完成清单严重不符。
 // 结算受 ActSettle 闸门(需KYC+税源+ICP备案+支付托管); 不通过则订单转 pending_settlement 等待合规落地。
-func (s *Service) AcceptDelivery(orderID, requesterID string) *SettleResult {
+func (s *Service) AcceptDelivery(orderID, requesterID string, items []model.AcceptanceItem, severeMismatch bool) *SettleResult {
 	o, ok := s.Store.GetOrder(orderID)
 	if !ok {
 		return &SettleResult{Block: &compliance.Block{Reason: "订单不存在"}}
@@ -588,6 +590,10 @@ func (s *Service) AcceptDelivery(orderID, requesterID string) *SettleResult {
 	if o.Status != model.OrderDelivered {
 		return &SettleResult{Block: &compliance.Block{Reason: "订单未处于待验收状态"}}
 	}
+	// 记录验收逐项结果(留痕), 标记验收时间与严重不符判定。
+	o.Acceptance = items
+	o.SevereMismatch = severeMismatch
+	o.AcceptedAt = model.Now()
 	// 标记最新交付为已接受
 	ds := s.Store.ListDeliveriesByOrder(orderID)
 	if len(ds) > 0 {

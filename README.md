@@ -61,6 +61,18 @@ hiveget/
 - **`admin.html`**：运营后台（运营看板指标、上线就绪 Checklist、合规四门开关、提现审批、任务 / 订单监管）。
 - 路由更新：`/` → `/static/landing.html`；`/console` → `/static/admin.html`；旧 `index.html` 改为重定向保留。
 
+## 验收清单比对机制（2026-10-11，B 方案·规范结构化）
+
+董事长明确验收顺序：**先逐项比对需求清单与完成清单，仅在"需求与完成清单严重不符"时才进入纠纷仲裁**，而非一来就仲裁。据此把验收做成"标尺 + 比对 + 兜底"三层：
+
+- **需求清单结构化**：发单时需求方逐条列出 `RequirementItem`（服务端分配 `R1/R2…` ID），落 `task.items_json`，作为验收标尺。
+- **交付按项对齐**：接单方交付时按需求项逐条填 `DeliveryItem`（完成与否 / 说明 / 链接），落 `delivery.items_json`。
+- **验收逐项留痕**：需求方验收时对各需求项勾选达标 / 不达标，写入 `Order.Acceptance`（`acceptance_json`）；可勾选"严重不符"。
+- **三层处理**：轻微不达标 → 打回重做（中间层，受 `MaxRevisions` 上限保护，已生效）；**严重不符**才出现「发起纠纷」入口 → 运营后台「纠纷仲裁」面板按退款比例结案（`/orders/{id}/resolve`）。
+- **数据层**：`migrations/schema.sql` 增 `order.acceptance_json/severe_mismatch/accepted_at`、`task.items_json`、`delivery.items_json`；`mysql.go` 同步 Put/Get/List 与 `scanOrder`；`GET /orders/{id}` 现返回关联 `task`（前端比对所需）。
+- **前端**：`app.html` 发单页加"需求清单"逐行输入；`task.html` 接单方交付按项填写、需求方验收渲染两栏比对表 + 逐项达标勾选 + 严重不符判定；`admin.html` 新增「纠纷仲裁」标签页（列出 disputed 订单、填退款比例 + 裁决说明结案）。
+- 验证：MySQL 真源模式重建库、起服、curl 跑通 `发单(带清单)→接单→托管→按项交付→清单比对验收→结算` 与 `交付缺失→发起纠纷→运营仲裁全额退款`，钱包账（托管 / 结算 / 纠纷退款）均正确。
+
 ## 启动
 
 ```bash

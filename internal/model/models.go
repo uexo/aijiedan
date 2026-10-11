@@ -61,11 +61,33 @@ type Task struct {
 // 必填(影响 spec_complete 与可报价): Deliverables / RequiredFormat / DeadlineAt。
 // 建议(提升匹配精度): StyleRef / Samples。
 type TaskSpec struct {
-	Deliverables   string `json:"deliverables"`    // 交付物形态与数量, 如 "10 张竖版海报"
-	RequiredFormat string `json:"required_format"` // 交付格式与规范, 如 "PNG 1080×1080"
-	DeadlineAt     int64  `json:"deadline_at"`     // 期望交付截止(ms 时间戳), 0 表示未填
-	StyleRef       string `json:"style_ref"`       // 风格/参考描述, 如 "极简风 / 附链接"
-	Samples        string `json:"samples"`         // 参考样例/附件说明
+	Deliverables   string             `json:"deliverables"`    // 交付物形态与数量, 如 "10 张竖版海报"
+	RequiredFormat string             `json:"required_format"` // 交付格式与规范, 如 "PNG 1080×1080"
+	DeadlineAt     int64              `json:"deadline_at"`     // 期望交付截止(ms 时间戳), 0 表示未填
+	StyleRef       string             `json:"style_ref"`       // 风格/参考描述, 如 "极简风 / 附链接"
+	Samples        string             `json:"samples"`         // 参考样例/附件说明
+	Items          []RequirementItem  `json:"items,omitempty"` // 结构化需求清单(可选, 与 Deliverables 文本并存; 用于验收逐项比对)
+}
+
+// RequirementItem 结构化需求清单项: 发单时由需求方逐条列出, 作为验收比对的"标尺"。
+type RequirementItem struct {
+	ID   string `json:"id"`   // 项ID, 如 "R1"(服务端按序生成)
+	Desc string `json:"desc"` // 需求项描述, 如 "首页 Hero 区响应式设计"
+}
+
+// DeliveryItem 接单方对某一需求项的完成情况(交付时按项填写)。
+type DeliveryItem struct {
+	ItemID string `json:"item_id"`        // 对应 RequirementItem.ID
+	Done   bool   `json:"done"`           // 该项是否完成
+	Note   string `json:"note,omitempty"` // 完成说明(如实现要点)
+	Link   string `json:"link,omitempty"` // 交付物链接/提取码(平台不托管文件, 由双方线下传递)
+}
+
+// AcceptanceItem 需求方验收时对各需求项的判定(验收时填写, 写入订单留痕)。
+type AcceptanceItem struct {
+	ItemID string `json:"item_id"`
+	Pass   bool   `json:"pass"`           // 该项是否达标
+	Note   string `json:"note,omitempty"` // 不达标说明
 }
 
 // SpecComplete 必填结构化字段是否齐全(交付物/格式/截止)。
@@ -231,16 +253,22 @@ type Order struct {
 	ResolvedAt     int64       `json:"resolved_at"`
 	ResolvedNote   string      `json:"resolved_note,omitempty"` // 纠纷处理结果说明
 	OrgID          string      `json:"org_id,omitempty"`        // 组织级发包归属(空=个人)
+
+	// 验收逐项比对(需求方验收时填写, 留痕)
+	Acceptance     []AcceptanceItem `json:"acceptance,omitempty"`      // 各需求项验收结果
+	SevereMismatch bool             `json:"severe_mismatch,omitempty"` // 需求方判定需求与完成清单严重不符(前置条件: 才可发起纠纷)
+	AcceptedAt     int64            `json:"accepted_at,omitempty"`    // 验收时间
 }
 
 // Delivery 交付物(支持多轮改稿)
 type Delivery struct {
-	ID        string `json:"id"`
-	OrderID   string `json:"order_id"`
-	Round     int    `json:"round"`  // 第几轮交付
-	Content   string `json:"content"`
-	Status    string `json:"status"` // submitted / accepted / rejected
-	CreatedAt int64  `json:"created_at"`
+	ID        string         `json:"id"`
+	OrderID   string         `json:"order_id"`
+	Round     int            `json:"round"`  // 第几轮交付
+	Content   string         `json:"content"` // 交付总说明(自由文本)
+	Items     []DeliveryItem `json:"items,omitempty"` // 本次交付逐需求项完成情况
+	Status    string         `json:"status"` // submitted / accepted / rejected
+	CreatedAt int64          `json:"created_at"`
 }
 
 // ComplianceItem 合规前置项

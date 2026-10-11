@@ -226,20 +226,21 @@ func (s *mysqlStore) ListUsers() []*model.User {
 // --- Tasks ---
 func (s *mysqlStore) PutTask(t *model.Task) {
 	clar, _ := json.Marshal(t.Clarifications)
-	_, _ = s.db.Exec(`INSERT INTO task (id,requester_id,org_id,title,category,budget_cents,spec,deliverables,required_format,deadline_at,style_ref,samples,clarifications,status,created_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-		ON DUPLICATE KEY UPDATE requester_id=VALUES(requester_id),title=VALUES(title),category=VALUES(category),budget_cents=VALUES(budget_cents),spec=VALUES(spec),deliverables=VALUES(deliverables),required_format=VALUES(required_format),deadline_at=VALUES(deadline_at),style_ref=VALUES(style_ref),samples=VALUES(samples),clarifications=VALUES(clarifications),status=VALUES(status),org_id=VALUES(org_id)`,
+	items, _ := json.Marshal(t.SpecObj.Items)
+	_, _ = s.db.Exec(`INSERT INTO task (id,requester_id,org_id,title,category,budget_cents,spec,deliverables,required_format,deadline_at,style_ref,samples,clarifications,items_json,status,created_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		ON DUPLICATE KEY UPDATE requester_id=VALUES(requester_id),title=VALUES(title),category=VALUES(category),budget_cents=VALUES(budget_cents),spec=VALUES(spec),deliverables=VALUES(deliverables),required_format=VALUES(required_format),deadline_at=VALUES(deadline_at),style_ref=VALUES(style_ref),samples=VALUES(samples),clarifications=VALUES(clarifications),items_json=VALUES(items_json),status=VALUES(status),org_id=VALUES(org_id)`,
 		t.ID, t.RequesterID, t.OrgID, t.Title, t.Category, t.BudgetCents, t.Spec,
 		t.SpecObj.Deliverables, t.SpecObj.RequiredFormat, t.SpecObj.DeadlineAt, t.SpecObj.StyleRef, t.SpecObj.Samples,
-		clar, t.Status, t.CreatedAt)
+		clar, nullStr(string(items)), t.Status, t.CreatedAt)
 }
 func (s *mysqlStore) GetTask(id string) (*model.Task, bool) {
 	t := &model.Task{}
-	var clar []byte
-	err := s.db.QueryRow("SELECT id,requester_id,org_id,title,category,budget_cents,spec,deliverables,required_format,deadline_at,style_ref,samples,clarifications,status,created_at FROM task WHERE id=? AND deleted_at IS NULL", id).
+	var clar, items []byte
+	err := s.db.QueryRow("SELECT id,requester_id,org_id,title,category,budget_cents,spec,deliverables,required_format,deadline_at,style_ref,samples,clarifications,items_json,status,created_at FROM task WHERE id=? AND deleted_at IS NULL", id).
 		Scan(&t.ID, &t.RequesterID, &t.OrgID, &t.Title, &t.Category, &t.BudgetCents, &t.Spec,
 			&t.SpecObj.Deliverables, &t.SpecObj.RequiredFormat, &t.SpecObj.DeadlineAt, &t.SpecObj.StyleRef, &t.SpecObj.Samples,
-			&clar, &t.Status, &t.CreatedAt)
+			&clar, &items, &t.Status, &t.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, false
 	}
@@ -249,10 +250,13 @@ func (s *mysqlStore) GetTask(id string) (*model.Task, bool) {
 	if len(clar) > 0 {
 		_ = json.Unmarshal(clar, &t.Clarifications)
 	}
+	if len(items) > 0 {
+		_ = json.Unmarshal(items, &t.SpecObj.Items)
+	}
 	return t, true
 }
 func (s *mysqlStore) ListOpenTasks() []*model.Task {
-	rows, err := s.db.Query("SELECT id,requester_id,org_id,title,category,budget_cents,spec,deliverables,required_format,deadline_at,style_ref,samples,clarifications,status,created_at FROM task WHERE status=? AND deleted_at IS NULL", model.TaskOpen)
+	rows, err := s.db.Query("SELECT id,requester_id,org_id,title,category,budget_cents,spec,deliverables,required_format,deadline_at,style_ref,samples,clarifications,items_json,status,created_at FROM task WHERE status=? AND deleted_at IS NULL", model.TaskOpen)
 	if err != nil {
 		return nil
 	}
@@ -260,14 +264,17 @@ func (s *mysqlStore) ListOpenTasks() []*model.Task {
 	var out []*model.Task
 	for rows.Next() {
 		t := &model.Task{}
-		var clar []byte
+		var clar, items []byte
 		if err := rows.Scan(&t.ID, &t.RequesterID, &t.OrgID, &t.Title, &t.Category, &t.BudgetCents, &t.Spec,
 			&t.SpecObj.Deliverables, &t.SpecObj.RequiredFormat, &t.SpecObj.DeadlineAt, &t.SpecObj.StyleRef, &t.SpecObj.Samples,
-			&clar, &t.Status, &t.CreatedAt); err != nil {
+			&clar, &items, &t.Status, &t.CreatedAt); err != nil {
 			return nil
 		}
 		if len(clar) > 0 {
 			_ = json.Unmarshal(clar, &t.Clarifications)
+		}
+		if len(items) > 0 {
+			_ = json.Unmarshal(items, &t.SpecObj.Items)
 		}
 		out = append(out, t)
 	}
@@ -276,7 +283,7 @@ func (s *mysqlStore) ListOpenTasks() []*model.Task {
 
 // ListTasks 返回全部任务(不限状态), 供运营看板聚合。
 func (s *mysqlStore) ListTasks() []*model.Task {
-	rows, err := s.db.Query("SELECT id,requester_id,org_id,title,category,budget_cents,spec,deliverables,required_format,deadline_at,style_ref,samples,clarifications,status,created_at FROM task WHERE deleted_at IS NULL")
+	rows, err := s.db.Query("SELECT id,requester_id,org_id,title,category,budget_cents,spec,deliverables,required_format,deadline_at,style_ref,samples,clarifications,items_json,status,created_at FROM task WHERE deleted_at IS NULL")
 	if err != nil {
 		return nil
 	}
@@ -284,14 +291,17 @@ func (s *mysqlStore) ListTasks() []*model.Task {
 	var out []*model.Task
 	for rows.Next() {
 		t := &model.Task{}
-		var clar []byte
+		var clar, items []byte
 		if err := rows.Scan(&t.ID, &t.RequesterID, &t.OrgID, &t.Title, &t.Category, &t.BudgetCents, &t.Spec,
 			&t.SpecObj.Deliverables, &t.SpecObj.RequiredFormat, &t.SpecObj.DeadlineAt, &t.SpecObj.StyleRef, &t.SpecObj.Samples,
-			&clar, &t.Status, &t.CreatedAt); err != nil {
+			&clar, &items, &t.Status, &t.CreatedAt); err != nil {
 			return nil
 		}
 		if len(clar) > 0 {
 			_ = json.Unmarshal(clar, &t.Clarifications)
+		}
+		if len(items) > 0 {
+			_ = json.Unmarshal(items, &t.SpecObj.Items)
 		}
 		out = append(out, t)
 	}
@@ -414,24 +424,25 @@ func (s *mysqlStore) ListMatchesByTask(taskID string) []*model.MatchRecord {
 // --- Orders ---
 func (s *mysqlStore) PutOrder(o *model.Order) {
 	mil, _ := json.Marshal(o.Milestones)
-	_, _ = s.db.Exec(`INSERT INTO ` + "`order`" + ` (id,task_id,requester_id,org_id,provider_id,match_id,amount_cents,status,escrow_id,settled,max_revisions,milestones,settlement_mode,refund_cents,refund_pct,cancelled_by,cancel_reason,cancelled_at,dispute_reason,disputed_by,disputed_at,resolved_by,resolved_at,resolved_note,created_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-		ON DUPLICATE KEY UPDATE task_id=VALUES(task_id),requester_id=VALUES(requester_id),org_id=VALUES(org_id),provider_id=VALUES(provider_id),match_id=VALUES(match_id),amount_cents=VALUES(amount_cents),status=VALUES(status),escrow_id=VALUES(escrow_id),settled=VALUES(settled),max_revisions=VALUES(max_revisions),milestones=VALUES(milestones),settlement_mode=VALUES(settlement_mode),refund_cents=VALUES(refund_cents),refund_pct=VALUES(refund_pct),cancelled_by=VALUES(cancelled_by),cancel_reason=VALUES(cancel_reason),cancelled_at=VALUES(cancelled_at),dispute_reason=VALUES(dispute_reason),disputed_by=VALUES(disputed_by),disputed_at=VALUES(disputed_at),resolved_by=VALUES(resolved_by),resolved_at=VALUES(resolved_at),resolved_note=VALUES(resolved_note)`,
+	acc, _ := json.Marshal(o.Acceptance)
+	_, _ = s.db.Exec(`INSERT INTO ` + "`order`" + ` (id,task_id,requester_id,org_id,provider_id,match_id,amount_cents,status,escrow_id,settled,max_revisions,milestones,settlement_mode,refund_cents,refund_pct,cancelled_by,cancel_reason,cancelled_at,dispute_reason,disputed_by,disputed_at,resolved_by,resolved_at,resolved_note,acceptance_json,severe_mismatch,accepted_at,created_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		ON DUPLICATE KEY UPDATE task_id=VALUES(task_id),requester_id=VALUES(requester_id),org_id=VALUES(org_id),provider_id=VALUES(provider_id),match_id=VALUES(match_id),amount_cents=VALUES(amount_cents),status=VALUES(status),escrow_id=VALUES(escrow_id),settled=VALUES(settled),max_revisions=VALUES(max_revisions),milestones=VALUES(milestones),settlement_mode=VALUES(settlement_mode),refund_cents=VALUES(refund_cents),refund_pct=VALUES(refund_pct),cancelled_by=VALUES(cancelled_by),cancel_reason=VALUES(cancel_reason),cancelled_at=VALUES(cancelled_at),dispute_reason=VALUES(dispute_reason),disputed_by=VALUES(disputed_by),disputed_at=VALUES(disputed_at),resolved_by=VALUES(resolved_by),resolved_at=VALUES(resolved_at),resolved_note=VALUES(resolved_note),acceptance_json=VALUES(acceptance_json),severe_mismatch=VALUES(severe_mismatch),accepted_at=VALUES(accepted_at)`,
 		o.ID, o.TaskID, o.RequesterID, o.OrgID, o.ProviderID, o.MatchID, o.AmountCents, o.Status, o.EscrowID, boolToInt(o.Settled),
 		o.MaxRevisions, nullStr(string(mil)), o.SettlementMode, o.RefundCents, o.RefundPct,
 		nullStr(o.CancelledBy), nullStr(o.CancelReason), o.CancelledAt, nullStr(o.DisputeReason), nullStr(o.DisputedBy), o.DisputedAt,
-		nullStr(o.ResolvedBy), o.ResolvedAt, nullStr(o.ResolvedNote), o.CreatedAt)
+		nullStr(o.ResolvedBy), o.ResolvedAt, nullStr(o.ResolvedNote), nullStr(string(acc)), boolToInt(o.SevereMismatch), o.AcceptedAt, o.CreatedAt)
 }
 // orderCols SELECT 列(顺序须与 scanOrder 一致)
-const orderCols = "id,task_id,requester_id,org_id,provider_id,match_id,amount_cents,status,escrow_id,settled,max_revisions,milestones,settlement_mode,refund_cents,refund_pct,cancelled_by,cancel_reason,cancelled_at,dispute_reason,disputed_by,disputed_at,resolved_by,resolved_at,resolved_note,created_at"
+const orderCols = "id,task_id,requester_id,org_id,provider_id,match_id,amount_cents,status,escrow_id,settled,max_revisions,milestones,settlement_mode,refund_cents,refund_pct,cancelled_by,cancel_reason,cancelled_at,dispute_reason,disputed_by,disputed_at,resolved_by,resolved_at,resolved_note,acceptance_json,severe_mismatch,accepted_at,created_at"
 
 // scanOrder 把一行扫描进 *model.Order(列顺序见 orderCols)。row 满足 sql.Row/sql.Rows 的 Scan 接口。
 func scanOrder(o *model.Order, row interface{ Scan(...interface{}) error }) error {
-	var escrow, mode, cancelBy, cancelReason, disputeReason, disputedBy, resolvedBy, resolvedNote sql.NullString
-	var settled, maxRev, refundPct int
-	var refundCents, cancelledAt, disputedAt, resolvedAt int64
+	var escrow, mode, cancelBy, cancelReason, disputeReason, disputedBy, resolvedBy, resolvedNote, acceptance sql.NullString
+	var settled, maxRev, refundPct, severeMismatch int
+	var refundCents, cancelledAt, disputedAt, resolvedAt, acceptedAt int64
 	var mil []byte
-	if err := row.Scan(&o.ID, &o.TaskID, &o.RequesterID, &o.OrgID, &o.ProviderID, &o.MatchID, &o.AmountCents, &o.Status, &escrow, &settled, &maxRev, &mil, &mode, &refundCents, &refundPct, &cancelBy, &cancelReason, &cancelledAt, &disputeReason, &disputedBy, &disputedAt, &resolvedBy, &resolvedAt, &resolvedNote, &o.CreatedAt); err != nil {
+	if err := row.Scan(&o.ID, &o.TaskID, &o.RequesterID, &o.OrgID, &o.ProviderID, &o.MatchID, &o.AmountCents, &o.Status, &escrow, &settled, &maxRev, &mil, &mode, &refundCents, &refundPct, &cancelBy, &cancelReason, &cancelledAt, &disputeReason, &disputedBy, &disputedAt, &resolvedBy, &resolvedAt, &resolvedNote, &acceptance, &severeMismatch, &acceptedAt, &o.CreatedAt); err != nil {
 		return err
 	}
 	o.EscrowID = escrow.String
@@ -442,6 +453,11 @@ func scanOrder(o *model.Order, row interface{ Scan(...interface{}) error }) erro
 	o.CancelledAt = cancelledAt
 	o.DisputedAt = disputedAt
 	o.ResolvedAt = resolvedAt
+	o.AcceptedAt = acceptedAt
+	o.SevereMismatch = severeMismatch == 1
+	if len(acceptance.String) > 0 {
+		_ = json.Unmarshal([]byte(acceptance.String), &o.Acceptance)
+	}
 	o.SettlementMode = mode.String
 	o.CancelledBy = cancelBy.String
 	o.CancelReason = cancelReason.String
@@ -571,25 +587,30 @@ func (s *mysqlStore) ListTasksByOwner(ownerID string) []*model.Task {
 
 // --- Deliveries ---
 func (s *mysqlStore) PutDelivery(d *model.Delivery) {
-	_, _ = s.db.Exec(`INSERT INTO delivery (id,order_id,round,content,status,created_at)
-		VALUES (?,?,?,?,?,?)
-		ON DUPLICATE KEY UPDATE round=VALUES(round),content=VALUES(content),status=VALUES(status)`,
-		d.ID, d.OrderID, d.Round, d.Content, d.Status, d.CreatedAt)
+	items, _ := json.Marshal(d.Items)
+	_, _ = s.db.Exec(`INSERT INTO delivery (id,order_id,round,content,items_json,status,created_at)
+		VALUES (?,?,?,?,?,?,?)
+		ON DUPLICATE KEY UPDATE round=VALUES(round),content=VALUES(content),items_json=VALUES(items_json),status=VALUES(status)`,
+		d.ID, d.OrderID, d.Round, d.Content, nullStr(string(items)), d.Status, d.CreatedAt)
 }
 func (s *mysqlStore) GetDelivery(id string) (*model.Delivery, bool) {
 	d := &model.Delivery{}
-	err := s.db.QueryRow("SELECT id,order_id,round,content,status,created_at FROM delivery WHERE id=?", id).
-		Scan(&d.ID, &d.OrderID, &d.Round, &d.Content, &d.Status, &d.CreatedAt)
+	var items []byte
+	err := s.db.QueryRow("SELECT id,order_id,round,content,items_json,status,created_at FROM delivery WHERE id=?", id).
+		Scan(&d.ID, &d.OrderID, &d.Round, &d.Content, &items, &d.Status, &d.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, false
 	}
 	if err != nil {
 		return nil, false
 	}
+	if len(items) > 0 {
+		_ = json.Unmarshal(items, &d.Items)
+	}
 	return d, true
 }
 func (s *mysqlStore) ListDeliveriesByOrder(orderID string) []*model.Delivery {
-	rows, err := s.db.Query("SELECT id,order_id,round,content,status,created_at FROM delivery WHERE order_id=?", orderID)
+	rows, err := s.db.Query("SELECT id,order_id,round,content,items_json,status,created_at FROM delivery WHERE order_id=?", orderID)
 	if err != nil {
 		return nil
 	}
@@ -597,8 +618,12 @@ func (s *mysqlStore) ListDeliveriesByOrder(orderID string) []*model.Delivery {
 	var out []*model.Delivery
 	for rows.Next() {
 		d := &model.Delivery{}
-		if err := rows.Scan(&d.ID, &d.OrderID, &d.Round, &d.Content, &d.Status, &d.CreatedAt); err != nil {
+		var items []byte
+		if err := rows.Scan(&d.ID, &d.OrderID, &d.Round, &d.Content, &items, &d.Status, &d.CreatedAt); err != nil {
 			return nil
+		}
+		if len(items) > 0 {
+			_ = json.Unmarshal(items, &d.Items)
 		}
 		out = append(out, d)
 	}

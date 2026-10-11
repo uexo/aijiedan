@@ -97,6 +97,16 @@ ALTER TABLE `order`
   ADD COLUMN `resolved_at`     BIGINT       NOT NULL DEFAULT 0,
   ADD COLUMN `resolved_note`   VARCHAR(255) NULL;
 
+-- B方案(验收清单比对): order 表扩展验收留痕字段
+ALTER TABLE `order`
+  ADD COLUMN `acceptance_json`  JSON        NULL,
+  ADD COLUMN `severe_mismatch`  TINYINT(1)  NOT NULL DEFAULT 0,
+  ADD COLUMN `accepted_at`      BIGINT      NOT NULL DEFAULT 0;
+
+-- B方案(验收清单比对): task 表存储结构化需求清单
+ALTER TABLE `task`
+  ADD COLUMN `items_json`  JSON  NULL;
+
 CREATE TABLE `delivery` (
   `id`         VARCHAR(32)    NOT NULL,
   `order_id`   VARCHAR(32)    NOT NULL,
@@ -107,6 +117,10 @@ CREATE TABLE `delivery` (
   PRIMARY KEY (`id`),
   KEY `idx_order` (`order_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- B方案(验收清单比对): delivery 表存储逐需求项完成情况(须在 CREATE TABLE delivery 之后)
+ALTER TABLE `delivery`
+  ADD COLUMN `items_json`  JSON  NULL;
 
 CREATE TABLE `compliance_state` (
   `item`   VARCHAR(16) NOT NULL,

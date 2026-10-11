@@ -121,12 +121,14 @@ async function publishView(){
     <div class="field"><label class="label">需求描述</label><textarea class="textarea" id="f_spec" placeholder="自然语言描述你的需求…"></textarea></div>
     <div class="field"><label class="label">交付物说明（可选）</label><input class="input" id="f_deliv" placeholder="例如：可运行的 Python 服务 + 使用文档"></div>
     <div class="field"><label class="label">要求格式（可选）</label><input class="input" id="f_fmt" placeholder="例如：Python 3.11 + FastAPI"></div>
+    <div class="field"><label class="label">需求清单（逐项验收标尺，每行一项）</label><textarea class="textarea" id="f_items" placeholder="首页 Hero 区响应式设计&#10;用户登录 / 注册流程&#10;订单管理后台页面"></textarea></div>
     <button class="btn btn-primary btn-block" id="pubBtn">发布任务</button>
   </div>`;
   $("#pubBtn").onclick=async()=>{
+    const items=$("#f_items").value.trim().split("\n").map(s=>s.trim()).filter(Boolean).map(desc=>({desc}));
     const body={title:$("#f_title").value.trim(),category:$("#f_cat").value,
       budget_cents:Math.round(parseFloat($("#f_budget").value||"0")*100),
-      spec:$("#f_spec").value.trim(),deliverables:$("#f_deliv").value.trim(),required_format:$("#f_fmt").value.trim()};
+      spec:$("#f_spec").value.trim(),deliverables:$("#f_deliv").value.trim(),required_format:$("#f_fmt").value.trim(),items};
     if(!body.title){toast("请填写标题");return;}
     const {r,j}=await api("/tasks",{method:"POST",body});
     if(r.ok&&j.code===200){toast("发布成功");location.hash="mytasks";route();}

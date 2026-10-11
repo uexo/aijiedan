@@ -79,7 +79,8 @@ const NAV=[
   {id:"gates",label:"合规闸门",ic:'<rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'},
   {id:"wd",label:"提现审批",ic:'<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M16 12h.01"/>'},
   {id:"tasks",label:"任务监管",ic:'<path d="M3 3h18v4H3zM3 10h18v11H3z"/>'},
-  {id:"orders",label:"订单监管",ic:'<path d="M3 3h2l2 13h11l2-9H6"/>'}
+  {id:"orders",label:"订单监管",ic:'<path d="M3 3h2l2 13h11l2-9H6"/>'},
+  {id:"disputes",label:"纠纷仲裁",ic:'<path d="M12 2v20M7 6h10M7 6l-3 7h6zM17 6l3 7h-6zM7 21h10"/>'}
 ];
 const ROLE_LABEL={requester:"需求方",provider:"接单方",admin:"运营"};
 let VIEW="dash";
@@ -92,7 +93,7 @@ function renderShell(){
 }
 function route(){
   const v=location.hash.replace("#","")||"dash";VIEW=v;renderShell();
-  const fns={dash:dashView,ready:readyView,gates:gatesView,wd:wdView,tasks:tasksView,orders:ordersView};
+  const fns={dash:dashView,ready:readyView,gates:gatesView,wd:wdView,tasks:tasksView,orders:ordersView,disputes:disputesView};
   (fns[v]||dashView)();
 }
 
@@ -225,6 +226,56 @@ async function ordersView(){
     <div class="av">${esc((o.task_id||"?").slice(0,2))}</div>
     <div class="grow"><div class="ttl">${esc(o.task_id)}</div><div class="sub">需求方 ${esc(o.requester_id||"")} · 接单方 ${esc(o.provider_id||"")} · ${money(o.amount_cents||0)}</div></div>
     ${statusPill(o.status)}</div>`).join(""):`<div class="empty glass card">暂无订单</div>`}</div>`;
+}
+
+// ---- disputes / 仲裁 ----
+function acceptanceSummary(o){
+  if(o.severe_mismatch) return `<span style="color:var(--c-danger,#DC2626);font-weight:700">需求方判定：严重不符</span>`;
+  const acc=o.acceptance||[];
+  if(!acc.length) return "验收逐项记录为空";
+  const fail=acc.filter(a=>!a.pass).length;
+  return `验收 ${acc.length} 项 · 未达标 ${fail} 项`;
+}
+async function disputesView(){
+  const {r,j}=await api("/orders");
+  const list=(r.ok&&j.data)?j.data:[];
+  const disputed=list.filter(o=>o.status==="disputed");
+  const resolved=list.filter(o=>o.resolved_at);
+  let html=`<div class="page-head"><h2>纠纷仲裁</h2><p class="muted">待仲裁 ${disputed.length} 笔 · 已结案 ${resolved.length} 笔。</p></div>`;
+  // 待仲裁
+  html+=`<div class="section-title">⚠️ 待仲裁（${disputed.length}）</div>`;
+  html+= disputed.length? `<div class="grid gap-12">`+disputed.map(o=>{
+    return `<div class="glass card card-lg">
+      <div class="flex justify-between"><b>${esc(o.id)}</b>${statusPill(o.status)}</div>
+      <div class="kv"><span class="k">任务</span><span class="v mono">${esc(o.task_id)}</span></div>
+      <div class="kv"><span class="k">金额</span><span class="v">${money(o.amount_cents||0)}</span></div>
+      <div class="kv"><span class="k">需求方 / 接单方</span><span class="v">${esc(o.requester_id)} / ${esc(o.provider_id)}</span></div>
+      <div class="kv"><span class="k">纠纷事由</span><span class="v" style="text-align:left;font-weight:600">${esc(o.dispute_reason||"-")}</span></div>
+      <div class="kv"><span class="k">验收比对</span><span class="v" style="text-align:left">${acceptanceSummary(o)}</span></div>
+      <div class="field" style="margin-top:10px"><label class="label">退款比例（需求方 %，0-100）</label><input class="input" id="rf_${esc(o.id)}" type="number" min="0" max="100" value="50"></div>
+      <div class="field"><label class="label">裁决说明</label><textarea class="textarea" id="rd_${esc(o.id)}" placeholder="说明裁决依据…"></textarea></div>
+      <button class="btn btn-primary" onclick="resolveDispute('${esc(o.id)}')">仲裁结案</button>
+      <a class="btn btn-ghost" href="task.html?order=${esc(o.id)}">查看详情</a>
+    </div>`;
+  }).join("")+`</div>` : `<div class="empty glass card">无待仲裁纠纷 🎉</div>`;
+  // 已结案
+  if(resolved.length){
+    html+=`<div class="section-title">✅ 已结案（${resolved.length}）</div><div class="grid gap-12">`+resolved.map(o=>{
+      return `<div class="glass card card-lg">
+        <div class="flex justify-between"><b>${esc(o.id)}</b>${statusPill(o.status)}</div>
+        <div class="kv"><span class="k">纠纷事由</span><span class="v" style="text-align:left;font-weight:600">${esc(o.dispute_reason||"-")}</span></div>
+        <div class="kv"><span class="k">退款比例</span><span class="v">${o.refund_pct||0}%（${money(o.refund_cents||0)}）</span></div>
+        <div class="kv"><span class="k">裁决说明</span><span class="v" style="text-align:left;font-weight:600">${esc(o.resolved_note||"-")}</span></div>
+      </div>`;
+    }).join("")+`</div>`;
+  }
+  $("#main").innerHTML=html;
+}
+async function resolveDispute(id){
+  const pct=parseInt($("#rf_"+id).value||"50",10);
+  const decision=$("#rd_"+id).value.trim()||"运营仲裁结案";
+  const {r,j}=await api("/orders/"+encodeURIComponent(id)+"/resolve",{method:"POST",body:{refund_pct:pct,decision}});
+  toast((r.ok&&j.msg)||(j&&j.msg)||"结案失败");if(r.ok)location.reload();
 }
 
 // ---- boot ----
