@@ -141,7 +141,7 @@ async function renderOrder(id){
   const delivMap={};(last&&last.items?last.items:[]).forEach(d=>delivMap[d.item_id]=d);
   o._delivMap=delivMap; o._lastContent=(last&&last.content)||"";
 
-  let html=`<div class="page-head"><h2>订单 ${esc(o.id)}</h2>${statusPill(o.status)}</div>
+  let html=`<div class="page-head"><h2>订单 ${esc(o.id)}</h2>${o.resolved_at?`<span class="status disputed">仲裁结案</span>`:statusPill(o.status)}</div>
   <div class="glass card card-lg">
     <div class="kv"><span class="k">任务</span><span class="v mono">${esc(o.task_id)}</span></div>
     <div class="kv"><span class="k">金额</span><span class="v">${money(o.amount_cents||0)}</span></div>
@@ -223,13 +223,19 @@ function renderAcceptance(o,task,items,delivMap,isReq,isProv){
   }
   if(s==="completed" && items.length){
     const acc=o.acceptance||[];
+    const disputed = !!o.resolved_at; // 经仲裁结案的订单，不走"验收通过"视图
+    if(disputed && !acc.length) return ""; // 纠纷单未逐项验收 → 不渲染比对区，由"纠纷与仲裁"卡片说明结果
     const amap={};acc.forEach(a=>amap[a.item_id]=a);
     let rows=items.map(it=>{
       const a=amap[it.id];
-      const pass=(a?a.pass:true);
-      return `<div class="acpt-row"><div class="ai-req"><span class="rid">${esc(it.id)}</span>${esc(it.desc)}</div><div class="ai-prov">验收${pass?`<span class="prov-done">达标</span>`:`<span class="prov-miss">未达标</span>`}${a&&a.note?` · ${esc(a.note)}`:""}</div><div class="passchk">${pass?'✓':'✗'}</div></div>`;
+      if(!a) return `<div class="acpt-row"><div class="ai-req"><span class="rid">${esc(it.id)}</span>${esc(it.desc)}</div><div class="ai-prov"><span class="prov-miss">未逐项验收</span></div><div class="passchk">-</div></div>`;
+      const pass=a.pass;
+      return `<div class="acpt-row"><div class="ai-req"><span class="rid">${esc(it.id)}</span>${esc(it.desc)}</div><div class="ai-prov">验收${pass?`<span class="prov-done">达标</span>`:`<span class="prov-miss">未达标</span>`}${a.note?` · ${esc(a.note)}`:""}</div><div class="passchk">${pass?'✓':'✗'}</div></div>`;
     }).join("");
-    let banner=o.severe_mismatch?`<div class="banner-danger">需求方曾判定：需求与完成清单严重不符（已按纠纷/协商处理）</div>`:`<div class="banner-ok">验收通过，已结算</div>`;
+    let banner;
+    if(disputed) banner=`<div class="banner-danger">经仲裁结案：退款 ${o.refund_pct||0}%（${money(o.refund_cents||0)}），详见下方「纠纷与仲裁」</div>`;
+    else if(o.severe_mismatch) banner=`<div class="banner-danger">需求方曾判定：需求与完成清单严重不符（已按纠纷/协商处理）</div>`;
+    else banner=`<div class="banner-ok">验收通过，已结算</div>`;
     return `<div class="section-title">🔍 验收比对结果</div><div class="glass card card-lg">${banner}<div class="acpt">${rows}</div></div>`;
   }
   return "";
