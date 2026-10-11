@@ -208,16 +208,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // index.html 为单文件 SPA(需求大厅: 搜索→推荐→画像闭环), 由 web/ 经 /static/ 提供; 此处重定向。
 
 func (h *Handler) landing(w http.ResponseWriter, r *http.Request) {
-	// Marketplace 首页: 由 web/index.html 经 /static/ 提供(单文件 SPA, 自带 API 调用)。
-	// 直接重定向到 /static/ 目录索引(单次跳转即 200, 避免 /static/index.html 的索引去重 301)。
-	http.Redirect(w, r, "/static/", http.StatusFound)
+	// 新版玻璃拟态落地页(由 web/landing.html 经 /static/ 提供)。
+	http.Redirect(w, r, "/static/landing.html", http.StatusFound)
 }
 
-// console 运营控制台(独立路由 /console, 避免与 Marketplace 首页冲突), 仍为内嵌静态文件。
+// console 运营后台入口: 重定向到新版运营后台(由 web/admin.html 经 /static/ 提供)。
 func (h *Handler) console(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(consoleHTML)
+	http.Redirect(w, r, "/static/admin.html", http.StatusFound)
 }
 
 // mobile 提供移动端 H5 核心页(P1-3): 大厅/发单/订单/我的, 复用同一套 REST API。

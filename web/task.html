@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>任务与订单 · 蜂单 HiveGet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="design-system.css"/>
+<style>
+  .appbar{position:sticky;top:0;z-index:50;height:var(--nav-h);background:var(--glass-bg-strong);backdrop-filter:blur(14px);border-bottom:1px solid var(--color-border);display:flex;align-items:center;padding:0 18px;gap:14px}
+  .appbar .brand{font-weight:800;display:flex;align-items:center;gap:9px}
+  .appbar .logo{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--color-primary),var(--color-accent));color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900}
+  .main{padding:26px;max-width:860px;margin:0 auto}
+  .kv{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px dashed var(--color-border);font-size:.92rem}
+  .kv:last-child{border-bottom:none}
+  .kv .k{color:var(--color-muted-foreground)}
+  .kv .v{font-weight:700;text-align:right}
+  .actions{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}
+  .revbox{margin-top:14px;padding:16px;background:var(--color-muted);border-radius:var(--radius);display:none}
+  .revbox.show{display:block}
+  .deliv{font-size:.88rem;padding:12px;border-left:3px solid var(--color-primary);background:var(--glass-bg);border-radius:8px;margin-bottom:10px}
+</style>
+</head>
+<body>
+
+<div class="appbar">
+  <a class="brand" href="app.html"><span class="logo">蜂</span> 蜂单</a>
+  <button class="btn btn-ghost btn-sm" onclick="location.href='app.html'">← 返回工作台</button>
+</div>
+
+<div class="main" id="main"><div class="empty glass card">加载中…</div></div>
+<div id="toast"></div>
+
+<script>
+const API="/api/v1";
+let TOKEN=localStorage.getItem("hg_token")||"";
+let ME=null;
+const $=s=>document.querySelector(s);
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
+function money(c){return "¥"+(c/100).toLocaleString("zh-CN");}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function statusPill(s){return `<span class="status ${esc(s)}">${esc(s)}</span>`;}
+async function api(path,opts={}){
+  try{const r=await fetch(API+path,{method:opts.method||"GET",headers:{"Content-Type":"application/json","Authorization":"Bearer "+TOKEN},body:opts.body?JSON.stringify(opts.body):undefined});
+  let j=null;try{j=await r.json()}catch(e){}return {r,j};}catch(e){return {r:{ok:false},j:{msg:String(e)}};}
+}
+
+(async function(){
+  if(!TOKEN){location.href="auth.html";return;}
+  const {r,j}=await api("/auth/me");
+  if(!r.ok||!j.data){location.href="auth.html";return;}
+  ME=j.data;ME.uid=ME.uid||localStorage.getItem("hg_uid");ME.role=ME.role||"requester";
+  const q=new URLSearchParams(location.search);
+  if(q.get("order")) await renderOrder(q.get("order"));
+  else if(q.get("task")) await renderTask(q.get("task"));
+  else $("#main").innerHTML=`<div class="empty glass card">缺少参数</div>`;
+})();
+
+async function renderTask(id){
+  const {r,j}=await api("/tasks/"+encodeURIComponent(id));
+  if(!r.ok||!j.data){$("#main").innerHTML=`<div class="empty glass card">任务不存在</div>`;return;}
+  const t=j.data.task||j.data;
+  let html=`<div class="page-head"><h2>${esc(t.title)}</h2>${statusPill(t.status||"open")}</div>
+  <div class="glass card card-lg">
+    <div class="kv"><span class="k">任务 ID</span><span class="v mono">${esc(t.id)}</span></div>
+    <div class="kv"><span class="k">类目</span><span class="v">${esc(t.category||"-")}</span></div>
+    <div class="kv"><span class="k">预算</span><span class="v">${money(t.budget_cents||0)}</span></div>
+    <div class="kv"><span class="k">发布方</span><span class="v">${esc(t.requester_id||"-")}</span></div>
+    <div class="kv"><span class="k">需求描述</span><span class="v">${esc(t.spec||"-")}</span></div>
+    ${(t.spec_obj&&t.spec_obj.deliverables)?`<div class="kv"><span class="k">交付物</span><span class="v">${esc(t.spec_obj.deliverables)}</span></div>`:""}
+  </div>`;
+  if(ME.role==="provider"&&(t.status||"open")==="open"){
+    html+=`<div class="actions"><button class="btn btn-primary" id="takeBtn">接单</button></div>`;
+  }
+  $("#main").innerHTML=html;
+  if($("#takeBtn")) $("#takeBtn").onclick=async()=>{
+    const {r,j}=await api("/tasks/"+encodeURIComponent(id)+"/take",{method:"POST",body:{milestones:[]}});
+    if(r.ok){toast("接单成功，等待需求方托管");location.href="app.html#myorders";}
+    else toast((j&&j.msg)||"接单失败");
+  };
+}
+
+async function renderOrder(id){
+  const {r,j}=await api("/orders/"+encodeURIComponent(id));
+  if(!r.ok||!j.data){$("#main").innerHTML=`<div class="empty glass card">订单不存在</div>`;return;}
+  const o=j.data.order||j.data;
+  const deliveries=j.data.deliveries||[];
+  const isReq=(o.requester_id===ME.uid), isProv=(o.provider_id===ME.uid);
+  const rr=await api("/orders/"+encodeURIComponent(id)+"/reviews");
+  const reviews=(rr.r.ok&&rr.j.data&&rr.j.data.reviews)?rr.j.data.reviews:[];
+  const html=`<div class="page-head"><h2>订单 ${esc(o.id)}</h2>${statusPill(o.status)}</div>
+  <div class="glass card card-lg">
+    <div class="kv"><span class="k">任务</span><span class="v mono">${esc(o.task_id)}</span></div>
+    <div class="kv"><span class="k">金额</span><span class="v">${money(o.amount_cents||0)}</span></div>
+    <div class="kv"><span class="k">需求方</span><span class="v">${esc(o.requester_id)}</span></div>
+    <div class="kv"><span class="k">接单方</span><span class="v">${esc(o.provider_id)}</span></div>
+    ${o.escrow_id?`<div class="kv"><span class="k">托管号</span><span class="v mono">${esc(o.escrow_id)}</span></div>`:""}
+  </div>
+  <div class="actions" id="acts">${actionButtons(o,isReq,isProv)}</div>
+  <h3 style="margin:18px 0 10px">交付记录（${deliveries.length}）</h3>
+  ${deliveries.length?deliveries.map(d=>`<div class="deliv"><b>${esc(d.created_at||"")}</b> · ${esc(d.note||"已交付")}</div>`).join(""):`<div class="muted tiny">暂无交付记录</div>`}
+  <div class="revbox" id="revbox">
+    <div class="field"><label class="label">评分（1-5）</label><input class="input" id="rv_score" type="number" min="1" max="5" value="5"></div>
+    <div class="field"><label class="label">评价内容</label><textarea class="textarea" id="rv_comment" placeholder="评价对方…"></textarea></div>
+    <button class="btn btn-primary" id="rvBtn">提交评价</button>
+  </div>
+  ${reviews.length?`<h3 style="margin:18px 0 10px">双方评价</h3>`+reviews.map(rv=>`<div class="item"><div class="av">${esc((rv.reviewer_id||"?").slice(0,2))}</div><div class="grow"><div class="ttl">${esc(rv.reviewer_id)} · ${rv.score||0}★</div><div class="sub">${esc(rv.comment||"")}</div></div></div>`).join(""):""}`;
+  $("#main").innerHTML=html;
+  const acts=$("#acts");
+  if(acts) acts.querySelectorAll("button[data-act]").forEach(b=>b.onclick=()=>onAct(b.dataset.act,o,isReq,isProv,id));
+}
+function actionButtons(o,isReq,isProv){
+  const s=o.status,b=[];
+  if(isReq&&s==="pending_escrow") b.push(`<button class="btn btn-primary" data-act="escrow">托管资金</button>`);
+  if(isProv&&s==="active") b.push(`<button class="btn btn-primary" data-act="deliver">提交交付</button>`);
+  if(isReq&&s==="delivered") b.push(`<button class="btn btn-primary" data-act="accept">验收并结算</button><button class="btn btn-ghost" data-act="revise">打回重做</button>`);
+  if(isReq&&s==="pending_settlement") b.push(`<button class="btn btn-primary" data-act="settle">补结算</button>`);
+  if(s==="completed") b.push(`<button class="btn btn-accent" data-act="review">评价对方</button>`);
+  return b.join("")||`<span class="muted tiny">当前状态无可执行操作</span>`;
+}
+async function onAct(act,o,isReq,isProv,id){
+  if(act==="review"){
+    $("#revbox").classList.add("show");
+    const btn=$("#rvBtn");if(!btn)return;
+    btn.onclick=async()=>{
+      const rating=parseInt($("#rv_score").value||"5",10);
+      const comment=$("#rv_comment").value.trim();
+      const reviewee=isReq?o.provider_id:o.requester_id;
+      const {r,j}=await api("/orders/"+encodeURIComponent(id)+"/review",{method:"POST",body:{rating,comment,reviewee_id:reviewee}});
+      toast((r.ok&&j.msg)||(j&&j.msg)||"评价失败");if(r.ok)location.reload();
+    };
+    return;
+  }
+  const map={escrow:"托管资金",deliver:"提交交付",accept:"验收结算",revise:"打回重做",settle:"补结算"};
+  let path="/orders/"+encodeURIComponent(id),body={};
+  if(act==="escrow") path+="/escrow";
+  if(act==="deliver"){path+="/deliver";body={note:prompt("交付说明：")||""};}
+  if(act==="accept") path+="/accept";
+  if(act==="revise") path+="/revise";
+  if(act==="settle") path+="/settle";
+  const {r,j}=await api(path,{method:"POST",body});
+  toast((r.ok&&j.msg)||(j&&j.msg)||(map[act]+"失败"));if(r.ok)location.reload();
+}
+</script>
+</body>
+</html>

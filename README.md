@@ -33,14 +33,33 @@ hiveget/
 │   ├── clarify/    clarify.go     # P1-2: AI 澄清(自然语言→多轮对话→结构化 spec, 零依赖 stub + 可选 LLM)
 │   ├── middleware/ auth.go        # 自实现 HS256 JWT 鉴权
 │   └── handler/    handler.go     # REST API + 合规拦截(409) + SSE
-│       ├── console.html           # 演示控制台(注册/登录/发单/评价/AI澄清) — 路由 /console
+│       ├── console.html           # 旧演示控制台(内嵌; 路由 /console 已重定向至 /static/admin.html)
 │       └── mobile.html            # P1-3 移动端 H5 核心页(/m: 大厅/发单/订单/我的·钱包)
 ├── web/                          # 静态前端(由 Go 内置 http.FileServer 托管于 /static/)
-│   ├── index.html                 # Marketplace 枢纽页(根路径 / → /static/): 需求大厅 + 推荐位 + 相关度可视化
-│   └── profile.html               # 接单方公开画像页(可点击展开订单/评价) — /static/profile.html
-└── smoke_test.py                 # 主链路冒烟测试(验证拦截与放行)
+│   ├── design-system.css          # 统一设计系统(Glassmorphism 浅色 · 由 ui-ux-pro-max 衍生)
+│   ├── landing.html               # 公开落地页(根路径 / 重定向至此)
+│   ├── auth.html                  # 登录/注册(角色感知 → app.html / admin.html)
+│   ├── app.html                   # 双角色工作台(需求方 / 接单方)
+│   ├── task.html                  # 任务详情 + 订单闭环页
+│   ├── org.html                   # 组织 / 企业版治理页(组织钱包·发包·审批·开放集成)
+│   ├── admin.html                 # 运营后台(看板·上线就绪·合规闸门·提现审批·监管)
+│   ├── index.html                 # 旧 Marketplace 枢纽页(已重定向至 landing.html)
+│   └── profile.html               # 旧接单方公开画像页(保留)
 └── smoke_test.py                 # 主链路冒烟测试(验证拦截与放行)
 ```
+
+## 系统前端重设计（2026-10-11，董事长拍板「重设计整个系统页面」）
+
+基于 `ui-ux-pro-max` 设计系统（Glassmorphism 浅色 · 信任蓝 `#2563EB` · 强调橙 `#EA580C` · Plus Jakarta Sans），将 HiveGet 前端从 MVP 单文件深色控制台升级为完整系统页面套件（零构建、纯静态、同源调用既有 REST API）：
+
+- **`design-system.css`**：统一设计 token + 组件类（玻璃卡片 / 状态药丸 / 侧边导航 / 统计卡 / 开关 / Toast）。
+- **`landing.html`**：公开落地页（根路径 `/` 重定向至此），讲清语义匹配 / AI 澄清 / 资金托管 / 合规闸门价值主张与三角色。
+- **`auth.html`**：登录 / 注册，角色感知（需求方 / 接单方 / 运营），运营登录直达 `admin.html`。
+- **`app.html`**：需求方与接单方双角色工作台（发单 / 任务 / 智能推荐 / 订单 / 钱包 / 画像 + 组织管理入口）。
+- **`task.html`**：任务详情 + 订单全生命周期闭环（托管 / 交付 / 验收结算 / 打回 / 评价）。
+- **`org.html`**：组织 / 企业版治理（组织钱包充值与提现、组织发包、成员邀请、提现审批、开放 API Key + Webhook）。
+- **`admin.html`**：运营后台（运营看板指标、上线就绪 Checklist、合规四门开关、提现审批、任务 / 订单监管）。
+- 路由更新：`/` → `/static/landing.html`；`/console` → `/static/admin.html`；旧 `index.html` 改为重定向保留。
 
 ## 启动
 

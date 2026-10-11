@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>工作台 · 蜂单 HiveGet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="design-system.css"/>
+<style>
+  .appbar{position:sticky;top:0;z-index:50;height:var(--nav-h);background:var(--glass-bg-strong);backdrop-filter:blur(14px);border-bottom:1px solid var(--color-border);display:flex;align-items:center;justify-content:space-between;padding:0 18px}
+  .appbar .brand{font-weight:800;display:flex;align-items:center;gap:9px}
+  .appbar .logo{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--color-primary),var(--color-accent));color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900}
+  .usermenu{display:flex;align-items:center;gap:10px}
+  .usermenu .avatar{width:38px;height:38px;font-size:.9rem}
+  .main{padding:26px}
+  .page-head{margin-bottom:22px}
+  .page-head h2{margin-bottom:4px}
+  .kv{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px dashed var(--color-border);font-size:.9rem}
+  .kv:last-child{border-bottom:none}
+  .kv .k{color:var(--color-muted-foreground)}
+  .kv .v{font-weight:700}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+  .chip{padding:7px 14px;border-radius:999px;border:1px solid var(--color-border);background:var(--glass-bg);font-size:.85rem;font-weight:600;color:var(--color-muted-foreground);cursor:pointer;transition:.15s}
+  .chip.on{background:var(--color-primary);color:#fff;border-color:var(--color-primary)}
+  .empty{padding:40px;text-align:center;color:var(--color-muted-foreground)}
+</style>
+</head>
+<body>
+
+<div class="appbar">
+  <a class="brand" href="landing.html"><span class="logo">蜂</span> 蜂单</a>
+  <div class="usermenu">
+    <span class="badge" id="roleBadge">…</span>
+    <div class="avatar" id="ua">?</div>
+    <div style="line-height:1.1"><div style="font-weight:700" id="uname">…</div><div class="tiny muted" id="uid2">…</div></div>
+    <button class="btn btn-ghost btn-sm" onclick="logout()">退出</button>
+  </div>
+</div>
+
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main" id="main"></main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const API="/api/v1";
+let TOKEN=localStorage.getItem("hg_token")||"";
+let ME=null;
+const $=s=>document.querySelector(s);
+const $$=s=>document.querySelectorAll(s);
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
+function money(c){return "¥"+(c/100).toLocaleString("zh-CN",{minimumFractionDigits:0,maximumFractionDigits:2});}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function statusPill(s){return `<span class="status ${esc(s)}">${esc(s)}</span>`;}
+async function api(path,opts={}){
+  try{
+    const r=await fetch(API+path,{method:opts.method||"GET",headers:{"Content-Type":"application/json","Authorization":"Bearer "+TOKEN},
+      body:opts.body?JSON.stringify(opts.body):undefined});
+    let j=null;try{j=await r.json()}catch(e){}
+    return {r,j};
+  }catch(e){return {r:{ok:false,status:0},j:{msg:String(e)}};}
+}
+function logout(){localStorage.removeItem("hg_token");localStorage.removeItem("hg_uid");localStorage.removeItem("hg_role");location.href="landing.html";}
+
+// ---- role nav ----
+const NAV={
+  requester:[
+    {id:"publish",label:"发布任务",ic:'<path d="M12 5v14M5 12h14"/>'},
+    {id:"mytasks",label:"我的任务",ic:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>'},
+    {id:"recprov",label:"智能推荐",ic:'<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>'},
+    {id:"orders",label:"我的订单",ic:'<path d="M3 3h2l2 13h11l2-9H6"/>'},
+    {id:"wallet",label:"钱包",ic:'<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M16 12h.01"/>'},
+    {id:"org",label:"组织管理",ic:'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',link:"org.html"}
+  ],
+  provider:[
+    {id:"hall",label:"任务大厅",ic:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>'},
+    {id:"recme",label:"推荐给我",ic:'<path d="M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7z"/>'},
+    {id:"myorders",label:"我的接单",ic:'<path d="M3 3h2l2 13h11l2-9H6"/>'},
+    {id:"wallet",label:"钱包",ic:'<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M16 12h.01"/>'},
+    {id:"profile",label:"我的画像",ic:'<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'},
+    {id:"org",label:"组织管理",ic:'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',link:"org.html"}
+  ]
+};
+const ROLE_LABEL={requester:"需求方",provider:"接单方",admin:"运营"};
+let VIEW="";
+
+function renderShell(){
+  const nav=NAV[ME.role]||NAV.requester;
+  $("#sidebar").innerHTML=`<div class="side-label">${ROLE_LABEL[ME.role]}工作台</div>`+
+    nav.map(n=>n.link
+      ? `<a class="side-link" href="${n.link}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${n.ic}</svg>${n.label}</a>`
+      : `<a class="side-link ${n.id===VIEW?'on':''}" data-id="${n.id}" href="#${n.id}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${n.ic}</svg>${n.label}</a>`).join("");
+  $$("#sidebar .side-link[data-id]").forEach(a=>a.onclick=()=>{VIEW=a.dataset.id;location.hash=VIEW;renderShell();route();});
+}
+
+function route(){
+  const v=location.hash.replace("#","")|| (ME.role==="requester"?"publish":"hall");
+  VIEW=v;renderShell();
+  const fns={publish:publishView,mytasks:myTasksView,recprov:recProvView,orders:ordersView,wallet:walletView,
+    hall:hallView,recme:recMeView,myorders:myOrdersView,profile:profileView};
+  if(ME.role==="requester"&&!(v in {publish:1,mytasks:1,recprov:1,orders:1,wallet:1})){v="publish";}
+  if(ME.role==="provider"&&!(v in {hall:1,recme:1,myorders:1,wallet:1,profile:1})){v="hall";}
+  (fns[v]||publishView)();
+}
+
+// ---- requester views ----
+async function publishView(){
+  const {r,j}=await api("/meta/categories");
+  const cats=(r.ok&&j.data)?j.data:[];
+  $("#main").innerHTML=`<div class="page-head"><h2>发布任务</h2><p class="muted">填写需求，AI 将自动澄清并匹配接单方。</p></div>
+  <div class="glass card card-lg" style="max-width:680px">
+    <div class="field"><label class="label">任务标题</label><input class="input" id="f_title" placeholder="例如：用 Python 搭建 RAG 问答系统"></div>
+    <div class="field"><label class="label">类目</label><select class="select" id="f_cat">${cats.map(c=>`<option value="${esc(c.id)}">${esc(c.label)}</option>`).join("")}</select></div>
+    <div class="field"><label class="label">预算（元）</label><input class="input" id="f_budget" type="number" placeholder="500"></div>
+    <div class="field"><label class="label">需求描述</label><textarea class="textarea" id="f_spec" placeholder="自然语言描述你的需求…"></textarea></div>
+    <div class="field"><label class="label">交付物说明（可选）</label><input class="input" id="f_deliv" placeholder="例如：可运行的 Python 服务 + 使用文档"></div>
+    <div class="field"><label class="label">要求格式（可选）</label><input class="input" id="f_fmt" placeholder="例如：Python 3.11 + FastAPI"></div>
+    <button class="btn btn-primary btn-block" id="pubBtn">发布任务</button>
+  </div>`;
+  $("#pubBtn").onclick=async()=>{
+    const body={title:$("#f_title").value.trim(),category:$("#f_cat").value,
+      budget_cents:Math.round(parseFloat($("#f_budget").value||"0")*100),
+      spec:$("#f_spec").value.trim(),deliverables:$("#f_deliv").value.trim(),required_format:$("#f_fmt").value.trim()};
+    if(!body.title){toast("请填写标题");return;}
+    const {r,j}=await api("/tasks",{method:"POST",body});
+    if(r.ok&&j.code===200){toast("发布成功");location.hash="mytasks";route();}
+    else toast((j&&j.msg)||"发布失败");
+  };
+}
+async function myTasksView(){
+  const {r,j}=await api("/tasks");
+  const all=(r.ok&&j.data)?j.data:[];
+  const mine=all.filter(t=>t.requester_id===ME.uid);
+  $("#main").innerHTML=`<div class="page-head"><h2>我的任务</h2><p class="muted">${mine.length} 个任务</p></div>`+
+    (mine.length?mine.map(t=>taskCard(t,true)).join(""):`<div class="empty glass card">还没有发布任务，去「发布任务」创建第一个。</div>`);
+  bindTaskCards();
+}
+async function recProvView(){
+  $("#main").innerHTML=`<div class="page-head"><h2>智能推荐接单方</h2><p class="muted">选择一个任务，查看 AI 匹配的高分接单方。</p></div>
+  <div class="field" style="max-width:420px"><label class="label">选择任务</label><select class="select" id="rp_task"></select></div>
+  <div id="rp_list"><div class="empty glass card">选择任务后展示推荐接单方</div></div>`;
+  const {r,j}=await api("/tasks");const mine=((r.ok&&j.data)?j.data:[]).filter(t=>t.requester_id===ME.uid);
+  $("#rp_task").innerHTML=mine.map(t=>`<option value="${esc(t.id)}">${esc(t.title)}</option>`).join("")||`<option>暂无可推荐的任务</option>`;
+  $("#rp_task").onchange=loadRec;await loadRec();
+  async function loadRec(){
+    const tid=$("#rp_task").value;if(!tid)return;
+    const {r,j}=await api("/recommend/providers?task_id="+encodeURIComponent(tid));
+    const recs=(r.ok&&j.data)?j.data:[];
+    $("#rp_list").innerHTML=recs.length?recs.map(rp=>{
+      const p=rp.provider||{};
+      return `<div class="item"><div class="av">${esc((p.id||"?").slice(0,2))}</div>
+      <div class="grow"><div class="ttl">${esc(p.name||p.id||"接单方")}</div>
+      <div class="sub">匹配分 ${rp.score!=null?rp.score.toFixed(1):"-"} · ${esc((p.skills||[]).join("、")||"")}</div></div>
+      <span class="badge badge-primary">${esc(rp.reason||"")}</span></div>`;
+    }).join(""):`<div class="empty glass card">暂无匹配接单方</div>`;
+  }
+}
+async function ordersView(){ return ordersList("orders"); }
+async function walletView(){
+  const {r,j}=await api("/wallet");
+  const w=(r.ok&&j.data)?j.data:{available_cents:0,frozen_cents:0,total_cents:0};
+  $("#main").innerHTML=`<div class="page-head"><h2>我的钱包</h2></div>
+  <div class="grid grid-3">
+    <div class="glass card stat"><div class="k">可用余额</div><div class="v">${money(w.available_cents||0)}</div></div>
+    <div class="glass card stat"><div class="k">冻结中</div><div class="v">${money(w.frozen_cents||0)}</div></div>
+    <div class="glass card stat"><div class="k">累计</div><div class="v">${money(w.total_cents||0)}</div></div>
+  </div>
+  <div class="glass card" style="margin-top:20px;max-width:520px">
+    <h3 style="margin-bottom:12px">提现申请</h3>
+    <div class="field"><label class="label">提现金额（元）</label><input class="input" id="wd_amt" type="number" placeholder="100"></div>
+    <button class="btn btn-primary" id="wdBtn">提交提现（接单方）</button>
+  </div>`;
+  $("#wdBtn").onclick=async()=>{
+    const a=Math.round(parseFloat($("#wd_amt").value||"0")*100);
+    if(a<=0){toast("请输入金额");return;}
+    const {r,j}=await api("/wallet/withdraw",{method:"POST",body:{amount_cents:a}});
+    toast((r.ok&&j.msg)||(j&&j.msg)||"提交失败");if(r.ok){walletView();}
+  };
+}
+
+// ---- provider views ----
+async function hallView(){
+  const {r,j}=await api("/tasks?status=open");
+  const list=(r.ok&&j.data)?j.data:[];
+  $("#main").innerHTML=`<div class="page-head"><h2>任务大厅</h2><p class="muted">${list.length} 个开放任务</p></div>`+
+    (list.length?list.map(t=>taskCard(t,false)).join(""):`<div class="empty glass card">暂无开放任务</div>`);
+  bindTaskCards();
+}
+async function recMeView(){
+  const {r,j}=await api("/recommend/tasks");
+  const recs=(r.ok&&j.data)?j.data:[];
+  $("#main").innerHTML=`<div class="page-head"><h2>推荐给我</h2><p class="muted">基于你的技能画像智能匹配</p></div>`+
+    (recs.length?recs.map(rp=>taskCard(rp.task||rp,false,rp.score,rp.reason)).join(""):`<div class="empty glass card">暂无推荐，完善画像或浏览任务大厅。</div>`);
+  bindTaskCards();
+}
+async function myOrdersView(){ return ordersList("myorders"); }
+async function profileView(){
+  const {r,j}=await api("/users/"+encodeURIComponent(ME.uid));
+  const p=(r.ok&&j.data)?j.data:{};
+  const u=p.user||p;const revs=p.reviews||[];
+  const avg=revs.length?(revs.reduce((s,x)=>s+(x.score||0),0)/revs.length):0;
+  $("#main").innerHTML=`<div class="page-head"><h2>我的画像</h2></div>
+  <div class="glass card card-lg" style="max-width:680px">
+    <div class="flex items-center gap-16" style="margin-bottom:18px">
+      <div class="avatar" style="width:64px;height:64px;font-size:1.4rem">${esc((ME.uid||"?").slice(0,2))}</div>
+      <div><h3>${esc(u.name||ME.uid)}</h3><div class="muted tiny">${esc(u.role||"")} · 信用分 ${u.credit_score||0}</div></div>
+    </div>
+    <div class="kv"><span class="k">技能标签</span><span class="v">${(u.skills||[]).join("、")||"-"}</span></div>
+    <div class="kv"><span class="k">历史评分</span><span class="v">${avg.toFixed(1)} / 5（${revs.length} 条）</span></div>
+    <div class="kv"><span class="k">接单总数</span><span class="v">${u.order_count||0}</span></div>
+    <div class="kv"><span class="k">KYC 状态</span><span class="v">${u.kyc_verified?"已认证":"未认证"}</span></div>
+    <h3 style="margin:20px 0 10px">历史评价</h3>
+    ${revs.length?revs.map(rv=>`<div class="item"><div class="av">${esc((rv.reviewer_id||"?").slice(0,2))}</div><div class="grow"><div class="ttl">${esc(rv.reviewer_id||"")} · ${rv.score||0}★</div><div class="sub">${esc(rv.comment||"")}</div></div></div>`).join(""):`<div class="empty">暂无评价</div>`}
+  </div>`;
+}
+
+// ---- shared ----
+async function ordersList(kind){
+  const {r,j}=await api("/orders");
+  let list=(r.ok&&j.data)?j.data:[];
+  if(kind==="myorders") list=list.filter(o=>o.provider_id===ME.uid);
+  $("#main").innerHTML=`<div class="page-head"><h2>${kind==="myorders"?"我的接单":"我的订单"}</h2><p class="muted">${list.length} 笔</p></div>`+
+    (list.length?list.map(o=>`<div class="item" style="cursor:pointer" onclick="location.href='task.html?order=${esc(o.id)}'">
+      <div class="av">${esc((o.task_id||"?").slice(0,2))}</div>
+      <div class="grow"><div class="ttl">${esc(o.task_id)}</div>
+      <div class="sub">${(o.role==="provider"||o.provider_id===ME.uid)?"接单方":"需求方"} · ${money(o.amount_cents||0)}</div></div>
+      ${statusPill(o.status)}</div>`).join("")
+      :`<div class="empty glass card">还没有订单</div>`);
+}
+function taskCard(t, mine, score, reason){
+  const click=mine?`onclick="location.href='task.html?task=${esc(t.id)}'"`:`onclick="location.href='task.html?task=${esc(t.id)}'"`;
+  return `<div class="item" style="cursor:pointer" ${click}>
+    <div class="av">${esc((t.id||"?").slice(0,2))}</div>
+    <div class="grow"><div class="ttl">${esc(t.title)}</div>
+    <div class="sub">${esc(t.category||"")} · ${money(t.budget_cents||0)}${score!=null?` · 匹配 ${score.toFixed(1)}`:""}</div></div>
+    ${statusPill(t.status||"open")}${reason?`<span class="badge badge-primary">${esc(reason)}</span>`:""}</div>`;
+}
+function bindTaskCards(){}
+
+// ---- boot ----
+(async function(){
+  if(!TOKEN){location.href="auth.html";return;}
+  const {r,j}=await api("/auth/me");
+  if(!r.ok||!j.data){localStorage.removeItem("hg_token");location.href="auth.html";return;}
+  ME=j.data;ME.uid=ME.uid||localStorage.getItem("hg_uid");ME.role=ME.role||localStorage.getItem("hg_role")||"requester";
+  $("#uname").textContent=ME.name||ME.uid;$("#uid2").textContent=ME.uid;
+  $("#ua").textContent=(ME.uid||"?").slice(0,2);$("#roleBadge").textContent=ROLE_LABEL[ME.role]||ME.role;
+  window.addEventListener("hashchange",route);route();
+})();
+</script>
+</body>
+</html>

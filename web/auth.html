@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>登录 · 蜂单 HiveGet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="design-system.css"/>
+<style>
+  .auth-wrap{min-height:calc(100vh - var(--nav-h));display:flex;align-items:center;justify-content:center;padding:32px 18px}
+  .auth-card{width:100%;max-width:420px;padding:34px}
+  .auth-head{text-align:center;margin-bottom:24px}
+  .auth-head .logo{width:54px;height:54px;border-radius:16px;background:linear-gradient(135deg,var(--color-primary),var(--color-accent));
+    color:#fff;font-weight:900;font-size:1.5rem;display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
+  .role-pick{display:flex;gap:8px;margin-bottom:18px}
+  .role-pick button{flex:1;padding:10px;border-radius:var(--radius-sm);border:1px solid var(--color-border);background:var(--glass-bg);font-weight:600;font-size:.85rem;color:var(--color-muted-foreground);transition:.15s}
+  .role-pick button.on{background:rgba(37,99,235,.12);border-color:var(--color-primary);color:var(--color-primary)}
+  .demo-hint{font-size:.8rem;color:var(--color-muted-foreground);background:var(--color-muted);padding:10px 12px;border-radius:var(--radius-sm);margin-bottom:16px}
+  .demo-hint b{color:var(--color-foreground)}
+</style>
+</head>
+<body>
+
+<header class="topnav">
+  <div class="container">
+    <a class="brand" href="landing.html"><span class="logo">蜂</span> 蜂单 <span class="muted tiny" style="font-weight:600">HiveGet</span></a>
+    <nav class="nav-links"><a href="landing.html">返回首页</a></nav>
+  </div>
+</header>
+
+<div class="auth-wrap">
+  <div class="glass auth-card">
+    <div class="auth-head">
+      <div class="logo">蜂</div>
+      <h2>欢迎回来</h2>
+      <p class="muted tiny" style="margin-top:6px">登录蜂单工作台</p>
+    </div>
+
+    <div class="role-pick" id="rolePick">
+      <button data-role="requester" class="on">需求方</button>
+      <button data-role="provider">接单方</button>
+      <button data-role="admin">运营</button>
+    </div>
+
+    <div class="demo-hint" id="demoHint">演示账号：<b>R001</b>（需求方，免密）</div>
+
+    <div class="field">
+      <label class="label" for="uid">用户 ID</label>
+      <input class="input" id="uid" placeholder="例如 R001" autocomplete="username"/>
+    </div>
+    <div class="field">
+      <label class="label" for="pwd">密码</label>
+      <input class="input" id="pwd" type="password" placeholder="演示环境免密，可留空" autocomplete="current-password"/>
+    </div>
+    <button class="btn btn-primary btn-block" id="loginBtn">登录</button>
+
+    <p class="hint center" style="margin-top:16px">
+      没有账号？<a href="#" id="regToggle" style="color:var(--color-primary);font-weight:600">注册新账号</a>
+    </p>
+
+    <form id="regForm" style="display:none;margin-top:8px">
+      <div class="divider"></div>
+      <div class="field">
+        <label class="label" for="regUid">新用户 ID</label>
+        <input class="input" id="regUid" placeholder="自定义 ID，如 dev_zhang"/>
+      </div>
+      <div class="field">
+        <label class="label" for="regRole">角色</label>
+        <select class="select" id="regRole">
+          <option value="requester">需求方</option>
+          <option value="provider">接单方</option>
+        </select>
+      </div>
+      <button class="btn btn-accent btn-block" id="regBtn" type="submit">创建并登录</button>
+    </form>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const API="/api/v1";
+const ROLE_HINT={
+  requester:{text:"演示账号：<b>R001</b>（需求方，免密）",ph:"例如 R001"},
+  provider:{text:"演示账号：<b>P001</b>（接单方，免密）",ph:"例如 P001"},
+  admin:{text:"演示账号：<b>A001</b>（平台管理员，免密）",ph:"例如 A001"}
+};
+let ROLE="requester";
+const $=s=>document.querySelector(s);
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
+async function api(path,opts={}){
+  try{
+    const r=await fetch(API+path,{method:opts.method||"GET",headers:{"Content-Type":"application/json"},
+      body:opts.body?JSON.stringify(opts.body):undefined});
+    let j=null;try{j=await r.json()}catch(e){}
+    return {r,j};
+  }catch(e){return {r:{ok:false,status:0},j:{msg:String(e)}};}
+}
+// role picker
+document.querySelectorAll("#rolePick button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("#rolePick button").forEach(x=>x.classList.remove("on"));
+  b.classList.add("on");ROLE=b.dataset.role;
+  $("#demoHint").innerHTML=ROLE_HINT[ROLE].text;$("#uid").placeholder=ROLE_HINT[ROLE].ph;
+});
+// prefill role from URL
+const ur=new URLSearchParams(location.search).get("role");
+if(ur&&ROLE_HINT[ur]){document.querySelector(`#rolePick button[data-role="${ur}"]`).click();}
+// register toggle
+$("#regToggle").onclick=e=>{e.preventDefault();$("#regForm").style.display=$("#regForm").style.display==="none"?"block":"none";};
+// login
+async function doLogin(uid,pwd){
+  const {r,j}=await api("/auth/login",{method:"POST",body:{uid,password:pwd||""}});
+  if(r.ok&&j&&j.data&&j.data.token){
+    localStorage.setItem("hg_token",j.data.token);
+    localStorage.setItem("hg_uid",uid);
+    localStorage.setItem("hg_role",ROLE);
+    toast("登录成功");
+    setTimeout(()=>location.href=(ROLE==="admin"?"admin.html":"app.html"),500);
+    return true;
+  }
+  toast((j&&j.msg)||"登录失败");
+  return false;
+}
+$("#loginBtn").onclick=async()=>{
+  const uid=$("#uid").value.trim();
+  if(!uid){toast("请输入用户 ID");return;}
+  await doLogin(uid,$("#pwd").value);
+};
+$("#uid").addEventListener("keydown",e=>{if(e.key==="Enter")$("#loginBtn").click();});
+// register
+$("#regForm").onsubmit=async e=>{
+  e.preventDefault();
+  const uid=$("#regUid").value.trim();
+  if(!uid){toast("请输入新用户 ID");return;}
+  const {r,j}=await api("/auth/register",{method:"POST",body:{uid,role:$("#regRole").value,password:$("#pwd").value||"x"}});
+  if(r.ok&&j&&(j.data&&j.data.token||j.code===0||r.status<400)){
+    if(j.data&&j.data.token){localStorage.setItem("hg_token",j.data.token);}
+    localStorage.setItem("hg_uid",uid);localStorage.setItem("hg_role",$("#regRole").value);
+    toast("注册成功");
+    setTimeout(()=>location.href=($("#regRole").value==="admin"?"admin.html":"app.html"),500);
+  }else{
+    toast((j&&j.msg)||"注册失败（可能 ID 已存在）");
+  }
+};
+</script>
+</body>
+</html>

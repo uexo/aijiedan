@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>组织管理 · 蜂单 HiveGet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="design-system.css"/>
+<style>
+  .appbar{position:sticky;top:0;z-index:50;height:var(--nav-h);background:var(--glass-bg-strong);backdrop-filter:blur(14px);border-bottom:1px solid var(--color-border);display:flex;align-items:center;justify-content:space-between;padding:0 18px}
+  .appbar .brand{font-weight:800;display:flex;align-items:center;gap:9px}
+  .appbar .logo{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--color-primary),var(--color-accent));color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900}
+  .usermenu{display:flex;align-items:center;gap:10px}
+  .usermenu .avatar{width:38px;height:38px;font-size:.9rem}
+  .main{padding:26px}
+  .page-head{margin-bottom:20px}
+  .page-head h2{margin-bottom:4px}
+  .kv{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px dashed var(--color-border);font-size:.9rem}
+  .kv:last-child{border-bottom:none}
+  .kv .k{color:var(--color-muted-foreground)}
+  .kv .v{font-weight:700}
+  .empty{padding:40px;text-align:center;color:var(--color-muted-foreground)}
+  .org-card{cursor:pointer;transition:transform .2s,box-shadow .2s,border-color .2s}
+  .org-card:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg);border-color:rgba(37,99,235,.35)}
+  .org-card .plan{font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+  .seg{display:inline-flex;background:var(--color-muted);border-radius:999px;padding:4px;gap:4px;margin-bottom:18px}
+  .seg button{padding:8px 16px;border-radius:999px;font-weight:600;font-size:.86rem;color:var(--color-muted-foreground);transition:.15s}
+  .seg button.on{background:#fff;color:var(--color-primary);box-shadow:var(--shadow-sm)}
+  .copy{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.82rem;background:var(--color-muted);padding:6px 9px;border-radius:7px;word-break:break-all}
+</style>
+</head>
+<body>
+
+<div class="appbar">
+  <a class="brand" href="landing.html"><span class="logo">蜂</span> 蜂单</a>
+  <div class="usermenu">
+    <span class="badge" id="roleBadge">…</span>
+    <div class="avatar" id="ua">?</div>
+    <div style="line-height:1.1"><div style="font-weight:700" id="uname">…</div><div class="tiny muted" id="uid2">…</div></div>
+    <a class="btn btn-ghost btn-sm" href="app.html">工作台</a>
+    <button class="btn btn-ghost btn-sm" onclick="logout()">退出</button>
+  </div>
+</div>
+
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main" id="main"></main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const API="/api/v1";
+let TOKEN=localStorage.getItem("hg_token")||"";
+let ME=null;
+const $=s=>document.querySelector(s);
+const $$=s=>document.querySelectorAll(s);
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
+function money(c){return "¥"+(Math.round((c||0)/100)).toLocaleString("zh-CN",{minimumFractionDigits:0,maximumFractionDigits:2});}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function statusPill(s){return `<span class="status ${esc(s)}">${esc(s)}</span>`;}
+async function api(path,opts={}){
+  try{
+    const r=await fetch(API+path,{method:opts.method||"GET",headers:{"Content-Type":"application/json","Authorization":"Bearer "+TOKEN},
+      body:opts.body?JSON.stringify(opts.body):undefined});
+    let j=null;try{j=await r.json()}catch(e){}
+    return {r,j};
+  }catch(e){return {r:{ok:false,status:0},j:{msg:String(e)}};}
+}
+function logout(){localStorage.removeItem("hg_token");localStorage.removeItem("hg_uid");localStorage.removeItem("hg_role");location.href="landing.html";}
+
+const NAV=[
+  {id:"orgs",label:"我的组织",ic:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>'}
+];
+const ROLE_LABEL={requester:"需求方",provider:"接单方",admin:"运营"};
+let CUR=null; // current org id
+
+function renderShell(){
+  $("#sidebar").innerHTML=`<div class="side-label">组织工作台</div>`+
+    NAV.map(n=>`<a class="side-link on" href="#orgs">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${n.ic}</svg>${n.label}</a>`).join("");
+}
+
+async function orgsView(){
+  const {r,j}=await api("/orgs");
+  const list=(r.ok&&j.data)?j.data:[];
+  $("#main").innerHTML=`<div class="page-head"><h2>我的组织</h2><p class="muted">管理企业版团队、组织钱包与发包结算。</p></div>
+  <div style="margin-bottom:18px"><button class="btn btn-primary btn-sm" id="newOrgBtn">+ 创建组织</button></div>
+  <div class="grid grid-3" id="orgGrid">${list.length?list.map(o=>orgCard(o)).join(""):`<div class="empty glass card">还没有组织，点击「创建组织」建立企业版团队。</div>`}</div>`;
+  $$("#orgGrid .org-card").forEach(c=>c.onclick=()=>{CUR=c.dataset.id;location.hash="org/"+CUR;orgDetail();});
+  $("#newOrgBtn").onclick=createOrg;
+}
+function orgCard(o){
+  return `<div class="glass card card-lg org-card" data-id="${esc(o.id)}">
+    <div class="flex items-center justify-between" style="margin-bottom:10px">
+      <span class="plan badge-primary">${esc(o.plan||"free")}</span>
+      ${statusPill(o.status||"active")}
+    </div>
+    <h3>${esc(o.name)}</h3>
+    <div class="kv"><span class="k">组织 ID</span><span class="v mono tiny">${esc(o.id)}</span></div>
+    <div class="kv"><span class="k">所有者</span><span class="v">${esc(o.owner_id)}</span></div>
+  </div>`;
+}
+async function createOrg(){
+  const name=prompt("组织名称");if(!name)return;
+  const {r,j}=await api("/orgs",{method:"POST",body:{name}});
+  if(r.ok&&j.code===200){toast("组织已创建");orgsView();}
+  else toast((j&&j.msg)||"创建失败");
+}
+
+async function orgDetail(){
+  const {r,j}=await api("/orgs/"+encodeURIComponent(CUR));
+  const o=(r.ok&&j.data)?j.data:{};
+  const tabs=[["overview","概览"],["members","成员"],["wallet","钱包"],["tasks","发包"],["orders","订单"],["payouts","提现审批"],["integ","开放集成"]];
+  const hkey=location.hash.split("/")[1]||"overview";
+  $("#main").innerHTML=`<div class="page-head">
+    <a class="tiny muted" href="#orgs" style="font-weight:600">← 我的组织</a>
+    <h2 style="margin-top:6px">${esc(o.name||CUR)}</h2>
+    <p class="muted">${esc(o.id)} · ${esc(o.plan||"free")} 版</p></div>
+  <div class="seg">${tabs.map(t=>`<button data-k="${t[0]}" class="${hkey===t[0]?'on':''}">${t[1]}</button>`).join("")}</div>
+  <div id="orgBody"><div class="empty glass card"><span class="spin"></span></div></div>`;
+  $$("#main .seg button").forEach(b=>b.onclick=()=>{location.hash="org/"+CUR+"/"+b.dataset.k;orgDetail();});
+  const fns={overview:overviewTab,members:membersTab,wallet:walletTab,tasks:tasksTab,orders:ordersTab,payouts:payoutsTab,integ:integTab};
+  (fns[hkey]||overviewTab)();
+}
+
+async function overviewTab(){
+  const [ow,om,ot]=await Promise.all([api("/orgs/"+CUR+"/wallet"),api("/orgs/"+CUR+"/members"),api("/orgs/"+CUR+"/tasks")]);
+  const w=(ow.r.ok&&ow.j.data)?ow.j.data:{balance_cents:0,frozen_cents:0};
+  const ms=(om.r.ok&&om.j.data)?om.j.data:[];
+  const ts=(ot.r.ok&&ot.j.data)?ot.j.data:[];
+  $("#orgBody").innerHTML=`<div class="grid grid-3">
+    <div class="glass card stat"><div class="k">可用余额</div><div class="v">${money(w.balance_cents)}</div></div>
+    <div class="glass card stat"><div class="k">冻结中</div><div class="v">${money(w.frozen_cents)}</div></div>
+    <div class="glass card stat"><div class="k">成员 / 任务</div><div class="v">${ms.length} / ${ts.length}</div></div>
+  </div>
+  <div class="glass card" style="margin-top:20px;max-width:560px">
+    <h3 style="margin-bottom:12px">成员概览</h3>
+    ${ms.length?ms.slice(0,6).map(m=>`<div class="item"><div class="av">${esc((m.user_id||"?").slice(0,2))}</div><div class="grow"><div class="ttl">${esc(m.user_id)}</div><div class="sub">${esc(m.role||"")}</div></div></div>`).join(""):`<div class="empty">暂无成员</div>`}
+    ${ms.length>6?`<div class="tiny muted" style="margin-top:10px">还有 ${ms.length-6} 位成员…</div>`:""}
+  </div>`;
+}
+async function membersTab(){
+  const {r,j}=await api("/orgs/"+CUR+"/members");
+  const ms=(r.ok&&j.data)?j.data:[];
+  $("#orgBody").innerHTML=`<div class="glass card" style="max-width:620px">
+    <h3 style="margin-bottom:12px">邀请成员</h3>
+    <div class="field"><label class="label">用户 ID</label><input class="input" id="inv_uid" placeholder="被邀请用户的 ID，如 P002"></div>
+    <div class="field"><label class="label">角色</label><select class="select" id="inv_role"><option value="member">member</option><option value="admin">admin</option></select></div>
+    <button class="btn btn-primary" id="invBtn">发送邀请</button>
+  </div>
+  <h3 style="margin:22px 0 12px">现有成员（${ms.length}）</h3>
+  <div class="grid gap-12">${ms.length?ms.map(m=>`<div class="item"><div class="av">${esc((m.user_id||"?").slice(0,2))}</div><div class="grow"><div class="ttl">${esc(m.user_id)}</div><div class="sub">加入于 ${new Date((m.joined_at||0)*1000).toLocaleDateString()}</div></div><span class="badge badge-primary">${esc(m.role||"")}</span></div>`).join(""):`<div class="empty glass card">暂无成员</div>`}</div>`;
+  $("#invBtn").onclick=async()=>{
+    const uid=$("#inv_uid").value.trim();if(!uid){toast("请输入用户 ID");return;}
+    const {r,j}=await api("/orgs/"+CUR+"/members",{method:"POST",body:{user_id:uid,role:$("#inv_role").value}});
+    toast((r.ok&&j.msg)||(j&&j.msg)||"邀请失败");if(r.ok)membersTab();
+  };
+}
+async function walletTab(){
+  const {r,j}=await api("/orgs/"+CUR+"/wallet");
+  const w=(r.ok&&j.data)?j.data:{balance_cents:0,frozen_cents:0};
+  $("#orgBody").innerHTML=`<div class="grid grid-2" style="max-width:620px">
+    <div class="glass card stat"><div class="k">可用余额</div><div class="v">${money(w.balance_cents)}</div></div>
+    <div class="glass card stat"><div class="k">冻结中</div><div class="v">${money(w.frozen_cents)}</div></div>
+  </div>
+  <div class="glass card" style="margin-top:20px;max-width:520px">
+    <h3 style="margin-bottom:12px">组织钱包充值</h3>
+    <div class="field"><label class="label">充值金额（元）</label><input class="input" id="dep_amt" type="number" placeholder="1000"></div>
+    <button class="btn btn-primary" id="depBtn">充值</button>
+  </div>
+  <div class="glass card" style="margin-top:20px;max-width:520px">
+    <h3 style="margin-bottom:12px">提现申请</h3>
+    <div class="field"><label class="label">提现金额（元）</label><input class="input" id="po_amt" type="number" placeholder="500"></div>
+    <button class="btn btn-accent" id="poBtn">发起提现（需审批）</button>
+  </div>`;
+  $("#depBtn").onclick=async()=>{
+    const a=Math.round(parseFloat($("#dep_amt").value||"0")*100);
+    if(a<=0){toast("请输入金额");return;}
+    const {r,j}=await api("/orgs/"+CUR+"/wallet/deposit",{method:"POST",body:{amount_cents:a}});
+    toast((r.ok&&j.msg)||(j&&j.msg)||"充值失败");if(r.ok)walletTab();
+  };
+  $("#poBtn").onclick=async()=>{
+    const a=Math.round(parseFloat($("#po_amt").value||"0")*100);
+    if(a<=0){toast("请输入金额");return;}
+    const {r,j}=await api("/orgs/"+CUR+"/payouts",{method:"POST",body:{amount_cents:a}});
+    toast((r.ok&&j.msg)||(j&&j.msg)||"提现失败");if(r.ok)walletTab();
+  };
+}
+async function tasksTab(){
+  const {r,j}=await api("/orgs/"+CUR+"/tasks");
+  const ts=(r.ok&&j.data)?j.data:[];
+  const {r:rc,j:jc}=await api("/meta/categories");
+  const cats=(rc.ok&&jc.data)?jc.data:[];
+  $("#orgBody").innerHTML=`<div class="glass card" style="max-width:680px">
+    <h3 style="margin-bottom:12px">组织发包</h3>
+    <div class="field"><label class="label">任务标题</label><input class="input" id="ot_title" placeholder="例如：构建企业知识库 RAG 系统"></div>
+    <div class="field"><label class="label">类目</label><select class="select" id="ot_cat">${cats.map(c=>`<option value="${esc(c.id)}">${esc(c.label)}</option>`).join("")}</select></div>
+    <div class="field"><label class="label">预算（元）</label><input class="input" id="ot_budget" type="number" placeholder="8000"></div>
+    <div class="field"><label class="label">需求描述</label><textarea class="textarea" id="ot_spec" placeholder="自然语言描述组织需求…"></textarea></div>
+    <button class="btn btn-primary btn-block" id="otBtn">发布组织任务</button>
+  </div>
+  <h3 style="margin:22px 0 12px">已发布任务（${ts.length}）</h3>
+  <div class="grid gap-12">${ts.length?ts.map(t=>`<div class="item" style="cursor:pointer" onclick="location.href='task.html?task=${esc(t.id)}'">
+    <div class="av">${esc((t.id||"?").slice(0,2))}</div>
+    <div class="grow"><div class="ttl">${esc(t.title)}</div><div class="sub">${esc(t.category||"")} · ${money(t.budget_cents||0)}</div></div>
+    ${statusPill(t.status||"open")}</div>`).join(""):`<div class="empty glass card">暂无任务</div>`}</div>`;
+  $("#otBtn").onclick=async()=>{
+    const body={title:$("#ot_title").value.trim(),category:$("#ot_cat").value,
+      budget_cents:Math.round(parseFloat($("#ot_budget").value||"0")*100),spec:$("#ot_spec").value.trim()};
+    if(!body.title){toast("请填写标题");return;}
+    const {r,j}=await api("/orgs/"+CUR+"/tasks",{method:"POST",body});
+    toast((r.ok&&j.msg)||(j&&j.msg)||"发布失败");if(r.ok)tasksTab();
+  };
+}
+async function ordersTab(){
+  const {r,j}=await api("/orgs/"+CUR+"/orders");
+  const os=(r.ok&&j.data)?j.data:[];
+  $("#orgBody").innerHTML=`<h3 style="margin-bottom:12px">组织订单（${os.length}）</h3>
+  <div class="grid gap-12">${os.length?os.map(o=>`<div class="item" style="cursor:pointer" onclick="location.href='task.html?order=${esc(o.id)}'">
+    <div class="av">${esc((o.task_id||"?").slice(0,2))}</div>
+    <div class="grow"><div class="ttl">${esc(o.task_id)}</div><div class="sub">${money(o.amount_cents||0)}</div></div>
+    ${statusPill(o.status)}</div>`).join(""):`<div class="empty glass card">暂无订单</div>`}</div>`;
+}
+async function payoutsTab(){
+  const {r,j}=await api("/orgs/"+CUR+"/approvals");
+  const as=(r.ok&&j.data)?j.data:[];
+  const pend=as.filter(a=>a.status==="pending");
+  $("#orgBody").innerHTML=`<div class="glass card" style="margin-bottom:18px;max-width:520px">
+    <h3>待我审批（${pend.length}）</h3>
+    <p class="muted tiny">成员发起的组织提现，需 owner / admin 审批。</p></div>
+  <div class="grid gap-12">${as.length?as.map(a=>`<div class="glass card" style="max-width:620px">
+    <div class="flex items-center justify-between" style="margin-bottom:10px">
+      <div><b>${esc(a.type)}</b> · ${money(a.amount_cents)}</div>${statusPill(a.status)}
+    </div>
+    <div class="kv"><span class="k">发起人</span><span class="v">${esc(a.created_by)}</span></div>
+    <div class="kv"><span class="k">审批单 ID</span><span class="v mono tiny">${esc(a.id)}</span></div>
+    ${a.note?`<div class="kv"><span class="k">备注</span><span class="v">${esc(a.note)}</span></div>`:""}
+    ${a.status==="pending"?`<div class="flex gap-12" style="margin-top:14px">
+      <button class="btn btn-primary btn-sm" onclick="approvePay('${esc(a.id)}',true)">通过</button>
+      <button class="btn btn-danger btn-sm" onclick="approvePay('${esc(a.id)}',false)">驳回</button></div>`:""}
+  </div>`).join(""):`<div class="empty glass card">暂无审批单</div>`}</div>`;
+}
+async function approvePay(id,ok){
+  const {r,j}=await api("/orgs/"+CUR+"/approvals/"+encodeURIComponent(id)+"/approve",{method:"POST",body:{approve:ok}});
+  toast((r.ok&&j.msg)||(j&&j.msg)||"操作失败");if(r.ok)payoutsTab();
+}
+async function integTab(){
+  const [ak,wh]=await Promise.all([api("/orgs/"+CUR+"/apikeys"),api("/orgs/"+CUR+"/webhooks")]);
+  const aks=(ak.r.ok&&ak.j.data)?ak.j.data:[];
+  const whs=(wh.r.ok&&wh.j.data)?wh.j.data:[];
+  $("#orgBody").innerHTML=`<div class="grid grid-2">
+    <div class="glass card">
+      <h3 style="margin-bottom:12px">开放 API Key</h3>
+      <div class="field"><label class="label">标签</label><input class="input" id="ak_label" placeholder="例如：内部系统"></div>
+      <div class="field"><label class="label">权限范围（逗号分隔）</label><input class="input" id="ak_scope" placeholder="tasks,wallet,webhooks"></div>
+      <button class="btn btn-primary btn-block" id="akBtn">生成 Key</button>
+      <div id="akNew" style="margin-top:12px"></div>
+      <div style="margin-top:14px">${aks.length?aks.map(k=>`<div class="kv"><span class="k">${esc(k.label||k.id)}</span><span class="v">${statusPill(k.status)}</span></div>`).join(""):`<div class="tiny muted">尚无 Key</div>`}</div>
+    </div>
+    <div class="glass card">
+      <h3 style="margin-bottom:12px">Webhook 订阅</h3>
+      <div class="field"><label class="label">回调 URL</label><input class="input" id="wh_url" placeholder="https://example.com/hook"></div>
+      <div class="field"><label class="label">事件（逗号分隔）</label><input class="input" id="wh_ev" placeholder="task_created,order_settled,payout_approved"></div>
+      <button class="btn btn-accent btn-block" id="whBtn">订阅</button>
+      <div style="margin-top:14px">${whs.length?whs.map(w=>`
+        <div class="item" style="margin-bottom:8px"><div class="grow"><div class="ttl tiny">${esc(w.url)}</div><div class="sub">${(w.events||[]).join("、")}</div></div>${statusPill(w.status)}</div>`).join(""):`<div class="tiny muted">尚未订阅</div>`}</div>
+    </div>
+  </div>`;
+  $("#akBtn").onclick=async()=>{
+    const {r,j}=await api("/orgs/"+CUR+"/apikeys",{method:"POST",body:{label:$("#ak_label").value.trim(),scopes:$("#wh_ev")&&$("#ak_scope").value.trim()}});
+    if(r.ok&&j.data){const raw=j.data.key||(j.data.api_key&&j.data.api_key.key)||"";
+      $("#akNew").innerHTML=`<div class="hint" style="margin-bottom:6px">明文 Key（仅显示一次，请妥善保存）：</div><div class="copy">${esc(raw)}</div>`;
+      toast("已生成");integTab();}
+    else toast((j&&j.msg)||"生成失败");
+  };
+  $("#whBtn").onclick=async()=>{
+    const ev=$("#wh_ev").value.split(",").map(s=>s.trim()).filter(Boolean);
+    const {r,j}=await api("/orgs/"+CUR+"/webhooks",{method:"POST",body:{url:$("#wh_url").value.trim(),events:ev}});
+    toast((r.ok&&j.msg)||(j&&j.msg)||"订阅失败");if(r.ok)integTab();
+  };
+}
+
+function route(){
+  const hash=location.hash.replace("#","");
+  if(hash.startsWith("org/")){
+    const parts=hash.split("/");
+    CUR=parts[1];
+    const sub=parts[2]||"overview";
+    location.hash="org/"+CUR+"/"+sub;
+    orgDetail();
+    return;
+  }
+  orgsView();
+}
+
+// ---- boot ----
+(async function(){
+  if(!TOKEN){location.href="auth.html";return;}
+  const {r,j}=await api("/auth/me");
+  if(!r.ok||!j.data){localStorage.removeItem("hg_token");location.href="auth.html";return;}
+  ME=j.data;ME.uid=ME.uid||localStorage.getItem("hg_uid");ME.role=ME.role||localStorage.getItem("hg_role")||"requester";
+  $("#uname").textContent=ME.name||ME.uid;$("#uid2").textContent=ME.uid;
+  $("#ua").textContent=(ME.uid||"?").slice(0,2);$("#roleBadge").textContent=ROLE_LABEL[ME.role]||ME.role;
+  renderShell();
+  window.addEventListener("hashchange",route);route();
+})();
+</script>
+</body>
+</html>
