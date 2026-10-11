@@ -76,7 +76,7 @@ const $=s=>document.querySelector(s);
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200);}
 function money(c){return "¥"+(c/100).toLocaleString("zh-CN");}
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
-function statusPill(s){return `<span class="status ${esc(s)}">${esc(s)}</span>`;}
+function statusPill(s){const L={delivered:"待验收",accepted:"已验收",rejected:"已打回",delivering:"修正中",disputed:"纠纷中",escrowed:"已托管",pending_settlement:"待结算",taken:"已接单",completed:"已完成"};return `<span class="status ${esc(s)}">${L[s]||esc(s)}</span>`;}
 function fmtTime(ms){if(!ms)return"-";try{const d=new Date(ms);const p=n=>String(n).padStart(2,"0");return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;}catch(e){return String(ms);}}
 
 async function api(path,opts={}){
@@ -249,8 +249,10 @@ function renderAcceptance(o,task,items,delivMap,isReq,isProv){
       const pass=a.pass;
       return `<div class="acpt-row"><div class="ai-req"><span class="rid">${esc(it.id)}</span>${esc(it.desc)}</div><div class="ai-prov">验收${pass?`<span class="prov-done">达标</span>`:`<span class="prov-miss">未达标</span>`}${a.note?` · ${esc(a.note)}`:""}</div><div class="passchk">${pass?'✓':'✗'}</div></div>`;
     }).join("");
+    const failIds=acc.filter(a=>!a.pass).map(a=>a.item_id);
     let banner;
     if(disputed) banner=`<div class="banner-danger">经仲裁结案：退款 ${o.refund_pct||0}%（${money(o.refund_cents||0)}），详见下方「纠纷与仲裁」</div>`;
+    else if(failIds.length) banner=`<div class="banner-danger">已结算，但存在未达标项（${esc(failIds.join("、"))}）—— 本单结算于「未达标打回」机制上线前，属历史数据；现行规则下未达标将无法结算</div>`;
     else if(o.severe_mismatch) banner=`<div class="banner-danger">需求方曾判定：需求与完成清单严重不符（已按纠纷/协商处理）</div>`;
     else banner=`<div class="banner-ok">验收通过，已结算</div>`;
     return `<div class="section-title">🔍 验收比对结果</div><div class="glass card card-lg">${banner}<div class="acpt">${rows}</div></div>`;
