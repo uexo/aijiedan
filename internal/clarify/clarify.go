@@ -304,7 +304,7 @@ func (m *Manager) Extract(id string) (*Session, error) {
 
 var (
 	reDeliver   = regexp.MustCompile(`(\d+)\s*(张|篇|个|份|套|条|页|秒|分钟|小时|版|支|组|张图|张海报)\s*([\p{Han}A-Za-z0-9/×x* ]{0,24}?)(?:[，。；,.;\s]|$)`)
-	reDateMD    = regexp.MustCompile(`(\d{1,2})[月/](\d{1,2})[日号]?`)
+	reDateMD    = regexp.MustCompile(`(\d{1,2})\s*[月/]\s*(\d{1,2})\s*[日号]?`)
 	reRelDays   = regexp.MustCompile(`(\d+)\s*天`)
 	reWeeks     = regexp.MustCompile(`(\d+)\s*周`)
 	reMonths    = regexp.MustCompile(`(\d+)\s*个?月`)
@@ -394,18 +394,23 @@ func parseSpec(hist []Message) ExtractedSpec {
 }
 
 func detectCategory(s string) string {
+	// 与 model.TaskCategories 的 ID 对齐：nlp|copywriting|design|frontend|backend|mobile|data|ml|devops|audio|video|other。
+	// 顺序即优先级（copywriting 先于 nlp，避免"文案/小红书"被误判为自然语言处理）。
 	rules := []struct {
 		cat string
 		kws []string
 	}{
-		{"design", []string{"设计", "海报", "封面", "logo", "logp", "插画", "ui", "美工", "banner", "小红书", "包装", "排版", "ps", "视觉", "画"}},
-		{"nlp", []string{"自然语言", "问答", "rag", "nlp", "翻译", "文案", "写作", "文章", "稿", "语言模型", "llm", "摘要", "聊天机器人", "chatbot"}},
-		{"frontend", []string{"前端", "网页", "h5", "页面", "vue", "react", "小程序", "网站", "首页"}},
-		{"data", []string{"数据", "爬虫", "etl", "分析", "可视化", "报表", "清洗", "建模"}},
-		{"backend", []string{"后端", "全栈", "go", "服务", "api", "接口", "微服务", "数据库", "java", "python", "node"}},
+		{"copywriting", []string{"文案", "小红书", "公众号", "脚本", "seo", "内容营销", "软文", "推文", "种草", "带货文案"}},
+		{"design", []string{"设计", "海报", "封面", "logo", "插画", "ui", "美工", "banner", "包装", "排版", "ps", "视觉", "画", "品牌"}},
+		{"nlp", []string{"自然语言", "问答", "rag", "nlp", "翻译", "语言模型", "llm", "摘要", "聊天机器人", "chatbot", "prompt", "知识库"}},
+		{"frontend", []string{"前端", "网页", "h5", "页面", "vue", "react", "小程序", "网站", "首页", "tailwind", "可视化"}},
+		{"backend", []string{"后端", "全栈", "go", "服务", "api", "接口", "微服务", "数据库", "java", "python", "node", "服务端"}},
+		{"mobile", []string{"移动端", "ios", "android", "react native", "flutter", "app开发"}},
+		{"data", []string{"数据", "爬虫", "etl", "分析", "可视化", "报表", "清洗", "建模", "bi"}},
+		{"ml", []string{"机器学习", "模型", "训练", "微调", "推理", "agent", "智能体", "深度学习"}},
+		{"devops", []string{"运维", "部署", "ci/cd", "容器", "云", "监控", "自动化", "docker", "k8s"}},
+		{"audio", []string{"音频", "配音", "播客", "音乐", "tts", "asr"}},
 		{"video", []string{"视频", "剪辑", "动画", "短片", "宣传片", "pr", "ae"}},
-		{"audio", []string{"音频", "配音", "播客", "音乐"}},
-		{"operations", []string{"运营", "推广", "投放", "增长", "seo", "社群", "抖音"}},
 	}
 	for _, r := range rules {
 		for _, kw := range r.kws {
@@ -414,7 +419,7 @@ func detectCategory(s string) string {
 			}
 		}
 	}
-	return "general"
+	return "other"
 }
 
 func detectDeadline(s string) int64 {

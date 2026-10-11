@@ -25,6 +25,20 @@
   .chip{padding:7px 14px;border-radius:999px;border:1px solid var(--color-border);background:var(--glass-bg);font-size:.85rem;font-weight:600;color:var(--color-muted-foreground);cursor:pointer;transition:.15s}
   .chip.on{background:var(--color-primary);color:#fff;border-color:var(--color-primary)}
   .empty{padding:40px;text-align:center;color:var(--color-muted-foreground)}
+  .ai-badge{display:inline-block;font-weight:800;font-size:.95rem;color:var(--color-primary);background:var(--glass-bg-strong);border:1px solid var(--color-border);border-radius:10px;padding:7px 12px;margin-bottom:2px}
+  .ai-thread{margin-top:14px;display:flex;flex-direction:column;gap:10px;max-height:320px;overflow:auto;padding-right:4px}
+  .bubble{border-radius:14px;padding:10px 14px;max-width:88%;font-size:.92rem;line-height:1.5}
+  .bubble .who{display:block;font-size:.72rem;font-weight:700;opacity:.7;margin-bottom:3px}
+  .b-ai{background:var(--glass-bg-strong);border:1px solid var(--color-border);align-self:flex-start}
+  .b-me{background:var(--color-primary);color:#fff;align-self:flex-end}
+  .ai-spec{margin-top:16px;border-top:1px dashed var(--color-border);padding-top:14px}
+  .spec-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px 18px}
+  .spec-grid>div{font-size:.9rem}
+  .spec-grid .k{display:inline-block;min-width:44px;color:var(--color-muted-foreground);margin-right:6px;font-weight:600}
+  .clar-box{margin-top:14px;background:rgba(234,88,12,.08);border:1px solid rgba(234,88,12,.3);border-radius:12px;padding:10px 14px;font-size:.88rem}
+  .clar-box ul{margin:6px 0 0;padding-left:18px}
+  .clar-box li{margin:2px 0}
+  @media(max-width:560px){.spec-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -87,6 +101,7 @@ const NAV={
 };
 const ROLE_LABEL={requester:"需求方",provider:"接单方",admin:"运营"};
 let VIEW="";
+let CID=null; // AI 澄清会话 ID（发布页内使用）
 
 function renderShell(){
   const nav=NAV[ME.role]||NAV.requester;
@@ -113,7 +128,22 @@ function route(){
 async function publishView(){
   const {r,j}=await api("/meta/categories");
   const cats=(r.ok&&j.data)?j.data:[];
-  $("#main").innerHTML=`<div class="page-head"><h2>发布任务</h2><p class="muted">填写需求，AI 将自动澄清并匹配接单方。</p></div>
+  CID=null; // 进入发布页时重置澄清会话
+  $("#main").innerHTML=`<div class="page-head"><h2>发布任务</h2><p class="muted">两种方式：① 先用 <b>🤖 AI 智能澄清</b> 把一句话需求补全成结构化规格，再一键填充发布；② 直接手动填写下方表单。</p></div>
+
+  <div class="glass card card-lg" style="max-width:780px;margin-bottom:22px">
+    <div class="ai-badge">🤖 AI 智能澄清 · 自然语言 → 结构化需求</div>
+    <p class="muted small" style="margin:8px 0 14px">用一句话描述需求，AI 会多轮追问，自动补全 <b>标题 / 类目 / 预算 / 交付物 / 格式 / 截止时间 / 风格</b>，并标出仍需你补充的要点。补全后一键填充到下方表单即可发布。</p>
+    <div class="field"><label class="label">一句话需求</label><textarea class="textarea" id="ai_text" placeholder="例如：帮我做 10 张竖版小红书封面，国潮风，10 月 20 号前交付，预算 800 元"></textarea></div>
+    <div class="actions"><button class="btn btn-primary" id="aiStart">🤖 AI 帮我理清需求</button></div>
+    <div id="ai_thread" class="ai-thread hidden"></div>
+    <div id="ai_spec" class="ai-spec hidden"></div>
+    <div id="ai_actions" class="actions hidden" style="margin-top:14px">
+      <button class="btn btn-primary" id="aiAdopt">采纳并填充表单 ↓</button>
+      <button class="btn btn-ghost" id="aiReset">重新澄清</button>
+    </div>
+  </div>
+
   <div class="glass card card-lg" style="max-width:680px">
     <div class="field"><label class="label">任务标题</label><input class="input" id="f_title" placeholder="例如：用 Python 搭建 RAG 问答系统"></div>
     <div class="field"><label class="label">类目</label><select class="select" id="f_cat">${cats.map(c=>`<option value="${esc(c.id)}">${esc(c.label)}</option>`).join("")}</select></div>
@@ -121,19 +151,89 @@ async function publishView(){
     <div class="field"><label class="label">需求描述</label><textarea class="textarea" id="f_spec" placeholder="自然语言描述你的需求…"></textarea></div>
     <div class="field"><label class="label">交付物说明（可选）</label><input class="input" id="f_deliv" placeholder="例如：可运行的 Python 服务 + 使用文档"></div>
     <div class="field"><label class="label">要求格式（可选）</label><input class="input" id="f_fmt" placeholder="例如：Python 3.11 + FastAPI"></div>
+    <div class="field"><label class="label">期望交付截止（可选）</label><input class="input" id="f_deadline" type="date"></div>
+    <div class="field"><label class="label">风格 / 参考（可选）</label><input class="input" id="f_style" placeholder="例如：国潮风 / 附参考链接"></div>
     <div class="field"><label class="label">需求清单（逐项验收标尺，每行一项）</label><textarea class="textarea" id="f_items" placeholder="首页 Hero 区响应式设计&#10;用户登录 / 注册流程&#10;订单管理后台页面"></textarea></div>
     <button class="btn btn-primary btn-block" id="pubBtn">发布任务</button>
   </div>`;
+
+  $("#aiStart").onclick=async()=>{
+    const text=$("#ai_text").value.trim();
+    if(!text){toast("请先描述你的需求");return;}
+    if(!CID){
+      const {r,j}=await api("/clarify",{method:"POST",body:{text}});
+      if(!r.ok){toast((j&&j.msg)||"AI 澄清失败");return;}
+      CID=j.data.session_id;
+      addBubble("你",text); addBubble("AI",j.data.reply);
+      renderSpec(j.data.draft,j.data.clarifications);
+      $("#ai_thread").classList.remove("hidden");
+      $("#ai_spec").classList.remove("hidden");
+      $("#ai_actions").classList.remove("hidden");
+      $("#aiStart").textContent="继续补充 ↻";
+      $("#ai_text").value=""; $("#ai_text").placeholder="继续补充细节，例如：验收标准、参考链接、特殊要求…";
+    } else {
+      const {r,j}=await api("/clarify/"+CID,{method:"POST",body:{text}});
+      if(!r.ok){toast((j&&j.msg)||"继续失败");return;}
+      addBubble("你",text); addBubble("AI",j.data.reply);
+      renderSpec(j.data.draft,j.data.clarifications);
+      $("#ai_text").value="";
+    }
+  };
+  $("#aiAdopt").onclick=()=>{
+    const d=window.__lastDraft; if(!d||!d.title){toast("请先完成 AI 澄清");return;}
+    if(d.title)$("#f_title").value=d.title;
+    if(d.category){const op=[...$("#f_cat").options].find(o=>o.value===d.category);if(op)op.selected=true;}
+    if(d.budget_cents)$("#f_budget").value=(d.budget_cents/100);
+    if(d.spec)$("#f_spec").value=d.spec;
+    if(d.deliverables)$("#f_deliv").value=d.deliverables;
+    if(d.required_format)$("#f_fmt").value=d.required_format;
+    if(d.deadline_at)$("#f_deadline").value=new Date(d.deadline_at).toISOString().slice(0,10);
+    if(d.style_ref)$("#f_style").value=d.style_ref;
+    toast("已填充到表单，请核对（尤其是需求清单）后发布");
+    document.querySelector(".page-head").scrollIntoView({behavior:"smooth"});
+  };
+  $("#aiReset").onclick=()=>{
+    CID=null; $("#ai_thread").innerHTML=""; $("#ai_spec").innerHTML="";
+    $("#ai_thread").classList.add("hidden"); $("#ai_spec").classList.add("hidden"); $("#ai_actions").classList.add("hidden");
+    $("#ai_text").value=""; $("#ai_text").placeholder="例如：帮我做 10 张竖版小红书封面，国潮风，10 月 20 号前交付，预算 800 元";
+    $("#aiStart").textContent="🤖 AI 帮我理清需求";
+  };
+
   $("#pubBtn").onclick=async()=>{
     const items=$("#f_items").value.trim().split("\n").map(s=>s.trim()).filter(Boolean).map(desc=>({desc}));
     const body={title:$("#f_title").value.trim(),category:$("#f_cat").value,
       budget_cents:Math.round(parseFloat($("#f_budget").value||"0")*100),
-      spec:$("#f_spec").value.trim(),deliverables:$("#f_deliv").value.trim(),required_format:$("#f_fmt").value.trim(),items};
+      spec:$("#f_spec").value.trim(),deliverables:$("#f_deliv").value.trim(),required_format:$("#f_fmt").value.trim(),
+      deadline_at:$("#f_deadline").value?Date.parse($("#f_deadline").value+"T18:00:00"):0,
+      style_ref:$("#f_style").value.trim(),items};
     if(!body.title){toast("请填写标题");return;}
     const {r,j}=await api("/tasks",{method:"POST",body});
     if(r.ok&&j.code===200){toast("发布成功");location.hash="mytasks";route();}
     else toast((j&&j.msg)||"发布失败");
   };
+}
+function addBubble(role,text){
+  const el=document.createElement("div");
+  el.className="bubble "+(role==="AI"?"b-ai":"b-me");
+  el.innerHTML=`<span class="who">${role==="AI"?"🤖 AI":"你"}</span><div class="bc">${esc(text)}</div>`;
+  $("#ai_thread").appendChild(el);
+  el.scrollIntoView({block:"end"});
+}
+function renderSpec(d,clar){
+  window.__lastDraft=d||{};
+  const fmt=v=>v?esc(v):'<span class="muted">待补充</span>';
+  let html=`<div class="spec-grid">
+    <div><span class="k">标题</span>${fmt(d.title)}</div>
+    <div><span class="k">类目</span>${fmt(d.category)}</div>
+    <div><span class="k">预算</span>${d.budget_cents?money(d.budget_cents):'<span class="muted">待补充</span>'}</div>
+    <div><span class="k">交付物</span>${fmt(d.deliverables)}</div>
+    <div><span class="k">格式</span>${fmt(d.required_format)}</div>
+    <div><span class="k">截止</span>${d.deadline_at?new Date(d.deadline_at).toLocaleDateString("zh-CN"):'<span class="muted">待补充</span>'}</div>
+    <div><span class="k">风格</span>${fmt(d.style_ref)}</div>
+    <div><span class="k">摘要</span>${fmt(d.spec)}</div>
+  </div>`;
+  if(clar&&clar.length){html+=`<div class="clar-box"><b>⚠️ AI 提示仍需你补充（可在下方表单手填）：</b><ul>${clar.map(q=>`<li>${esc(q)}</li>`).join("")}</ul></div>`;}
+  $("#ai_spec").innerHTML=html;
 }
 async function myTasksView(){
   const {r,j}=await api("/tasks");
