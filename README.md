@@ -469,7 +469,22 @@ HiveGet 的「AI 语义匹配」与「AI 需求澄清」默认以**零依赖保�
 | 语义匹配（`MatchTask`/`RecommendTasks`/`RecommendProviders`） | `HIVEGET_EMBEDDING_MODE=llm` + `HIVEGET_EMBEDDING_API` | 调 `/embeddings` 产出稠密向量；`Service.embed` 失败自动回退词袋 |
 | 联网代理 | `HIVEGET_AI_PROXY`（或系统 `HTTP_PROXY`/`HTTPS_PROXY`） | 适配中国大陆访问 OpenAI / DeepSeek / 本地 Ollama 等 |
 
-`GET /api/v1/readiness` 实时回显当前生效模式：`clarify.mode ∈ {stub, llm}`、`embedding.mode ∈ {bag-of-words, llm}`。
+`GET /api/v1/readiness` 实时回显当前生效模式：`clarify.mode ∈ {stub, llm}`、`embedding.mode ∈ {bag-of-words, llm}`、`faq.mode ∈ {faq, llm}`。
+
+## 接单方自动报价（AI 能力升级 · B2）
+
+接单方在任务详情页可一键获取「AI 建议报价」：`POST /api/v1/quote`（仅接单方）传入 `task_id`，按 **类目基准价 × 复杂度乘数 × 紧急度乘数 + 历史单均净收入融合** 给出建议锚定价与区间（`min_cents`/`anchor_cents`/`max_cents`），并附 `rationale` 理由清单。金额经 `round10Yuan` 分/元换算（已修复早期 ×100 放大 bug）。接单方可「采纳建议并接单」（传 `provider_quote_cents`），订单落库该报价，详情页展示。需求方预算低于建议下限时提示 `below_estimate`。
+
+## AI 客服应答（AI 能力升级 · B3）
+
+接单 IM 会话中的常见问题自动应答（FAQ bot），**规则优先 + 可选 LLM 兜底**（`internal/faq`），复用 B1 的 `HIVEGET_LLM_API_KEY` 开关：
+
+- **AI 建议回复**：`POST /api/v1/im/{peer}/ai-reply`（需登录）基于入站消息（或对方最近一条消息）生成应答建议，`matched` 时返回 `text`/`intent`/`type`；前端 task.html 聊天面板「🤖 AI 建议回复」一键填入，发送时带 `ai_type="suggest"` 标记「AI 辅助」（真人审核后发出，`is_ai=false`）。
+- **AI 离线自动回复**：用户开启开关（`POST /api/v1/me/ai-auto-reply` `{on}`）后，对发往自己的提问自动生成一条 AI 应答代己回发（`is_ai=true`、`ai_type=faq|llm`），消息体带「🤖 AI 自动回复：」透明显式前缀，**明确标记 AI、不冒充真人**；收件人未开启则不触发（防环路：自动回复本身不走二次钩子）。
+- **规则库**：默认零依赖关键词意图匹配（报价/工期/交付/验收/付款托管/退款/改稿/发票/合规/佣金/私下交易等），命中即返回话术；未命中且配置 LLM 时调模型兜底（失败回退转人工）。
+- **前端**：`web/task.html` 订单页新增 IM 沟通面板（轮询拉取 + 发送 + AI 建议回复 + 自动回复开关），AI 消息以徽标区分（🤖 AI 自动回复 / AI 辅助）。
+- **存储**：`chat_message` 表新增 `is_ai`/`ai_type`，`user` 表新增 `ai_auto_reply`；MySQL 与内存双模式落库。
+- **测试**：`test_b3_faq.py` 端到端 17/17 PASS（readiness 上报 / 建议回复 / 自动回复钩子 / 采纳 suggested / 开关持久化 / 负向对照）。
 
 ## 重要声明
 

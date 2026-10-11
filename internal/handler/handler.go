@@ -174,6 +174,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "clarify":
 		h.handleClarify(w, r, segs)
 		return
+	case "me":
+		h.handleMe(w, r, segs)
+		return
 	case "quote":
 		h.handleQuote(w, r, segs)
 		return
@@ -739,16 +742,30 @@ func (h *Handler) handleIM(w http.ResponseWriter, r *http.Request, segs []string
 			return
 		}
 		var body struct {
-			To   string `json:"to"`
-			Body string `json:"body"`
+			To     string `json:"to"`
+			Body   string `json:"body"`
+			AIType string `json:"ai_type"` // 可选: "suggest" 表示 AI 辅助建议(真人审核后发送, IsAI=false)
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		msg, reason := h.Svc.SendMessage(c.UserID, body.To, body.Body)
+		msg, reason := h.Svc.SendMessage(c.UserID, body.To, body.Body, body.AIType)
 		if msg == nil {
 			h.writeJSON(w, 400, envelope{Code: 400, Msg: reason})
 			return
 		}
 		h.writeJSON(w, 200, envelope{Code: 200, Msg: "已发送", Data: msg})
+		return
+	}
+	if r.Method == http.MethodPost && len(segs) == 5 && segs[4] == "ai-reply" { // AI 建议回复
+		c, ok := h.requireAuth(w, r)
+		if !ok {
+			return
+		}
+		var body struct {
+			Text string `json:"text"` // 可选: 指定入站文本; 缺省取会话中对方最近一条消息
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		reply := h.Svc.AISuggest(c.UserID, segs[3], body.Text)
+		h.writeJSON(w, 200, envelope{Code: 200, Msg: "ok", Data: reply})
 		return
 	}
 	if r.Method == http.MethodGet && len(segs) == 3 { // SSE 实时流(首屏历史 + 实时推送)
@@ -956,12 +973,55 @@ func (h *Handler) handleReadiness(w http.ResponseWriter, r *http.Request) {
 		"storage_mode": stMode,
 		"embedding":    map[string]any{"mode": h.Svc.Embedder.Mode()},
 		"clarify":      map[string]any{"mode": h.Svc.Clarify.Mode()},
+		"faq":          map[string]any{"mode": h.Svc.FAQ.Mode()},
 		"payment":      map[string]any{"mode": pMode, "live": pLive, "missing": pMissing},
 		"kyc":          map[string]any{"mode": kMode, "live": kLive, "missing": kMissing},
 		"icp_filed":    icpFiled,
 		"compliance_gate": gate,
 		"go_live_ready":  goLive,
 	}})
+}
+
+// ---- me (B3 当前用户设置: AI 自动回复开关) ----
+
+// handleMe 处理 /api/v1/me/* 当前用户自身设置。
+//   - POST /api/v1/me/ai-auto-reply  body: {"on": bool}  切换「IM 离线自动回复」开关并持久化。
+//   - GET  /api/v1/me/ai-auto-reply  返回当前开关状态。
+func (h *Handler) handleMe(w http.ResponseWriter, r *http.Request, segs []string) {
+	if len(segs) < 4 {
+		h.writeJSON(w, 404, envelope{Code: 404, Msg: "not found"})
+		return
+	}
+	switch segs[3] {
+	case "ai-auto-reply":
+		c, ok := h.requireAuth(w, r)
+		if !ok {
+			return
+		}
+		if r.Method == http.MethodPost {
+			var body struct {
+				On bool `json:"on"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			u, err := h.Svc.SetAIAutoReply(c.UserID, body.On)
+			if err != nil {
+				h.writeJSON(w, 400, envelope{Code: 400, Msg: err.Error()})
+				return
+			}
+			h.writeJSON(w, 200, envelope{Code: 200, Msg: "已更新", Data: u})
+			return
+		}
+		if r.Method == http.MethodGet {
+			u, ok := h.Svc.Store.GetUser(c.UserID)
+			if !ok {
+				h.writeJSON(w, 404, envelope{Code: 404, Msg: "用户不存在"})
+				return
+			}
+			h.writeJSON(w, 200, envelope{Code: 200, Msg: "ok", Data: map[string]bool{"ai_auto_reply": u.AIAutoReply}})
+			return
+		}
+	}
+	h.writeJSON(w, 404, envelope{Code: 404, Msg: "not found"})
 }
 
 // ---- quote (B2 接单方自动报价) ----

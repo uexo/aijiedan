@@ -18,6 +18,7 @@ import (
 	"hiveget/internal/auth"
 	"hiveget/internal/clarify"
 	"hiveget/internal/compliance"
+	"hiveget/internal/faq"
 	"hiveget/internal/im"
 	"hiveget/internal/kyc"
 	"hiveget/internal/match"
@@ -39,10 +40,11 @@ type Service struct {
 	Clarify    *clarify.Manager // P1-2 AI 澄清会话管理
 	Notifier   *notify.Service  // P2-3 通知中心
 	Embedder   match.Embedder   // M2 可插拔语义向量(词袋保底/可选LLM)
+	FAQ        *faq.Engine      // B3 AI 客服应答引擎(规则优先 + 可选 LLM 兜底)
 }
 
-func New(st store.Store, comp *compliance.Service, pay *payment.Service, kycSvc *kyc.Service, imSvc *im.Service, cl *clarify.Manager, notifier *notify.Service) *Service {
-	return &Service{Store: st, Compliance: comp, Payment: pay, KYC: kycSvc, IM: imSvc, Clarify: cl, Notifier: notifier, Embedder: match.NewEmbedder()}
+func New(st store.Store, comp *compliance.Service, pay *payment.Service, kycSvc *kyc.Service, imSvc *im.Service, cl *clarify.Manager, notifier *notify.Service, faqEng *faq.Engine) *Service {
+	return &Service{Store: st, Compliance: comp, Payment: pay, KYC: kycSvc, IM: imSvc, Clarify: cl, Notifier: notifier, Embedder: match.NewEmbedder(), FAQ: faqEng}
 }
 
 // PublishResult 发单结果
@@ -703,9 +705,72 @@ func (s *Service) Settle(o *model.Order) *SettleResult {
 }
 
 // SendMessage 发送IM消息(经内容审核; 拦截时返回 (nil, reason))。
-func (s *Service) SendMessage(from, to, body string) (*model.ChatMessage, string) {
-	return s.IM.Send(from, to, body)
+// SendMessage 发送 IM 消息。
+// aiType: "" 普通人工消息; model.AITypeSuggest 由真人审核后采纳的 AI 建议回复(仍 IsAI=false, 仅标注辅助)。
+// 发送成功后若收件人(to)开启了「AI 自动回复」, 自动生成一条 AI 应答(IsAI=true)回给发件人(不触发二次自动回复, 防环路)。
+func (s *Service) SendMessage(from, to, body, aiType string) (*model.ChatMessage, string) {
+	isAI := false // 人工发送(含建议采纳)始终 IsAI=false
+	msg, reason := s.IM.SendWithFlags(from, to, body, isAI, aiType)
+	if msg == nil {
+		return nil, reason
+	}
+	// B3 自动回复钩子: 仅当收件人开启且本消息为人类发送(非 AI 代发)
+	if aiType == "" || aiType == model.AITypeSuggest {
+		s.tryAutoReply(from, to, body)
+	}
+	return msg, ""
 }
+
+// tryAutoReply 若 to 开启了 AIAutoReply, 针对入站消息 body 生成一条 AI 应答代 to 回给 from。
+func (s *Service) tryAutoReply(from, to, body string) {
+	if s.FAQ == nil {
+		return
+	}
+	peer, ok := s.Store.GetUser(to)
+	if !ok || !peer.AIAutoReply {
+		return
+	}
+	reply := s.FAQ.Suggest(body, "")
+	if !reply.Matched {
+		return
+	}
+	// 透明显式前缀(防冒充真人), 由收件人身份代发, 标记 IsAI=true
+	autoText := autoReplyMarker + reply.Text
+	// 直接用 IM.SendAI 落库推送, 不走 SendMessage 以免递归触发
+	s.IM.SendAI(to, from, autoText, reply.Type)
+}
+
+// AISuggest 为当前会话的入站消息生成 AI 应答建议(供前端「🤖 AI 建议回复」一键填充)。
+// 若传入 text 则用 text; 否则取与 peer 会话中对方最近一条消息作为上下文。
+func (s *Service) AISuggest(uid, peer, text string) faq.Reply {
+	if s.FAQ == nil {
+		return faq.Reply{Intent: "none"}
+	}
+	if strings.TrimSpace(text) == "" {
+		msgs := s.IM.GetMessages(uid, peer)
+		for i := len(msgs) - 1; i >= 0; i-- {
+			if msgs[i].FromID == peer && strings.TrimSpace(msgs[i].Body) != "" {
+				text = msgs[i].Body
+				break
+			}
+		}
+	}
+	return s.FAQ.Suggest(text, "")
+}
+
+// SetAIAutoReply 切换当前用户的「IM 离线自动回复」开关并持久化。
+func (s *Service) SetAIAutoReply(uid string, on bool) (*model.User, error) {
+	u, ok := s.Store.GetUser(uid)
+	if !ok {
+		return nil, fmt.Errorf("用户不存在")
+	}
+	u.AIAutoReply = on
+	s.Store.PutUser(u)
+	return u, nil
+}
+
+// autoReplyMarker AI 自动回复的透明显式前缀, 明确告知对端这是 AI 代发而非真人。
+const autoReplyMarker = "🤖 AI 自动回复："
 
 // ListConversations 当前用户的会话列表(含未读计数)。
 func (s *Service) ListConversations(uid string) []*model.Conversation {

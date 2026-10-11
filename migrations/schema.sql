@@ -107,6 +107,10 @@ ALTER TABLE `order`
 ALTER TABLE `order`
   ADD COLUMN `provider_quote_cents` BIGINT NOT NULL DEFAULT 0;
 
+-- B3 AI 客服应答: user 表存储是否开启 IM 离线自动回复
+ALTER TABLE `user`
+  ADD COLUMN `ai_auto_reply` TINYINT(1) NOT NULL DEFAULT 0;
+
 -- B方案(验收清单比对): task 表存储结构化需求清单
 ALTER TABLE `task`
   ADD COLUMN `items_json`  JSON  NULL;
@@ -214,6 +218,12 @@ CREATE TABLE `chat_message` (
   KEY `idx_conv` (`conv_id`),
   KEY `idx_conv_time` (`conv_id`,`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- B3 AI 客服应答: chat_message 表记录消息是否由 AI 代发及 AI 类型(faq/llm/suggest)。
+-- 必须置于 CREATE TABLE chat_message 之后(迁移顺序敏感)。
+ALTER TABLE `chat_message`
+  ADD COLUMN `is_ai`   TINYINT(1)  NOT NULL DEFAULT 0,
+  ADD COLUMN `ai_type` VARCHAR(16) NOT NULL DEFAULT '';
 
 -- P2-3 通知中心(站内信/邮件/短信; 平台→用户单向, 落库持久化)
 CREATE TABLE `notification` (

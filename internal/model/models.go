@@ -30,6 +30,7 @@ type User struct {
 	Skills       []string `json:"skills"`       // 接单方技能标签
 	CreditScore  int      `json:"credit_score"` // 可携带信用分 0-100
 	TaxBound     bool     `json:"tax_bound"`    // 是否已绑定税源地(接单方结算合规, 个体入驻)
+	AIAutoReply  bool     `json:"ai_auto_reply"` // 是否开启 IM 离线自动回复(AI 客服, 明确标记 AI, 不冒充真人)
 	CreatedAt    int64    `json:"created_at"`
 }
 
@@ -329,6 +330,13 @@ const (
 	MsgBlocked   = "blocked"   // 被拦截(命中审核规则, 不投递)
 )
 
+// AI 消息类型: 区分 AI 自动回复与人工采纳的 AI 建议
+const (
+	AITypeFAQ    = "faq"    // 规则意图匹配(默认, 零依赖)
+	AITypeLLM    = "llm"    // LLM 兜底(配置 HIVEGET_FAQ_LLM_API_KEY 时启用)
+	AITypeSuggest = "suggest" // AI 建议回复, 由真人审核后手动发送(辅助而非代发)
+)
+
 // ChatMessage IM 单条消息(持久化落库, 重启不丢)
 type ChatMessage struct {
 	ID        string `json:"id"`
@@ -337,6 +345,8 @@ type ChatMessage struct {
 	ToID      string `json:"to_id"`
 	Body      string `json:"body"`
 	Status    string `json:"status"`
+	IsAI      bool   `json:"is_ai"`   // 是否由 AI 代发(自动回复); 人工采纳的建议回复为 false
+	AIType    string `json:"ai_type"` // AI 类型: faq / llm / suggest(空=纯人工)
 	CreatedAt int64  `json:"created_at"`
 }
 

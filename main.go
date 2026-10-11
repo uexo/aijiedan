@@ -12,6 +12,7 @@ import (
 
 	"hiveget/internal/clarify"
 	"hiveget/internal/compliance"
+	"hiveget/internal/faq"
 	"hiveget/internal/handler"
 	"hiveget/internal/im"
 	"hiveget/internal/kyc"
@@ -85,7 +86,8 @@ func main() {
 		smsProv = notify.NewStubSMSProvider()
 	}
 	notifySvc := notify.NewService(st, emailProv, smsProv)
-	svc := service.New(st, comp, pay, kycSvc, imSvc, cl, notifySvc)
+	faqEng := faq.NewEngine() // B3 AI 客服应答(规则优先 + 可选 LLM 兜底, 复用 B1 的 HIVEGET_LLM_API_KEY 开关)
+	svc := service.New(st, comp, pay, kycSvc, imSvc, cl, notifySvc, faqEng)
 
 	// 预置一个示例需求单, 便于开箱演示「撮合 → 接单」链路。
 	seedTask(st)

@@ -97,8 +97,29 @@ func convID(a, b string) string {
 	return b + ":" + a
 }
 
-// Send 发送消息。返回 (消息, 拦截原因)。审核拦截或参数非法时 msg=nil 且 reason 非空。
+// Send 人类发送消息(默认 IsAI=false, aiType="")。
 func (s *Service) Send(from, to, body string) (*model.ChatMessage, string) {
+	return s.SendWithFlags(from, to, body, false, "")
+}
+
+// SendWithFlags 发送消息并指定 AI 标记(供 service 层传入 aiType, 如 "suggest")。
+func (s *Service) SendWithFlags(from, to, body string, isAI bool, aiType string) (*model.ChatMessage, string) {
+	msg, reason := s.sendRaw(from, to, body, isAI, aiType)
+	if msg == nil {
+		return nil, reason
+	}
+	return msg, ""
+}
+
+// SendAI 代发一条 AI 消息(IsAI=true), 不经过自动回复钩子, 用于「AI 自动回复」。
+// 失败(参数非法/被拦截)返回 nil, 调用方静默跳过。
+func (s *Service) SendAI(from, to, body, aiType string) *model.ChatMessage {
+	msg, _ := s.sendRaw(from, to, body, true, aiType)
+	return msg
+}
+
+// sendRaw 消息底层构造: 审核 → 落库 → 更会话 → 推 SSE → 调 Provider(异步)。
+func (s *Service) sendRaw(from, to, body string, isAI bool, aiType string) (*model.ChatMessage, string) {
 	if from == "" || to == "" || from == to {
 		return nil, "收发方无效"
 	}
@@ -115,6 +136,8 @@ func (s *Service) Send(from, to, body string) (*model.ChatMessage, string) {
 		ToID:      to,
 		Body:      body,
 		Status:    model.MsgNormal,
+		IsAI:      isAI,
+		AIType:    aiType,
 		CreatedAt: model.Now(),
 	}
 	s.st.SaveMessage(msg)

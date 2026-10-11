@@ -110,10 +110,10 @@ func (s *mysqlStore) NextID(prefix string) string {
 func (s *mysqlStore) GetUser(id string) (*model.User, bool) {
 	u := &model.User{}
 	var skills []byte
-	var kyc, tax int
+	var kyc, tax, aiReply int
 	var account, phash, realName, phone sql.NullString
-	err := s.db.QueryRow("SELECT id,account,password_hash,real_name,phone,name,role,kyc_verified,skills,credit_score,tax_bound,created_at FROM `user` WHERE id=? AND deleted_at IS NULL", id).
-		Scan(&u.ID, &account, &phash, &realName, &phone, &u.Name, &u.Role, &kyc, &skills, &u.CreditScore, &tax, &u.CreatedAt)
+	err := s.db.QueryRow("SELECT id,account,password_hash,real_name,phone,name,role,kyc_verified,skills,credit_score,tax_bound,ai_auto_reply,created_at FROM `user` WHERE id=? AND deleted_at IS NULL", id).
+		Scan(&u.ID, &account, &phash, &realName, &phone, &u.Name, &u.Role, &kyc, &skills, &u.CreditScore, &tax, &aiReply, &u.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, false
 	}
@@ -126,6 +126,7 @@ func (s *mysqlStore) GetUser(id string) (*model.User, bool) {
 	u.Phone = phone.String
 	u.KYCVerified = kyc == 1
 	u.TaxBound = tax == 1
+	u.AIAutoReply = aiReply == 1
 	if len(skills) > 0 {
 		_ = json.Unmarshal(skills, &u.Skills)
 	}
@@ -135,10 +136,10 @@ func (s *mysqlStore) GetUser(id string) (*model.User, bool) {
 func (s *mysqlStore) GetUserByAccount(account string) (*model.User, bool) {
 	u := &model.User{}
 	var skills []byte
-	var kyc, tax int
+	var kyc, tax, aiReply int
 	var phash, realName, phone sql.NullString
-	err := s.db.QueryRow("SELECT id,account,password_hash,real_name,phone,name,role,kyc_verified,skills,credit_score,tax_bound,created_at FROM `user` WHERE account=? AND deleted_at IS NULL", account).
-		Scan(&u.ID, &u.Account, &phash, &realName, &phone, &u.Name, &u.Role, &kyc, &skills, &u.CreditScore, &tax, &u.CreatedAt)
+	err := s.db.QueryRow("SELECT id,account,password_hash,real_name,phone,name,role,kyc_verified,skills,credit_score,tax_bound,ai_auto_reply,created_at FROM `user` WHERE account=? AND deleted_at IS NULL", account).
+		Scan(&u.ID, &u.Account, &phash, &realName, &phone, &u.Name, &u.Role, &kyc, &skills, &u.CreditScore, &tax, &aiReply, &u.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, false
 	}
@@ -150,6 +151,7 @@ func (s *mysqlStore) GetUserByAccount(account string) (*model.User, bool) {
 	u.Phone = phone.String
 	u.KYCVerified = kyc == 1
 	u.TaxBound = tax == 1
+	u.AIAutoReply = aiReply == 1
 	if len(skills) > 0 {
 		_ = json.Unmarshal(skills, &u.Skills)
 	}
@@ -158,14 +160,14 @@ func (s *mysqlStore) GetUserByAccount(account string) (*model.User, bool) {
 
 func (s *mysqlStore) PutUser(u *model.User) {
 	jb, _ := json.Marshal(u.Skills)
-	_, _ = s.db.Exec(`INSERT INTO user (id,account,password_hash,real_name,phone,name,role,kyc_verified,skills,credit_score,tax_bound,created_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-		ON DUPLICATE KEY UPDATE account=VALUES(account),password_hash=VALUES(password_hash),real_name=VALUES(real_name),phone=VALUES(phone),name=VALUES(name),role=VALUES(role),kyc_verified=VALUES(kyc_verified),skills=VALUES(skills),credit_score=VALUES(credit_score),tax_bound=VALUES(tax_bound)`,
-		u.ID, nullStr(u.Account), nullStr(u.PasswordHash), nullStr(u.RealName), nullStr(u.Phone), u.Name, u.Role, boolToInt(u.KYCVerified), jb, u.CreditScore, boolToInt(u.TaxBound), u.CreatedAt)
+	_, _ = s.db.Exec(`INSERT INTO user (id,account,password_hash,real_name,phone,name,role,kyc_verified,skills,credit_score,tax_bound,ai_auto_reply,created_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+		ON DUPLICATE KEY UPDATE account=VALUES(account),password_hash=VALUES(password_hash),real_name=VALUES(real_name),phone=VALUES(phone),name=VALUES(name),role=VALUES(role),kyc_verified=VALUES(kyc_verified),skills=VALUES(skills),credit_score=VALUES(credit_score),tax_bound=VALUES(tax_bound),ai_auto_reply=VALUES(ai_auto_reply)`,
+		u.ID, nullStr(u.Account), nullStr(u.PasswordHash), nullStr(u.RealName), nullStr(u.Phone), u.Name, u.Role, boolToInt(u.KYCVerified), jb, u.CreditScore, boolToInt(u.TaxBound), boolToInt(u.AIAutoReply), u.CreatedAt)
 }
 
 func (s *mysqlStore) ListProviders() []*model.User {
-	rows, err := s.db.Query("SELECT id,account,password_hash,real_name,phone,name,role,kyc_verified,skills,credit_score,tax_bound,created_at FROM `user` WHERE role=? AND deleted_at IS NULL", model.RoleProvider)
+	rows, err := s.db.Query("SELECT id,account,password_hash,real_name,phone,name,role,kyc_verified,skills,credit_score,tax_bound,ai_auto_reply,created_at FROM `user` WHERE role=? AND deleted_at IS NULL", model.RoleProvider)
 	if err != nil {
 		return nil
 	}
@@ -174,9 +176,9 @@ func (s *mysqlStore) ListProviders() []*model.User {
 	for rows.Next() {
 		u := &model.User{}
 		var skills []byte
-		var kyc, tax int
+		var kyc, tax, aiReply int
 		var account, phash, realName, phone sql.NullString
-		if err := rows.Scan(&u.ID, &account, &phash, &realName, &phone, &u.Name, &u.Role, &kyc, &skills, &u.CreditScore, &tax, &u.CreatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &account, &phash, &realName, &phone, &u.Name, &u.Role, &kyc, &skills, &u.CreditScore, &tax, &aiReply, &u.CreatedAt); err != nil {
 			return nil
 		}
 		u.Account = account.String
@@ -185,6 +187,7 @@ func (s *mysqlStore) ListProviders() []*model.User {
 		u.Phone = phone.String
 		u.KYCVerified = kyc == 1
 		u.TaxBound = tax == 1
+		u.AIAutoReply = aiReply == 1
 		if len(skills) > 0 {
 			_ = json.Unmarshal(skills, &u.Skills)
 		}
@@ -195,7 +198,7 @@ func (s *mysqlStore) ListProviders() []*model.User {
 
 // ListUsers 返回全部用户(含需求方/接单方/运营), 供运营看板聚合。
 func (s *mysqlStore) ListUsers() []*model.User {
-	rows, err := s.db.Query("SELECT id,account,password_hash,real_name,phone,name,role,kyc_verified,skills,credit_score,tax_bound,created_at FROM `user` WHERE deleted_at IS NULL")
+	rows, err := s.db.Query("SELECT id,account,password_hash,real_name,phone,name,role,kyc_verified,skills,credit_score,tax_bound,ai_auto_reply,created_at FROM `user` WHERE deleted_at IS NULL")
 	if err != nil {
 		return nil
 	}
@@ -204,9 +207,9 @@ func (s *mysqlStore) ListUsers() []*model.User {
 	for rows.Next() {
 		u := &model.User{}
 		var skills []byte
-		var kyc, tax int
+		var kyc, tax, aiReply int
 		var account, phash, realName, phone sql.NullString
-		if err := rows.Scan(&u.ID, &account, &phash, &realName, &phone, &u.Name, &u.Role, &kyc, &skills, &u.CreditScore, &tax, &u.CreatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &account, &phash, &realName, &phone, &u.Name, &u.Role, &kyc, &skills, &u.CreditScore, &tax, &aiReply, &u.CreatedAt); err != nil {
 			return nil
 		}
 		u.Account = account.String
@@ -215,6 +218,7 @@ func (s *mysqlStore) ListUsers() []*model.User {
 		u.Phone = phone.String
 		u.KYCVerified = kyc == 1
 		u.TaxBound = tax == 1
+		u.AIAutoReply = aiReply == 1
 		if len(skills) > 0 {
 			_ = json.Unmarshal(skills, &u.Skills)
 		}
@@ -860,14 +864,14 @@ func (s *mysqlStore) SaveMessage(m *model.ChatMessage) {
 	if m.CreatedAt == 0 {
 		m.CreatedAt = model.Now()
 	}
-	_, _ = s.db.Exec(`INSERT INTO chat_message (id,conv_id,from_id,to_id,body,status,created_at)
-		VALUES (?,?,?,?,?,?,?)
-		ON DUPLICATE KEY UPDATE body=VALUES(body),status=VALUES(status)`,
-		m.ID, m.ConvID, m.FromID, m.ToID, m.Body, m.Status, m.CreatedAt)
+	_, _ = s.db.Exec(`INSERT INTO chat_message (id,conv_id,from_id,to_id,body,status,is_ai,ai_type,created_at)
+		VALUES (?,?,?,?,?,?,?,?,?)
+		ON DUPLICATE KEY UPDATE body=VALUES(body),status=VALUES(status),is_ai=VALUES(is_ai),ai_type=VALUES(ai_type)`,
+		m.ID, m.ConvID, m.FromID, m.ToID, m.Body, m.Status, boolToInt(m.IsAI), m.AIType, m.CreatedAt)
 }
 
 func (s *mysqlStore) ListMessages(convID string) []*model.ChatMessage {
-	rows, err := s.db.Query("SELECT id,conv_id,from_id,to_id,body,status,created_at FROM chat_message WHERE conv_id=? ORDER BY created_at ASC", convID)
+	rows, err := s.db.Query("SELECT id,conv_id,from_id,to_id,body,status,is_ai,ai_type,created_at FROM chat_message WHERE conv_id=? ORDER BY created_at ASC", convID)
 	if err != nil {
 		return []*model.ChatMessage{}
 	}
@@ -875,9 +879,11 @@ func (s *mysqlStore) ListMessages(convID string) []*model.ChatMessage {
 	out := make([]*model.ChatMessage, 0)
 	for rows.Next() {
 		m := &model.ChatMessage{}
-		if err := rows.Scan(&m.ID, &m.ConvID, &m.FromID, &m.ToID, &m.Body, &m.Status, &m.CreatedAt); err != nil {
+		var isAI int
+		if err := rows.Scan(&m.ID, &m.ConvID, &m.FromID, &m.ToID, &m.Body, &m.Status, &isAI, &m.AIType, &m.CreatedAt); err != nil {
 			return []*model.ChatMessage{}
 		}
+		m.IsAI = isAI == 1
 		out = append(out, m)
 	}
 	return out
