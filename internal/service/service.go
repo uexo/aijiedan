@@ -1223,7 +1223,10 @@ func (s *Service) RequestWithdraw(uid string, amountCents int64) *WithdrawResult
 		return &WithdrawResult{Block: &compliance.Block{Reason: "提现金额需为正"}}
 	}
 	w := s.Store.GetOrCreateWallet(uid)
-	if w.BalanceCents < amountCents {
+	// 可提现额 = 总资产 - 已冻结(提现/托管预占)。P2-1 经济模型验证发现:
+	// 早期只校验 balance 且申请时不扣减, 同一笔钱可被重复申请提现(冻结额可达余额数倍)。
+	available := w.BalanceCents - w.FrozenCents
+	if available < amountCents {
 		return &WithdrawResult{Block: &compliance.Block{Reason: "可提现余额不足"}}
 	}
 	w.FrozenCents += amountCents // 冻结预占(未真正出账)
