@@ -53,6 +53,13 @@ type Task struct {
 	Spec        string      `json:"spec"`     // 需求描述(自由文本摘要, 用于匹配召回)
 	SpecObj     TaskSpec    `json:"spec_obj"` // 结构化规格(由 AI澄清/规则兜底补齐)
 	Clarifications []string `json:"clarifications"` // 规则澄清问题清单(缺必填字段时生成)
+	// C1 AI 需求翻译/分析(C1): 需求方侧「AI 需求翻译」产出供接单方直接读懂的清晰需求书;
+	// 接单方侧「AI 需求分析」产出核心目标/交付物/验收要点/易误解点/需确认项, 防止理解偏差。
+	// 两者均按需生成并缓存落库; TranslationMode/AnalysisMode 标记 rule(规则保底) 或 llm(LLM 润色)。
+	Translation     string `json:"translation"`      // AI 需求翻译正文(供接单方阅读, 无歧义需求书)
+	TranslationMode string `json:"translation_mode"` // rule | llm(空=未生成)
+	AnalysisJSON    string `json:"analysis_json"`    // AI 需求分析(内部 JSON, 由 reqai.Analysis 序列化)
+	AnalysisMode    string `json:"analysis_mode"`    // rule | llm(空=未生成)
 	Status      TaskStatus  `json:"status"`
 	OrgID       string      `json:"org_id,omitempty"` // 组织级发包归属(空=个人)
 	CreatedAt   int64       `json:"created_at"`

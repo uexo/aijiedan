@@ -231,21 +231,23 @@ func (s *mysqlStore) ListUsers() []*model.User {
 func (s *mysqlStore) PutTask(t *model.Task) {
 	clar, _ := json.Marshal(t.Clarifications)
 	items, _ := json.Marshal(t.SpecObj.Items)
-	_, _ = s.db.Exec(`INSERT INTO task (id,requester_id,org_id,title,category,budget_cents,spec,deliverables,required_format,deadline_at,style_ref,samples,clarifications,items_json,status,created_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-		ON DUPLICATE KEY UPDATE requester_id=VALUES(requester_id),title=VALUES(title),category=VALUES(category),budget_cents=VALUES(budget_cents),spec=VALUES(spec),deliverables=VALUES(deliverables),required_format=VALUES(required_format),deadline_at=VALUES(deadline_at),style_ref=VALUES(style_ref),samples=VALUES(samples),clarifications=VALUES(clarifications),items_json=VALUES(items_json),status=VALUES(status),org_id=VALUES(org_id)`,
+	analysis := nullStr(t.AnalysisJSON)
+	_, _ = s.db.Exec(`INSERT INTO task (id,requester_id,org_id,title,category,budget_cents,spec,deliverables,required_format,deadline_at,style_ref,samples,clarifications,items_json,translation,translation_mode,analysis_json,analysis_mode,status,created_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		ON DUPLICATE KEY UPDATE requester_id=VALUES(requester_id),title=VALUES(title),category=VALUES(category),budget_cents=VALUES(budget_cents),spec=VALUES(spec),deliverables=VALUES(deliverables),required_format=VALUES(required_format),deadline_at=VALUES(deadline_at),style_ref=VALUES(style_ref),samples=VALUES(samples),clarifications=VALUES(clarifications),items_json=VALUES(items_json),translation=VALUES(translation),translation_mode=VALUES(translation_mode),analysis_json=VALUES(analysis_json),analysis_mode=VALUES(analysis_mode),status=VALUES(status),org_id=VALUES(org_id)`,
 		t.ID, t.RequesterID, t.OrgID, t.Title, t.Category, t.BudgetCents, t.Spec,
 		t.SpecObj.Deliverables, t.SpecObj.RequiredFormat, t.SpecObj.DeadlineAt, t.SpecObj.StyleRef, t.SpecObj.Samples,
-		clar, nullStr(string(items)), t.Status, t.CreatedAt)
+		clar, nullStr(string(items)), nullStr(t.Translation), t.TranslationMode, analysis, t.AnalysisMode, t.Status, t.CreatedAt)
 }
 func (s *mysqlStore) GetTask(id string) (*model.Task, bool) {
 	t := &model.Task{}
-	var clar, items []byte
-	err := s.db.QueryRow("SELECT id,requester_id,org_id,title,category,budget_cents,spec,deliverables,required_format,deadline_at,style_ref,samples,clarifications,items_json,status,created_at FROM task WHERE id=? AND deleted_at IS NULL", id).
+	var clar, items, analysis []byte
+	var translation, translationMode, analysisMode sql.NullString
+	err := s.db.QueryRow("SELECT "+taskCols+" FROM task WHERE id=? AND deleted_at IS NULL", id).
 		Scan(&t.ID, &t.RequesterID, &t.OrgID, &t.Title, &t.Category, &t.BudgetCents, &t.Spec,
 			&t.SpecObj.Deliverables, &t.SpecObj.RequiredFormat, &t.SpecObj.DeadlineAt, &t.SpecObj.StyleRef, &t.SpecObj.Samples,
-			&clar, &items, &t.Status, &t.CreatedAt)
-	if err == sql.ErrNoRows {
+			&clar, &items, &translation, &translationMode, &analysis, &analysisMode, &t.Status, &t.CreatedAt)
+	if err != nil {
 		return nil, false
 	}
 	if err != nil {
@@ -257,10 +259,16 @@ func (s *mysqlStore) GetTask(id string) (*model.Task, bool) {
 	if len(items) > 0 {
 		_ = json.Unmarshal(items, &t.SpecObj.Items)
 	}
+	t.Translation = translation.String
+	t.TranslationMode = translationMode.String
+	if len(analysis) > 0 {
+		t.AnalysisJSON = string(analysis)
+	}
+	t.AnalysisMode = analysisMode.String
 	return t, true
 }
 func (s *mysqlStore) ListOpenTasks() []*model.Task {
-	rows, err := s.db.Query("SELECT id,requester_id,org_id,title,category,budget_cents,spec,deliverables,required_format,deadline_at,style_ref,samples,clarifications,items_json,status,created_at FROM task WHERE status=? AND deleted_at IS NULL", model.TaskOpen)
+	rows, err := s.db.Query("SELECT "+taskCols+" FROM task WHERE status=? AND deleted_at IS NULL", model.TaskOpen)
 	if err != nil {
 		return nil
 	}
@@ -268,10 +276,11 @@ func (s *mysqlStore) ListOpenTasks() []*model.Task {
 	var out []*model.Task
 	for rows.Next() {
 		t := &model.Task{}
-		var clar, items []byte
+		var clar, items, analysis []byte
+		var translation, translationMode, analysisMode sql.NullString
 		if err := rows.Scan(&t.ID, &t.RequesterID, &t.OrgID, &t.Title, &t.Category, &t.BudgetCents, &t.Spec,
 			&t.SpecObj.Deliverables, &t.SpecObj.RequiredFormat, &t.SpecObj.DeadlineAt, &t.SpecObj.StyleRef, &t.SpecObj.Samples,
-			&clar, &items, &t.Status, &t.CreatedAt); err != nil {
+			&clar, &items, &translation, &translationMode, &analysis, &analysisMode, &t.Status, &t.CreatedAt); err != nil {
 			return nil
 		}
 		if len(clar) > 0 {
@@ -280,6 +289,12 @@ func (s *mysqlStore) ListOpenTasks() []*model.Task {
 		if len(items) > 0 {
 			_ = json.Unmarshal(items, &t.SpecObj.Items)
 		}
+		t.Translation = translation.String
+		t.TranslationMode = translationMode.String
+		if len(analysis) > 0 {
+			t.AnalysisJSON = string(analysis)
+		}
+		t.AnalysisMode = analysisMode.String
 		out = append(out, t)
 	}
 	return out
@@ -287,7 +302,7 @@ func (s *mysqlStore) ListOpenTasks() []*model.Task {
 
 // ListTasks 返回全部任务(不限状态), 供运营看板聚合。
 func (s *mysqlStore) ListTasks() []*model.Task {
-	rows, err := s.db.Query("SELECT id,requester_id,org_id,title,category,budget_cents,spec,deliverables,required_format,deadline_at,style_ref,samples,clarifications,items_json,status,created_at FROM task WHERE deleted_at IS NULL")
+	rows, err := s.db.Query("SELECT " + taskCols + " FROM task WHERE deleted_at IS NULL")
 	if err != nil {
 		return nil
 	}
@@ -295,10 +310,11 @@ func (s *mysqlStore) ListTasks() []*model.Task {
 	var out []*model.Task
 	for rows.Next() {
 		t := &model.Task{}
-		var clar, items []byte
+		var clar, items, analysis []byte
+		var translation, translationMode, analysisMode sql.NullString
 		if err := rows.Scan(&t.ID, &t.RequesterID, &t.OrgID, &t.Title, &t.Category, &t.BudgetCents, &t.Spec,
 			&t.SpecObj.Deliverables, &t.SpecObj.RequiredFormat, &t.SpecObj.DeadlineAt, &t.SpecObj.StyleRef, &t.SpecObj.Samples,
-			&clar, &items, &t.Status, &t.CreatedAt); err != nil {
+			&clar, &items, &translation, &translationMode, &analysis, &analysisMode, &t.Status, &t.CreatedAt); err != nil {
 			return nil
 		}
 		if len(clar) > 0 {
@@ -307,6 +323,12 @@ func (s *mysqlStore) ListTasks() []*model.Task {
 		if len(items) > 0 {
 			_ = json.Unmarshal(items, &t.SpecObj.Items)
 		}
+		t.Translation = translation.String
+		t.TranslationMode = translationMode.String
+		if len(analysis) > 0 {
+			t.AnalysisJSON = string(analysis)
+		}
+		t.AnalysisMode = analysisMode.String
 		out = append(out, t)
 	}
 	return out
@@ -314,7 +336,7 @@ func (s *mysqlStore) ListTasks() []*model.Task {
 
 // SearchTasks MySQL 实现: 参数化动态 WHERE + 白名单排序。
 func (s *mysqlStore) SearchTasks(f TaskFilter) []*model.Task {
-	const cols = "id,requester_id,org_id,title,category,budget_cents,spec,deliverables,required_format,deadline_at,style_ref,samples,clarifications,status,created_at"
+	const cols = taskCols
 	var where []string
 	var args []interface{}
 	where = append(where, "deleted_at IS NULL")
@@ -375,15 +397,25 @@ func (s *mysqlStore) SearchTasks(f TaskFilter) []*model.Task {
 	var out []*model.Task
 	for rows.Next() {
 		t := &model.Task{}
-		var clar []byte
+		var clar, items, analysis []byte
+		var translation, translationMode, analysisMode sql.NullString
 		if err := rows.Scan(&t.ID, &t.RequesterID, &t.OrgID, &t.Title, &t.Category, &t.BudgetCents, &t.Spec,
 			&t.SpecObj.Deliverables, &t.SpecObj.RequiredFormat, &t.SpecObj.DeadlineAt, &t.SpecObj.StyleRef, &t.SpecObj.Samples,
-			&clar, &t.Status, &t.CreatedAt); err != nil {
+			&clar, &items, &translation, &translationMode, &analysis, &analysisMode, &t.Status, &t.CreatedAt); err != nil {
 			return nil
 		}
 		if len(clar) > 0 {
 			_ = json.Unmarshal(clar, &t.Clarifications)
 		}
+		if len(items) > 0 {
+			_ = json.Unmarshal(items, &t.SpecObj.Items)
+		}
+		t.Translation = translation.String
+		t.TranslationMode = translationMode.String
+		if len(analysis) > 0 {
+			t.AnalysisJSON = string(analysis)
+		}
+		t.AnalysisMode = analysisMode.String
 		out = append(out, t)
 	}
 	return out
@@ -476,19 +508,29 @@ func scanOrder(o *model.Order, row interface{ Scan(...interface{}) error }) erro
 }
 
 // taskCols SELECT 列(顺序须与 scanTask 一致)
-const taskCols = "id,requester_id,org_id,title,category,budget_cents,spec,deliverables,required_format,deadline_at,style_ref,samples,clarifications,status,created_at"
+const taskCols = "id,requester_id,org_id,title,category,budget_cents,spec,deliverables,required_format,deadline_at,style_ref,samples,clarifications,items_json,translation,translation_mode,analysis_json,analysis_mode,status,created_at"
 
 // scanTask 把一行扫描进 *model.Task(列顺序见 taskCols)。row 满足 sql.Row/sql.Rows 的 Scan 接口。
 func scanTask(t *model.Task, row interface{ Scan(...interface{}) error }) error {
-	var clar []byte
+	var clar, items, analysis []byte
+	var translation, translationMode, analysisMode sql.NullString
 	if err := row.Scan(&t.ID, &t.RequesterID, &t.OrgID, &t.Title, &t.Category, &t.BudgetCents, &t.Spec,
 		&t.SpecObj.Deliverables, &t.SpecObj.RequiredFormat, &t.SpecObj.DeadlineAt, &t.SpecObj.StyleRef, &t.SpecObj.Samples,
-		&clar, &t.Status, &t.CreatedAt); err != nil {
+		&clar, &items, &translation, &translationMode, &analysis, &analysisMode, &t.Status, &t.CreatedAt); err != nil {
 		return err
 	}
 	if len(clar) > 0 {
 		_ = json.Unmarshal(clar, &t.Clarifications)
 	}
+	if len(items) > 0 {
+		_ = json.Unmarshal(items, &t.SpecObj.Items)
+	}
+	t.Translation = translation.String
+	t.TranslationMode = translationMode.String
+	if len(analysis) > 0 {
+		t.AnalysisJSON = string(analysis)
+	}
+	t.AnalysisMode = analysisMode.String
 	return nil
 }
 

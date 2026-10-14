@@ -81,6 +81,17 @@
   .chat-input .row2{display:flex;gap:8px;justify-content:flex-end}
   .btn.ai-suggest{border-color:var(--color-accent);color:var(--color-accent)}
   .chat-hint{font-size:.76rem;color:var(--color-accent);font-weight:600;min-height:18px;margin-bottom:2px}
+  /* C1 AI 需求翻译 / 需求分析 面板 */
+  .ai-doc{white-space:pre-wrap;word-break:break-word;font-size:.9rem;line-height:1.65;background:var(--glass-bg-strong);border:1px solid var(--color-border);border-radius:10px;padding:12px 14px}
+  .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .tag{font-size:.72rem;background:rgba(99,102,241,.14);color:var(--color-primary);border-radius:999px;padding:2px 10px}
+  .status.llm{background:var(--color-accent);color:#fff;font-size:.68rem;padding:1px 8px;border-radius:999px;margin-left:6px}
+  .an-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .an-sec{background:var(--glass-bg-strong);border:1px solid var(--color-border);border-radius:10px;padding:10px 12px}
+  .an-h{font-weight:700;font-size:.82rem;margin-bottom:6px;color:var(--color-primary)}
+  .an-ul{margin:0;padding-left:18px}
+  .an-ul li{font-size:.86rem;line-height:1.55;margin-bottom:3px;word-break:break-word}
+  @media(max-width:560px){.an-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -141,12 +152,24 @@ async function renderTask(id){
       items.map(it=>`<div class="reqitem"><span class="rid">${esc(it.id)}</span><span class="rdesc">${esc(it.desc)}</span></div>`).join("")+
       `</div></div>`;
   }
+  // C1 AI 需求翻译（需求方生成，帮助接单方/双方精准理解需求）
+  html+=`<div class="section-title">🤖 AI 需求翻译（清晰需求书）</div>
+    <div class="glass card card-lg" id="translateCard"><div class="muted">${ME.role==="requester"?"点击生成 AI 需求翻译，帮助接单方精准理解你的需求":"等待需求方生成 AI 需求翻译…"}</div></div>
+    ${ME.role==="requester"?`<div class="actions"><button class="btn btn-primary" id="genTranslateBtn">生成 / 重生成 AI 需求翻译</button></div>`:``}`;
+  // C1 AI 需求分析（接单方侧，拆解目标/交付物/验收/易误解点/需确认项，防止理解偏差）
+  html+=`<div class="section-title">🧠 AI 需求分析（接单方校核）</div>
+    <div class="glass card card-lg" id="analyzeCard"><div class="muted">点击生成 AI 需求分析，自动拆解核心目标 / 交付物 / 验收要点 / 易误解点 / 需确认项。</div></div>
+    <div class="actions"><button class="btn btn-primary" id="genAnalyzeBtn">生成 AI 需求分析</button></div>`;
   if(ME.role==="provider"&&(t.status||"open")==="open"){
     html+=`<div class="section-title">🤖 AI 建议报价（接单方）</div>
       <div class="glass card card-lg" id="quoteCard"><div class="muted">正在为你估算合理报价…</div></div>
       <div class="actions"><button class="btn btn-primary" id="takeBtn">仅接单（不报价）</button></div>`;
   }
   $("#main").innerHTML=html;
+  loadTranslate(id,t);
+  loadAnalyze(id,t);
+  const gt=$("#genTranslateBtn"); if(gt) gt.onclick=()=>genTranslate(id);
+  const ga=$("#genAnalyzeBtn"); if(ga) ga.onclick=()=>genAnalyze(id);
   if(ME.role==="provider"&&(t.status||"open")==="open"){ loadQuote(id,t); }
   if($("#takeBtn")) $("#takeBtn").onclick=async()=>{
     const {r,j}=await api("/tasks/"+encodeURIComponent(id)+"/take",{method:"POST",body:{milestones:[]}});
@@ -173,6 +196,43 @@ async function loadQuote(id,t){
     if(r.ok){toast("已采纳 AI 建议报价并接单，等待需求方托管");location.href="app.html#myorders";}
     else toast((j&&j.msg)||"接单失败");
   };
+}
+
+// ---- C1 AI 需求翻译 / 需求分析 前端逻辑 ----
+
+function renderTranslateCard(tr){
+  const m=tr.mode?`<span class="status llm">${tr.mode==="llm"?"AI 润色":"规则生成"}</span>`:"";
+  const sec=(tr.sections&&tr.sections.length)?`<div class="tags">${tr.sections.map(s=>`<span class="tag">${esc(s)}</span>`).join("")}</div>`:"";
+  return `<div class="ai-doc">${esc(tr.doc)}</div>${sec}<div class="meta tiny">${m}</div>`;
+}
+function renderAnalyzeCard(an){
+  const sect=(title,arr)=> (arr&&arr.length)?`<div class="an-sec"><div class="an-h">${title}</div><ul class="an-ul">${arr.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`:"";
+  const m=an.mode?`<span class="status llm">${an.mode==="llm"?"AI 分析":"规则分析"}</span>`:"";
+  return `<div class="an-grid">${sect("🎯 核心目标",an.core_goal?[an.core_goal]:[])}${sect("📦 交付物",an.deliverables)}${sect("✅ 验收要点",an.acceptance_points)}${sect("⚠️ 易误解点",an.misunderstandings)}${sect("❓ 需向需求方确认",an.need_confirm)}</div><div class="meta tiny">${m}</div>`;
+}
+async function loadTranslate(id,t){
+  const card=$("#translateCard"); if(!card) return;
+  if(t.translation){ try{ const tr=JSON.parse(t.translation); card.innerHTML=renderTranslateCard(tr); return; }catch(e){} }
+}
+async function loadAnalyze(id,t){
+  const card=$("#analyzeCard"); if(!card) return;
+  if(t.analysis_json){ try{ const an=JSON.parse(t.analysis_json); card.innerHTML=renderAnalyzeCard(an); return; }catch(e){} }
+}
+async function genTranslate(id){
+  const card=$("#translateCard"); if(!card) return;
+  card.innerHTML=`<div class="muted">正在生成 AI 需求翻译…</div>`;
+  const {r,j}=await api("/tasks/"+encodeURIComponent(id)+"/translate",{method:"POST"});
+  if(!r.ok){ card.innerHTML=`<div class="muted">生成失败：${(j&&j.msg)||""}</div>`; return; }
+  card.innerHTML=renderTranslateCard(j.data);
+  toast("AI 需求翻译已生成");
+}
+async function genAnalyze(id){
+  const card=$("#analyzeCard"); if(!card) return;
+  card.innerHTML=`<div class="muted">正在生成 AI 需求分析…</div>`;
+  const {r,j}=await api("/tasks/"+encodeURIComponent(id)+"/analyze",{method:"POST"});
+  if(!r.ok){ card.innerHTML=`<div class="muted">生成失败：${(j&&j.msg)||""}</div>`; return; }
+  card.innerHTML=renderAnalyzeCard(j.data);
+  toast("AI 需求分析已生成");
 }
 
 async function renderOrder(id){

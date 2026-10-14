@@ -469,7 +469,7 @@ HiveGet 的「AI 语义匹配」与「AI 需求澄清」默认以**零依赖保�
 | 语义匹配（`MatchTask`/`RecommendTasks`/`RecommendProviders`） | `HIVEGET_EMBEDDING_MODE=llm` + `HIVEGET_EMBEDDING_API` | 调 `/embeddings` 产出稠密向量；`Service.embed` 失败自动回退词袋 |
 | 联网代理 | `HIVEGET_AI_PROXY`（或系统 `HTTP_PROXY`/`HTTPS_PROXY`） | 适配中国大陆访问 OpenAI / DeepSeek / 本地 Ollama 等 |
 
-`GET /api/v1/readiness` 实时回显当前生效模式：`clarify.mode ∈ {stub, llm}`、`embedding.mode ∈ {bag-of-words, llm}`、`faq.mode ∈ {faq, llm}`。
+`GET /api/v1/readiness` 实时回显当前生效模式：`clarify.mode ∈ {stub, llm}`、`embedding.mode ∈ {bag-of-words, llm}`、`faq.mode ∈ {faq, llm}`、`reqai.mode ∈ {rule, llm}`。
 
 ## 接单方自动报价（AI 能力升级 · B2）
 
@@ -485,6 +485,16 @@ HiveGet 的「AI 语义匹配」与「AI 需求澄清」默认以**零依赖保�
 - **前端**：`web/task.html` 订单页新增 IM 沟通面板（轮询拉取 + 发送 + AI 建议回复 + 自动回复开关），AI 消息以徽标区分（🤖 AI 自动回复 / AI 辅助）。
 - **存储**：`chat_message` 表新增 `is_ai`/`ai_type`，`user` 表新增 `ai_auto_reply`；MySQL 与内存双模式落库。
 - **测试**：`test_b3_faq.py` 端到端 17/17 PASS（readiness 上报 / 建议回复 / 自动回复钩子 / 采纳 suggested / 开关持久化 / 负向对照）。
+
+## AI 需求翻译 + AI 需求分析（AI 能力升级 · C1）
+
+围绕「需求方 → 接单方」的理解偏差，新增两类互补的 AI 能力（`internal/reqai`，**规则保底 + 可选 LLM 兜底**，复用 B1 的 `HIVEGET_LLM_API_KEY` 开关；任何失败一律回退规则，绝不挂、绝不空）：
+
+- **AI 需求翻译（需求方侧）**：把需求方粗糙的描述重写为一份清晰、无歧义、可供接单方直接读懂并执行的「需求书」。仅任务发布者本人可生成/重生成（`POST /api/v1/tasks/{id}/translate`）；规则版组合「需求概述 / 交付物清单 / 交付格式与规范 / 交付期限 / 风格参考 / 预算参考 / 验收提示 / 协作约定」条目，配置 LLM 时由模型润色正文（失败回退规则）。结果落库 `task.translation`（JSON）+ `task.translation_mode`。
+- **AI 需求分析（接单方侧）**：接单方（或任意登录用户）打开任务时一键生成（`POST /api/v1/tasks/{id}/analyze`），自动拆解 **核心目标 / 交付物 / 验收要点 / 易误解点 / 需向需求方确认项**，防止理解偏差；规则版基于结构化规格 + 启发式（格式/改稿轮次/版权授权/交付方式/必填项缺失），配置 LLM 时由模型补全结构化结果（解析失败回退规则）。结果落库 `task.analysis_json` + `task.analysis_mode`。
+- **前端**：`web/task.html` 任务详情页新增两块卡片——「🤖 AI 需求翻译（清晰需求书）」（需求方可见生成/重生成按钮 + 展示；接单方只读）与「🧠 AI 需求分析（接单方校核）」（任意登录用户可生成/展示）；`web/app.html` 发单成功后直接跳到任务详情页，作为「生成 AI 需求翻译」的快捷入口。
+- **存储**：`task` 表新增 `translation`(TEXT) / `translation_mode`(VARCHAR) / `analysis_json`(JSON) / `analysis_mode`(VARCHAR)；`migrations/schema.sql` 在 `CREATE TABLE task` 之后追加 `ALTER`（顺序敏感，否则 reset 报 1146）。MySQL 与内存双模式落库（已修复扫描 NULL 文本列到 `string` 的兼容问题，改用 `sql.NullString`）。
+- **测试**：`test_c1_reqai.py` 端到端 17/17 PASS（readiness 上报 reqai.mode / 发布任务 / 需求方生成翻译并落库 / 接单方越权翻译被拒 / 接单方生成分析并落库 / 负向：无 LLM Key 走规则且不空不挂）。
 
 ## 重要声明
 

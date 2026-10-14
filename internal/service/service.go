@@ -27,6 +27,7 @@ import (
 	"hiveget/internal/notify"
 	"hiveget/internal/payment"
 	"hiveget/internal/quote"
+	"hiveget/internal/reqai"
 	"hiveget/internal/store"
 )
 
@@ -41,10 +42,11 @@ type Service struct {
 	Notifier   *notify.Service  // P2-3 通知中心
 	Embedder   match.Embedder   // M2 可插拔语义向量(词袋保底/可选LLM)
 	FAQ        *faq.Engine      // B3 AI 客服应答引擎(规则优先 + 可选 LLM 兜底)
+	ReqAI      *reqai.Engine    // C1 AI 需求翻译/分析引擎(规则保底 + 可选 LLM 兜底)
 }
 
-func New(st store.Store, comp *compliance.Service, pay *payment.Service, kycSvc *kyc.Service, imSvc *im.Service, cl *clarify.Manager, notifier *notify.Service, faqEng *faq.Engine) *Service {
-	return &Service{Store: st, Compliance: comp, Payment: pay, KYC: kycSvc, IM: imSvc, Clarify: cl, Notifier: notifier, Embedder: match.NewEmbedder(), FAQ: faqEng}
+func New(st store.Store, comp *compliance.Service, pay *payment.Service, kycSvc *kyc.Service, imSvc *im.Service, cl *clarify.Manager, notifier *notify.Service, faqEng *faq.Engine, reqaiEng *reqai.Engine) *Service {
+	return &Service{Store: st, Compliance: comp, Payment: pay, KYC: kycSvc, IM: imSvc, Clarify: cl, Notifier: notifier, Embedder: match.NewEmbedder(), FAQ: faqEng, ReqAI: reqaiEng}
 }
 
 // PublishResult 发单结果
@@ -1863,6 +1865,58 @@ func (s *Service) GetTaskDetail(taskID string) (*TaskDetail, error) {
 		ord = orders[0]
 	}
 	return &TaskDetail{Task: t, Publisher: pub, Order: ord}, nil
+}
+
+// ---- C1 AI 需求翻译 / 需求分析 ----
+
+// TranslateTask AI 需求翻译(需求方侧): 仅任务发布者本人可生成/重生成,
+// 产出一份清晰无歧义的需求书并缓存落库, 供接单方直接读懂。
+// 返回生成的翻译结果; 任务/用户不存在或越权返回 error。
+func (s *Service) TranslateTask(uid, taskID string) (*reqai.Translation, error) {
+	t, ok := s.Store.GetTask(taskID)
+	if !ok {
+		return nil, fmt.Errorf("需求不存在")
+	}
+	if t.RequesterID != uid {
+		return nil, fmt.Errorf("仅需求方本人可生成 AI 需求翻译")
+	}
+	if s.ReqAI == nil {
+		return nil, fmt.Errorf("AI 需求翻译引擎未初始化")
+	}
+	tr := s.ReqAI.Translate(t)
+	b, err := json.Marshal(tr)
+	if err != nil {
+		return nil, err
+	}
+	t.Translation = string(b)
+	t.TranslationMode = tr.Mode
+	s.Store.PutTask(t)
+	return &tr, nil
+}
+
+// AnalyzeTask AI 需求分析(接单方侧): 任意登录用户(通常接单方)可针对任务生成,
+// 产出核心目标/交付物/验收要点/易误解点/需确认项, 防止理解偏差, 并缓存落库。
+// 返回生成的分析结果; 任务/用户不存在返回 error。
+func (s *Service) AnalyzeTask(uid, taskID string) (*reqai.Analysis, error) {
+	if _, ok := s.Store.GetUser(uid); !ok {
+		return nil, fmt.Errorf("用户不存在")
+	}
+	t, ok := s.Store.GetTask(taskID)
+	if !ok {
+		return nil, fmt.Errorf("需求不存在")
+	}
+	if s.ReqAI == nil {
+		return nil, fmt.Errorf("AI 需求分析引擎未初始化")
+	}
+	an := s.ReqAI.Analyze(t)
+	b, err := json.Marshal(an)
+	if err != nil {
+		return nil, err
+	}
+	t.AnalysisJSON = string(b)
+	t.AnalysisMode = an.Mode
+	s.Store.PutTask(t)
+	return &an, nil
 }
 
 // Workbench 我的工作台聚合视图。

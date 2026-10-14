@@ -208,7 +208,7 @@ async function publishView(){
       style_ref:$("#f_style").value.trim(),items};
     if(!body.title){toast("请填写标题");return;}
     const {r,j}=await api("/tasks",{method:"POST",body});
-    if(r.ok&&j.code===200){toast("发布成功");location.hash="mytasks";route();}
+    if(r.ok&&j.code===200){toast("发布成功，去生成 AI 需求翻译 →");const tid=(j.data&&j.data.task&&j.data.task.id)||(j.data&&j.data.id)||"";location.href="task.html?task="+encodeURIComponent(tid);}
     else toast((j&&j.msg)||"发布失败");
   };
 }

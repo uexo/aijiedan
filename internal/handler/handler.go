@@ -451,6 +451,28 @@ func (h *Handler) handleTasks(w http.ResponseWriter, r *http.Request, segs []str
 			return
 		}
 		h.writeJSON(w, 201, envelope{Code: 201, Msg: "接单成功, 订单待托管", Data: res.Order})
+	case len(segs) == 5 && segs[4] == "translate" && r.Method == http.MethodPost: // C1 需求方 AI 需求翻译
+		c, ok := h.requireAuth(w, r)
+		if !ok {
+			return
+		}
+		tr, err := h.Svc.TranslateTask(c.UserID, segs[3])
+		if err != nil {
+			h.writeJSON(w, 403, envelope{Code: 403, Msg: err.Error()})
+			return
+		}
+		h.writeJSON(w, 200, envelope{Code: 200, Msg: "AI 需求翻译已生成", Data: tr})
+	case len(segs) == 5 && segs[4] == "analyze" && r.Method == http.MethodPost: // C1 接单方 AI 需求分析
+		c, ok := h.requireAuth(w, r)
+		if !ok {
+			return
+		}
+		an, err := h.Svc.AnalyzeTask(c.UserID, segs[3])
+		if err != nil {
+			h.writeJSON(w, 403, envelope{Code: 403, Msg: err.Error()})
+			return
+		}
+		h.writeJSON(w, 200, envelope{Code: 200, Msg: "AI 需求分析已生成", Data: an})
 	default:
 		h.writeJSON(w, 404, envelope{Code: 404, Msg: "not found"})
 	}
@@ -974,6 +996,7 @@ func (h *Handler) handleReadiness(w http.ResponseWriter, r *http.Request) {
 		"embedding":    map[string]any{"mode": h.Svc.Embedder.Mode()},
 		"clarify":      map[string]any{"mode": h.Svc.Clarify.Mode()},
 		"faq":          map[string]any{"mode": h.Svc.FAQ.Mode()},
+		"reqai":        map[string]any{"mode": h.Svc.ReqAI.Mode()},
 		"payment":      map[string]any{"mode": pMode, "live": pLive, "missing": pMissing},
 		"kyc":          map[string]any{"mode": kMode, "live": kLive, "missing": kMissing},
 		"icp_filed":    icpFiled,

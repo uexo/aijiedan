@@ -48,6 +48,14 @@ CREATE TABLE `task` (
   KEY `idx_category_status` (`category`, `status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- C1 AI 需求翻译 / 需求分析: task 表存储需求方侧翻译正文与接单方侧分析(JSON)
+-- 注意: ALTER 必须置于 CREATE TABLE task 之后(否则 reset 报 1146 表不存在)
+ALTER TABLE `task`
+  ADD COLUMN `translation`      TEXT        NULL,
+  ADD COLUMN `translation_mode` VARCHAR(16) NOT NULL DEFAULT '',
+  ADD COLUMN `analysis_json`    JSON        NULL,
+  ADD COLUMN `analysis_mode`    VARCHAR(16) NOT NULL DEFAULT '';
+
 CREATE TABLE `match_record` (
   `id`           VARCHAR(32)    NOT NULL,
   `task_id`      VARCHAR(32)    NOT NULL,
