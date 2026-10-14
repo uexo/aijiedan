@@ -1236,6 +1236,10 @@ func (h *Handler) handleOrgs(w http.ResponseWriter, r *http.Request, segs []stri
 
 	case len(segs) == 5 && segs[4] == "members" && r.Method == http.MethodGet:
 		// 列出组织成员: /orgs/{id}/members
+		if err := h.Svc.RequireOrgMember(segs[3], c.UserID); err != nil {
+			h.writeJSON(w, 403, envelope{Code: 403, Msg: err.Error()})
+			return
+		}
 		members := h.Svc.ListOrgMembers(segs[3])
 		h.writeJSON(w, 200, envelope{Code: 200, Msg: "ok", Data: members})
 
@@ -1257,7 +1261,11 @@ func (h *Handler) handleOrgs(w http.ResponseWriter, r *http.Request, segs []stri
 		h.writeJSON(w, 200, envelope{Code: 200, Msg: "已邀请"})
 
 	case len(segs) == 5 && segs[4] == "wallet" && r.Method == http.MethodGet:
-		// 组织钱包: GET /orgs/{id}/wallet
+		// 组织钱包: GET /orgs/{id}/wallet (成员可见)
+		if err := h.Svc.RequireOrgMember(segs[3], c.UserID); err != nil {
+			h.writeJSON(w, 403, envelope{Code: 403, Msg: err.Error()})
+			return
+		}
 		h.writeJSON(w, 200, envelope{Code: 200, Msg: "ok", Data: h.Svc.GetOrgWallet(segs[3])})
 
 	case len(segs) == 6 && segs[4] == "wallet" && segs[5] == "deposit" && r.Method == http.MethodPost:
@@ -1289,7 +1297,11 @@ func (h *Handler) handleOrgs(w http.ResponseWriter, r *http.Request, segs []stri
 		h.writeJSON(w, 200, envelope{Code: 200, Msg: "组织任务已发布", Data: map[string]interface{}{"task": t}})
 
 	case len(segs) == 5 && segs[4] == "tasks" && r.Method == http.MethodGet:
-		// 组织发布的任务: GET /orgs/{id}/tasks
+		// 组织发布的任务: GET /orgs/{id}/tasks (成员可见)
+		if err := h.Svc.RequireOrgMember(segs[3], c.UserID); err != nil {
+			h.writeJSON(w, 403, envelope{Code: 403, Msg: err.Error()})
+			return
+		}
 		h.writeJSON(w, 200, envelope{Code: 200, Msg: "ok", Data: h.Svc.GetOrgTasks(segs[3])})
 
 	case len(segs) == 5 && segs[4] == "payouts" && r.Method == http.MethodPost:
@@ -1319,7 +1331,11 @@ func (h *Handler) handleOrgs(w http.ResponseWriter, r *http.Request, segs []stri
 		h.writeJSON(w, 200, envelope{Code: 200, Msg: "审批完成", Data: a})
 
 	case len(segs) == 5 && segs[4] == "approvals" && r.Method == http.MethodGet:
-		// 组织审批单列表: GET /orgs/{id}/approvals
+		// 组织审批单列表: GET /orgs/{id}/approvals (成员可见)
+		if err := h.Svc.RequireOrgMember(segs[3], c.UserID); err != nil {
+			h.writeJSON(w, 403, envelope{Code: 403, Msg: err.Error()})
+			return
+		}
 		h.writeJSON(w, 200, envelope{Code: 200, Msg: "ok", Data: h.Svc.Store.ListApprovalsByOrg(segs[3])})
 
 	case len(segs) == 5 && segs[4] == "apikeys" && r.Method == http.MethodPost:
@@ -1357,11 +1373,19 @@ func (h *Handler) handleOrgs(w http.ResponseWriter, r *http.Request, segs []stri
 		h.writeJSON(w, 200, envelope{Code: 200, Msg: "ok", Data: h.Svc.ListWebhooks(segs[3])})
 
 	case len(segs) == 5 && segs[4] == "webhook-deliveries" && r.Method == http.MethodGet:
-		// 组织 Webhook 投递记录(验证事件已真实投递)。
+		// 组织 Webhook 投递记录(验证事件已真实投递); 成员可见。
+		if err := h.Svc.RequireOrgMember(segs[3], c.UserID); err != nil {
+			h.writeJSON(w, 403, envelope{Code: 403, Msg: err.Error()})
+			return
+		}
 		h.writeJSON(w, 200, envelope{Code: 200, Msg: "ok", Data: h.Svc.Store.ListWebhookDeliveriesByOrg(segs[3])})
 
 	case len(segs) == 5 && segs[4] == "orders" && r.Method == http.MethodGet:
-		// 组织订单列表(企业版统一结算视图): GET /orgs/{id}/orders
+		// 组织订单列表(企业版统一结算视图): GET /orgs/{id}/orders (成员可见)
+		if err := h.Svc.RequireOrgMember(segs[3], c.UserID); err != nil {
+			h.writeJSON(w, 403, envelope{Code: 403, Msg: err.Error()})
+			return
+		}
 		h.writeJSON(w, 200, envelope{Code: 200, Msg: "ok", Data: h.Svc.GetOrgOrders(segs[3])})
 
 	default:

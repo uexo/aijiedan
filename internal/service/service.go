@@ -1358,6 +1358,18 @@ type OrgWalletView struct {
 	FrozenCents  int64  `json:"frozen_cents"`
 }
 
+// RequireOrgMember 校验用户是否为组织成员(读类组织资源统一入口)。
+// 组织钱包余额/成员名单/订单/审批单等属组织私有信息, 非成员一律拒绝, 避免越权泄露。
+func (s *Service) RequireOrgMember(orgID, uid string) error {
+	if _, ok := s.Store.GetOrg(orgID); !ok {
+		return fmt.Errorf("组织不存在")
+	}
+	if _, ok := s.Store.GetOrgMember(orgID, uid); !ok {
+		return fmt.Errorf("非组织成员, 无权访问该组织资源")
+	}
+	return nil
+}
+
 // GetOrgWallet 查询组织钱包(成员可见)。
 func (s *Service) GetOrgWallet(orgID string) *OrgWalletView {
 	w, ok := s.Store.GetOrgWallet(orgID)
