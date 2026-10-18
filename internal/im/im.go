@@ -17,8 +17,8 @@ import (
 	"sync"
 	"time"
 
-	"linkzam/internal/model"
-	"linkzam/internal/store"
+	"lianvo/internal/model"
+	"lianvo/internal/store"
 )
 
 // Provider 外部 IM 通道(腾讯云等)。stub 时本地总线 + SSE 已足够演示, 不调外部。
@@ -60,7 +60,7 @@ func NewStubModerator() Moderator                     { return &StubModerator{} 
 func NewTencentModerator() Moderator                  { return &TencentModerator{} }
 
 // NewTencentIMProvider 腾讯云 IM Provider 骨架。真实发送需 UserSig(管理员签发) + REST API。
-// 仅当配置了 LINKZAM_TENCENT_IM_APPID 等环境变量时由 main 注入; 否则不启用。
+// 仅当配置了 LIANVO_TENCENT_IM_APPID 等环境变量时由 main 注入; 否则不启用。
 // 已实现的真实形态: UserSig 生成(HMAC-SHA256, 与官方算法一致) + openim/sendmsg 请求合同 + 带鉴权的 HTTP 调用。
 func NewTencentIMProvider(appID int, secretKey, adminUser, apiURL string) Provider {
 	return &TencentIMProvider{SDKAppID: appID, SecretKey: secretKey, AdminUser: adminUser, APIURL: apiURL}

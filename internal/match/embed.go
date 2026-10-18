@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	"linkzam/internal/aihttp"
+	"lianvo/internal/aihttp"
 )
 
 // Embedding 统一向量抽象: 内部实现可稀疏(词袋)或稠密(LLM), 自带余弦计算,
@@ -191,15 +191,15 @@ func (e *LLMEmbedder) Embed(texts []string) ([]Embedding, error) {
 }
 
 // NewEmbedder 按环境变量选择 Embedder:
-//   - LINKZAM_EMBEDDING_MODE=llm 且配了 LINKZAM_EMBEDDING_API 才走 LLM;
+//   - LIANVO_EMBEDDING_MODE=llm 且配了 LIANVO_EMBEDDING_API 才走 LLM;
 //   - 否则(默认)返回 BagOfWordsEmbedder, 零依赖保底, 行为与 M1 完全一致。
 func NewEmbedder() Embedder {
-	if strings.EqualFold(os.Getenv("LINKZAM_EMBEDDING_MODE"), "llm") {
-		if api := os.Getenv("LINKZAM_EMBEDDING_API"); api != "" {
+	if strings.EqualFold(os.Getenv("LIANVO_EMBEDDING_MODE"), "llm") {
+		if api := os.Getenv("LIANVO_EMBEDDING_API"); api != "" {
 			return &LLMEmbedder{
 				BaseURL: api,
-				APIKey:  os.Getenv("LINKZAM_EMBEDDING_KEY"),
-				Model:   os.Getenv("LINKZAM_EMBEDDING_MODEL"),
+				APIKey:  os.Getenv("LIANVO_EMBEDDING_KEY"),
+				Model:   os.Getenv("LIANVO_EMBEDDING_MODEL"),
 			}
 		}
 		// 声明了 llm 却没配 API → 回退保底, 避免静默空配置

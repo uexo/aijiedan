@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""LinkZam M0 主链路冒烟测试: 验证发单→匹配→接单→托管→交付→验收结算, 以及合规闸门拦截与翻转。"""
+"""Lianvo M0 主链路冒烟测试: 验证发单→匹配→接单→托管→交付→验收结算, 以及合规闸门拦截与翻转。"""
 import json
 import time
 import threading

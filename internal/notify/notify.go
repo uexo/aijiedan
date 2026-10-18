@@ -17,8 +17,8 @@ import (
 	"sync"
 	"time"
 
-	"linkzam/internal/model"
-	"linkzam/internal/store"
+	"lianvo/internal/model"
+	"lianvo/internal/store"
 )
 
 // Provider 外部通知通道(邮件/短信)。站内信(inapp)由 Service 直接落库, 不经 Provider。
@@ -67,7 +67,7 @@ func (StubSMSProvider) Send(_ context.Context, uid, title, body string) (string,
 // ---- 真实形态 Provider(填凭证即启用, 不调外部时由 main 决定是否注入) ----
 
 // SMTPEmailProvider 真实 SMTP 邮件发送(生产形态)。
-// 字段由 env(LINKZAM_SMTP_*)注入; uid 须为收件人邮箱(生产应解析 uid→email)。
+// 字段由 env(LIANVO_SMTP_*)注入; uid 须为收件人邮箱(生产应解析 uid→email)。
 type SMTPEmailProvider struct {
 	Host, Port, User, Pass, From string
 }

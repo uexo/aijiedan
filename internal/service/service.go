@@ -1,4 +1,4 @@
-// Package service 实现LinkZam M0 主链路业务逻辑:
+// Package service 实现Lianvo M0 主链路业务逻辑:
 // 发单 → AI撮合(规则召回+打分) → 接单 → 托管(闸门) → 交付 → 验收 → 结算(闸门)。
 // 资金与IM均为 stub, 合规闸门通过 compliance.Service 在关键节点拦截。
 package service
@@ -15,20 +15,20 @@ import (
 	"strings"
 	"time"
 
-	"linkzam/internal/auth"
-	"linkzam/internal/clarify"
-	"linkzam/internal/compliance"
-	"linkzam/internal/faq"
-	"linkzam/internal/im"
-	"linkzam/internal/kyc"
-	"linkzam/internal/match"
-	"linkzam/internal/middleware"
-	"linkzam/internal/model"
-	"linkzam/internal/notify"
-	"linkzam/internal/payment"
-	"linkzam/internal/quote"
-	"linkzam/internal/reqai"
-	"linkzam/internal/store"
+	"lianvo/internal/auth"
+	"lianvo/internal/clarify"
+	"lianvo/internal/compliance"
+	"lianvo/internal/faq"
+	"lianvo/internal/im"
+	"lianvo/internal/kyc"
+	"lianvo/internal/match"
+	"lianvo/internal/middleware"
+	"lianvo/internal/model"
+	"lianvo/internal/notify"
+	"lianvo/internal/payment"
+	"lianvo/internal/quote"
+	"lianvo/internal/reqai"
+	"lianvo/internal/store"
 )
 
 // Service 聚合各子系统, 供 handler 调用。
@@ -1631,7 +1631,7 @@ func (s *Service) postWebhook(wh *model.Webhook, d *model.WebhookDelivery, body 
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-LinkZam-Event", d.Event)
+	req.Header.Set("X-Lianvo-Event", d.Event)
 	client := &http.Client{Timeout: 3 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {

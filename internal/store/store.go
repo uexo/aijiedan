@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"linkzam/internal/model"
+	"lianvo/internal/model"
 )
 
 // Store 存储抽象: 内存(MemStore)与 MySQL(mysqlStore)都遵循此接口。

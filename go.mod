@@ -1,4 +1,4 @@
-module linkzam
+module lianvo
 
 go 1.27
 

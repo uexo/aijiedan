@@ -1,7 +1,7 @@
 # --- Build artifacts ---
-linkzam
-linkzam.exe
-linkzam.exe~
+lianvo
+lianvo.exe
+lianvo.exe~
 *.exe
 *.exe~
 
