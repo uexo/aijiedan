@@ -1,9 +1,9 @@
-// Package compliance 实现Lianvo的合规校验与拦截逻辑(核心闸门)。
+// Package compliance 实现Zanbuddy的合规校验与拦截逻辑(核心闸门)。
 // 设计要点: 在发单/接单/托管/结算等关键节点, 校验平台级合规开关 + 用户级合规状态,
 // 不满足则拦截交易并明确指出缺失项与对应的合规执行卡编号, 引导合规线(董事长侧)落地。
 package compliance
 
-import "lianvo/internal/model"
+import "zanbuddy/internal/model"
 
 // Action 受合规约束的业务动作
 type Action string

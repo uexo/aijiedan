@@ -1,10 +1,10 @@
--- Lianvo M0 MySQL DDL (生产切换用)
+-- Zanbuddy M0 MySQL DDL (生产切换用)
 -- 说明: M0 骨架默认使用内存存储(store.Memory)零依赖启动。
 -- 接入真实 MySQL 时: 1) 创建库  2) 执行本文件  3) 在 internal/store 切换为 MySQL 实现(接口已抽象)。
 -- 所有金额字段使用 BIGINT(分), 主键用 BIGINT 雪花ID或 VARCHAR(32) 业务ID, 软删字段 deleted_at。
 
-CREATE DATABASE IF NOT EXISTS lianvo DEFAULT CHARACTER SET utf8mb4;
-USE lianvo;
+CREATE DATABASE IF NOT EXISTS zanbuddy DEFAULT CHARACTER SET utf8mb4;
+USE zanbuddy;
 
 CREATE TABLE `user` (
   `id`           VARCHAR(32)    NOT NULL,

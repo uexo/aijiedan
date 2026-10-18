@@ -1,4 +1,4 @@
-// Package handler 实现Lianvo M0 的 HTTP 层: REST API + 合规拦截(409) + IM 的 SSE 推送 + 运营控制台。
+// Package handler 实现Zanbuddy M0 的 HTTP 层: REST API + 合规拦截(409) + IM 的 SSE 推送 + 运营控制台。
 // 仅依赖标准库(net/http), 不引入外部路由/框架, 便于零依赖编译。
 package handler
 
@@ -13,13 +13,13 @@ import (
 	"strings"
 	"time"
 
-	"lianvo/internal/auth"
-	"lianvo/internal/clarify"
-	"lianvo/internal/compliance"
-	"lianvo/internal/middleware"
-	"lianvo/internal/model"
-	"lianvo/internal/service"
-	"lianvo/internal/store"
+	"zanbuddy/internal/auth"
+	"zanbuddy/internal/clarify"
+	"zanbuddy/internal/compliance"
+	"zanbuddy/internal/middleware"
+	"zanbuddy/internal/model"
+	"zanbuddy/internal/service"
+	"zanbuddy/internal/store"
 )
 
 //go:embed console.html
@@ -129,7 +129,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch segs[2] {
 	case "health":
 		if r.Method == http.MethodGet {
-			h.writeJSON(w, 200, envelope{Code: 200, Msg: "ok", Data: map[string]string{"service": "lianvo-m0"}})
+			h.writeJSON(w, 200, envelope{Code: 200, Msg: "ok", Data: map[string]string{"service": "zanbuddy-m0"}})
 			return
 		}
 	case "auth":
@@ -975,7 +975,7 @@ func (h *Handler) handleCompliance(w http.ResponseWriter, r *http.Request) {
 // 仅暴露布尔与「缺失的环境变量名」, 不回显任何密钥值; 运营后台「上线就绪」面板据此渲染 checklist。
 func (h *Handler) handleReadiness(w http.ResponseWriter, r *http.Request) {
 	stMode := "memory"
-	if os.Getenv("LIANVO_DB_DSN") != "" {
+	if os.Getenv("ZANBUDDY_DB_DSN") != "" {
 		stMode = "mysql"
 	}
 	pMode, pLive, pMissing := h.Svc.Payment.Readiness()

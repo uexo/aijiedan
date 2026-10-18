@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-var secret = []byte("lianvo-m0-dev-secret-replace-in-prod")
+var secret = []byte("zanbuddy-m0-dev-secret-replace-in-prod")
 
 // Claims JWT 载荷
 type Claims struct {

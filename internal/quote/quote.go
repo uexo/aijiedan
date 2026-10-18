@@ -3,7 +3,7 @@
 //
 // 设计要点：
 //   - 默认零依赖的确定性启发式估价（规则化保底），无需任何外部服务即可运行；
-//   - 若配置了 LIANVO_LLM_API_KEY，则额外调用 LLM 生成一段「报价话术建议」(ai_note)，
+//   - 若配置了 ZANBUDDY_LLM_API_KEY，则额外调用 LLM 生成一段「报价话术建议」(ai_note)，
 //     调用失败自动忽略，不影响区间计算；
 //   - 所有金额单位为「分」，与平台一致；对外统一 CNY。
 package quote
@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"lianvo/internal/aihttp"
+	"zanbuddy/internal/aihttp"
 )
 
 // Currency 平台计价货币。
@@ -152,7 +152,7 @@ func Suggest(inp Input) *Quote {
 	}
 
 	// 可选 LLM 话术建议（失败忽略，不影响区间）
-	if key := os.Getenv("LIANVO_LLM_API_KEY"); key != "" {
+	if key := os.Getenv("ZANBUDDY_LLM_API_KEY"); key != "" {
 		if note, err := llmNote(inp, q); err == nil && note != "" {
 			q.AINote = note
 			q.Rationale = append(q.Rationale, "AI 话术："+note)
@@ -197,11 +197,11 @@ func round10Yuan(yuan float64) int64 {
 
 // llmNote 调用 OpenAI 兼容 chat/completions 生成一段报价话术建议（可选增强）。
 func llmNote(inp Input, q *Quote) (string, error) {
-	base := os.Getenv("LIANVO_LLM_BASE_URL")
+	base := os.Getenv("ZANBUDDY_LLM_BASE_URL")
 	if base == "" {
 		base = "https://api.openai.com/v1"
 	}
-	modelName := os.Getenv("LIANVO_LLM_MODEL")
+	modelName := os.Getenv("ZANBUDDY_LLM_MODEL")
 	if modelName == "" {
 		modelName = "gpt-4o-mini"
 	}
@@ -220,7 +220,7 @@ func llmNote(inp Input, q *Quote) (string, error) {
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+os.Getenv("LIANVO_LLM_API_KEY"))
+	req.Header.Set("Authorization", "Bearer "+os.Getenv("ZANBUDDY_LLM_API_KEY"))
 	resp, err := aihttp.New(20 * time.Second).Do(req)
 	if err != nil {
 		return "", err

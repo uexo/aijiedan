@@ -5,7 +5,7 @@
 //   - StubProvider: 离线模拟(默认), 演示/测试无商户资质可用, 不接真实资金。
 //   - WeChatProvider: 微信支付「担保交易(JSAPI 下单, 资金由微信侧冻结/持有) + 分账(Release) + 退款(Refund)」真实形态骨架。
 //     已实现: 真实 API 端点、请求/响应结构体、v3 RSA-SHA256 签名与 Authorization 头、私钥加载。
-//     仅当 LIANVO_WECHAT_MCHID/APPID/SERIAL/KEY_PEM 四项齐全时 live=true 才真正发起 HTTP 请求;
+//     仅当 ZANBUDDY_WECHAT_MCHID/APPID/SERIAL/KEY_PEM 四项齐全时 live=true 才真正发起 HTTP 请求;
 //     缺任一则退回 stub(生成单号/打印), 不影响演示与冒烟。
 //
 // Service 为对外门面, 保持 Escrow/Release/Refund/CommissionCents 签名不变, 上层 service 调用点零改动。
@@ -50,15 +50,15 @@ func New() *Service {
 
 // NewProvider 构造通道实现。
 func NewProvider() Provider {
-	mch := os.Getenv("LIANVO_WECHAT_MCHID")
+	mch := os.Getenv("ZANBUDDY_WECHAT_MCHID")
 	if mch != "" {
 		p := &WeChatProvider{
 			MchID:         mch,
-			AppID:         os.Getenv("LIANVO_WECHAT_APPID"),
-			SerialNo:      os.Getenv("LIANVO_WECHAT_SERIAL"),
-			PrivateKeyPEM: os.Getenv("LIANVO_WECHAT_KEY_PEM"),
-			NotifyURL:     os.Getenv("LIANVO_WECHAT_NOTIFY"),
-			APIV3Key:      os.Getenv("LIANVO_WECHAT_APIV3_KEY"),
+			AppID:         os.Getenv("ZANBUDDY_WECHAT_APPID"),
+			SerialNo:      os.Getenv("ZANBUDDY_WECHAT_SERIAL"),
+			PrivateKeyPEM: os.Getenv("ZANBUDDY_WECHAT_KEY_PEM"),
+			NotifyURL:     os.Getenv("ZANBUDDY_WECHAT_NOTIFY"),
+			APIV3Key:      os.Getenv("ZANBUDDY_WECHAT_APIV3_KEY"),
 		}
 		p.live = p.AppID != "" && p.SerialNo != "" && p.PrivateKeyPEM != ""
 		if !p.live {
@@ -208,7 +208,7 @@ func (p *WeChatProvider) privateKey() (*rsa.PrivateKey, error) {
 		return p.key, nil
 	}
 	if p.PrivateKeyPEM == "" {
-		return nil, fmt.Errorf("微信支付私钥未配置(LIANVO_WECHAT_KEY_PEM)")
+		return nil, fmt.Errorf("微信支付私钥未配置(ZANBUDDY_WECHAT_KEY_PEM)")
 	}
 	block, _ := pem.Decode([]byte(p.PrivateKeyPEM))
 	if block == nil {
@@ -294,7 +294,7 @@ func (p *WeChatProvider) Escrow(orderID string, amount int64) (string, error) {
 	req := wxJSAPIReq{
 		Mchid:       p.MchID,
 		Appid:       p.AppID,
-		Description: "Lianvo 任务托管 " + orderID,
+		Description: "Zanbuddy 任务托管 " + orderID,
 		OutTradeNo:  orderID,
 		NotifyURL:   p.NotifyURL,
 		Amount:      wxAmount{Total: amount, Currency: "CNY"},
@@ -388,19 +388,19 @@ func (s *Service) Readiness() (mode string, live bool, missing []string) {
 	}
 	mode = "wechat"
 	if p.AppID == "" {
-		missing = append(missing, "LIANVO_WECHAT_APPID")
+		missing = append(missing, "ZANBUDDY_WECHAT_APPID")
 	}
 	if p.SerialNo == "" {
-		missing = append(missing, "LIANVO_WECHAT_SERIAL")
+		missing = append(missing, "ZANBUDDY_WECHAT_SERIAL")
 	}
 	if p.PrivateKeyPEM == "" {
-		missing = append(missing, "LIANVO_WECHAT_KEY_PEM")
+		missing = append(missing, "ZANBUDDY_WECHAT_KEY_PEM")
 	}
 	if p.APIV3Key == "" {
-		missing = append(missing, "LIANVO_WECHAT_APIV3_KEY")
+		missing = append(missing, "ZANBUDDY_WECHAT_APIV3_KEY")
 	}
 	if p.NotifyURL == "" {
-		missing = append(missing, "LIANVO_WECHAT_NOTIFY")
+		missing = append(missing, "ZANBUDDY_WECHAT_NOTIFY")
 	}
 	return mode, len(missing) == 0, missing
 }
@@ -422,7 +422,7 @@ func (p *WeChatProvider) Notify(body []byte) (string, bool) {
 	}
 	// TODO(real): AES-256-GCM 解密 resource, 校验签名, 提取 out_trade_no/trade_state。
 	if p.APIV3Key == "" {
-		fmt.Println("[payment.wechat] 收到真实支付回调, 但 LIANVO_WECHAT_APIV3_KEY 未配置, 无法解密 resource")
+		fmt.Println("[payment.wechat] 收到真实支付回调, 但 ZANBUDDY_WECHAT_APIV3_KEY 未配置, 无法解密 resource")
 		return "", false
 	}
 	fmt.Println("[payment.wechat] 收到真实支付回调, 但 APIv3 解密骨架待接入(需补全 AES-256-GCM 解密)")

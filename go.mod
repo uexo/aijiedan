@@ -1,4 +1,4 @@
-module lianvo
+module zanbuddy
 
 go 1.27
 

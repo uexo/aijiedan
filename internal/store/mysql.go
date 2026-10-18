@@ -1,5 +1,5 @@
 // Package store - 真实 MySQL 实现(遵循 Store 接口)。
-// 由 NewMySQL(dsn) 构建, DSN 从环境变量 LIANVO_DB_DSN 读取(见 main.go)。
+// 由 NewMySQL(dsn) 构建, DSN 从环境变量 ZANBUDDY_DB_DSN 读取(见 main.go)。
 // 依赖 github.com/go-sql-driver/mysql; 仅 MySQL 模式才需要外部依赖, 内存模式仍零依赖。
 package store
 
@@ -13,7 +13,7 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 
-	"lianvo/internal/model"
+	"zanbuddy/internal/model"
 )
 
 type mysqlStore struct {

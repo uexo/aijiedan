@@ -7,7 +7,7 @@
 //
 // 设计范式(与 B1 clarify / B3 faq 一致):
 //   - 规则保底: 零依赖, 任何环境下都能产出可用结果。
-//   - 可选 LLM 兜底: 仅当配置了 LIANVO_LLM_API_KEY 才调用真实模型做润色/补全;
+//   - 可选 LLM 兜底: 仅当配置了 ZANBUDDY_LLM_API_KEY 才调用真实模型做润色/补全;
 //     任何失败一律回退规则, 绝不挂、绝不返回空结果、绝不冒充真人。
 package reqai
 
@@ -19,8 +19,8 @@ import (
 	"strings"
 	"time"
 
-	"lianvo/internal/clarify"
-	"lianvo/internal/model"
+	"zanbuddy/internal/clarify"
+	"zanbuddy/internal/model"
 )
 
 // Translation AI 需求翻译结果(供接单方直接读懂的清晰需求书)。
@@ -51,9 +51,9 @@ func NewEngine() *Engine {
 	return &Engine{llm: clarify.NewClient()}
 }
 
-// Mode 返回当前生效模式: llm(配了 LIANVO_LLM_API_KEY) 或 rule(零依赖保底)。
+// Mode 返回当前生效模式: llm(配了 ZANBUDDY_LLM_API_KEY) 或 rule(零依赖保底)。
 func (e *Engine) Mode() string {
-	if os.Getenv("LIANVO_LLM_API_KEY") != "" {
+	if os.Getenv("ZANBUDDY_LLM_API_KEY") != "" {
 		return "llm"
 	}
 	return "rule"
@@ -67,7 +67,7 @@ func (e *Engine) Translate(t *model.Task) Translation {
 	if e.Mode() != "llm" {
 		return rule
 	}
-	sys := `你是 Lianvo AI 接单平台的需求翻译助手。把需求方粗糙的描述，重写为一份清晰、无歧义、可直接交给接单方执行的需求书。保留所有客观信息（交付物、格式、期限、预算、风格），用条理分明的条目呈现，不要编造需求方未提供的信息，结尾提醒接单方开工前确认模糊项。`
+	sys := `你是 Zanbuddy AI 接单平台的需求翻译助手。把需求方粗糙的描述，重写为一份清晰、无歧义、可直接交给接单方执行的需求书。保留所有客观信息（交付物、格式、期限、预算、风格），用条理分明的条目呈现，不要编造需求方未提供的信息，结尾提醒接单方开工前确认模糊项。`
 	user := fmt.Sprintf("需求标题：%s\n需求描述：%s\n结构化补充：%+v", t.Title, t.Spec, t.SpecObj)
 	out, err := e.llm.Chat(context.Background(), sys, []clarify.Message{{Role: "user", Content: user}})
 	if err != nil || strings.TrimSpace(out) == "" {
@@ -84,7 +84,7 @@ func (e *Engine) Analyze(t *model.Task) Analysis {
 	if e.Mode() != "llm" {
 		return rule
 	}
-	sys := `你是 Lianvo AI 接单平台的需求分析助手。针对一条开发任务，帮助接单方准确理解需求、避免理解偏差。请只输出一个 JSON 对象，字段：core_goal(字符串,核心目标)、deliverables(字符串数组,交付物)、acceptance_points(字符串数组,验收要点)、misunderstandings(字符串数组,易误解点)、need_confirm(字符串数组,需向需求方确认的事项)。不要编造需求方未提供的信息；need_confirm 必须包含开工前必须澄清的模糊项。`
+	sys := `你是 Zanbuddy AI 接单平台的需求分析助手。针对一条开发任务，帮助接单方准确理解需求、避免理解偏差。请只输出一个 JSON 对象，字段：core_goal(字符串,核心目标)、deliverables(字符串数组,交付物)、acceptance_points(字符串数组,验收要点)、misunderstandings(字符串数组,易误解点)、need_confirm(字符串数组,需向需求方确认的事项)。不要编造需求方未提供的信息；need_confirm 必须包含开工前必须澄清的模糊项。`
 	user := fmt.Sprintf("任务标题：%s\n需求描述：%s\n结构化补充：%+v", t.Title, t.Spec, t.SpecObj)
 	out, err := e.llm.Chat(context.Background(), sys, []clarify.Message{{Role: "user", Content: user}})
 	if err != nil {
@@ -131,7 +131,7 @@ func ruleTranslate(t *model.Task) Translation {
 		b.WriteString(fmt.Sprintf("\n【预算参考】¥%.2f（需求方挂出预算，最终以双方协商为准）\n", float64(t.BudgetCents)/100))
 	}
 	b.WriteString("\n【验收提示】接单方交付前请逐项对照「交付物清单」；验收以需求方在平台内确认的需求项为准。\n")
-	b.WriteString("\n【协作约定】所有沟通、报价、交付、验收请在 Lianvo 平台内完成，平台提供资金托管与争议处理，保障双方权益。\n")
+	b.WriteString("\n【协作约定】所有沟通、报价、交付、验收请在 Zanbuddy 平台内完成，平台提供资金托管与争议处理，保障双方权益。\n")
 
 	sections := []string{}
 	if t.Spec != "" {

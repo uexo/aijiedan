@@ -20,8 +20,8 @@ import (
 	"sync"
 	"time"
 
-	"lianvo/internal/aihttp"
-	"lianvo/internal/model"
+	"zanbuddy/internal/aihttp"
+	"zanbuddy/internal/model"
 )
 
 // Message 单条对话消息。
@@ -62,7 +62,7 @@ type LLMClient interface {
 	Extract(ctx context.Context, sys string, hist []Message) (*ExtractedSpec, error)
 }
 
-const sysClarify = `你是「联赞 Lianvo」AI 接单平台的智能需求澄清助手。
+const sysClarify = `你是「联赞 Zanbuddy」AI 接单平台的智能需求澄清助手。
 你的任务：与需求方多轮对话，把一句模糊的自然语言需求，逐步补全为可结构化匹配的任务规格。
 必填字段（必须问到）：交付物形态与数量、交付格式与规范、期望交付截止时间。
 建议字段（尽量引导）：风格/参考描述、参考样例、预算、类目。
@@ -181,14 +181,14 @@ func (c *OpenAIClient) Extract(ctx context.Context, sys string, hist []Message) 
 	return spec, nil
 }
 
-// NewClient 依据环境变量选择实现: 有 LIANVO_LLM_API_KEY 用 OpenAI, 否则用规则化 Stub。
+// NewClient 依据环境变量选择实现: 有 ZANBUDDY_LLM_API_KEY 用 OpenAI, 否则用规则化 Stub。
 func NewClient() LLMClient {
-	if key := os.Getenv("LIANVO_LLM_API_KEY"); key != "" {
-		base := os.Getenv("LIANVO_LLM_BASE_URL")
+	if key := os.Getenv("ZANBUDDY_LLM_API_KEY"); key != "" {
+		base := os.Getenv("ZANBUDDY_LLM_BASE_URL")
 		if base == "" {
 			base = "https://api.openai.com/v1"
 		}
-		modelName := os.Getenv("LIANVO_LLM_MODEL")
+		modelName := os.Getenv("ZANBUDDY_LLM_MODEL")
 		if modelName == "" {
 			modelName = "gpt-4o-mini"
 		}
