@@ -1,4 +1,4 @@
-// Package handler 实现HiveGet M0 的 HTTP 层: REST API + 合规拦截(409) + IM 的 SSE 推送 + 运营控制台。
+// Package handler 实现LinkZam M0 的 HTTP 层: REST API + 合规拦截(409) + IM 的 SSE 推送 + 运营控制台。
 // 仅依赖标准库(net/http), 不引入外部路由/框架, 便于零依赖编译。
 package handler
 
@@ -13,13 +13,13 @@ import (
 	"strings"
 	"time"
 
-	"hiveget/internal/auth"
-	"hiveget/internal/clarify"
-	"hiveget/internal/compliance"
-	"hiveget/internal/middleware"
-	"hiveget/internal/model"
-	"hiveget/internal/service"
-	"hiveget/internal/store"
+	"linkzam/internal/auth"
+	"linkzam/internal/clarify"
+	"linkzam/internal/compliance"
+	"linkzam/internal/middleware"
+	"linkzam/internal/model"
+	"linkzam/internal/service"
+	"linkzam/internal/store"
 )
 
 //go:embed console.html
@@ -129,7 +129,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch segs[2] {
 	case "health":
 		if r.Method == http.MethodGet {
-			h.writeJSON(w, 200, envelope{Code: 200, Msg: "ok", Data: map[string]string{"service": "hiveget-m0"}})
+			h.writeJSON(w, 200, envelope{Code: 200, Msg: "ok", Data: map[string]string{"service": "linkzam-m0"}})
 			return
 		}
 	case "auth":
@@ -975,7 +975,7 @@ func (h *Handler) handleCompliance(w http.ResponseWriter, r *http.Request) {
 // 仅暴露布尔与「缺失的环境变量名」, 不回显任何密钥值; 运营后台「上线就绪」面板据此渲染 checklist。
 func (h *Handler) handleReadiness(w http.ResponseWriter, r *http.Request) {
 	stMode := "memory"
-	if os.Getenv("HIVEGET_DB_DSN") != "" {
+	if os.Getenv("LINKZAM_DB_DSN") != "" {
 		stMode = "mysql"
 	}
 	pMode, pLive, pMissing := h.Svc.Payment.Readiness()

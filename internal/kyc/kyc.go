@@ -1,7 +1,7 @@
 // Package kyc 实名认证(KYC)通道层。
 // 与 payment 包同构: 抽象两种通道 ——
 //   - MockProvider: 离线模拟(默认), dev 自动通过, 无真实 KYC 厂商资质即可演示与冒烟。
-//   - RealProvider: 真实 KYC 厂商(如阿里云/腾讯云实名认证)骨架, 仅当 HIVEGET_KYC_APIKEY 齐全时 live。
+//   - RealProvider: 真实 KYC 厂商(如阿里云/腾讯云实名认证)骨架, 仅当 LINKZAM_KYC_APIKEY 齐全时 live。
 //
 // 合规闸门(compliance)通过 SetKYCProvider 注入 Status 钩子, 使 KYC 从纯状态位(u.KYCVerified)
 // 改为「可查询 Provider 状态」, 真实模式下由厂商回调/轮询刷新 u.KYCVerified。
@@ -25,7 +25,7 @@ type Service struct {
 	prov Provider
 }
 
-// New 依环境变量选择通道: HIVEGET_KYC_PROVIDER=="real" 且凭证齐全走真实厂商, 否则 Mock。
+// New 依环境变量选择通道: LINKZAM_KYC_PROVIDER=="real" 且凭证齐全走真实厂商, 否则 Mock。
 func New() *Service {
 	return &Service{prov: NewProvider()}
 }
@@ -41,31 +41,31 @@ func (s *Service) Status(userID string) (bool, string, error) {
 }
 
 // Readiness 返回 KYC 通道的生产就绪态(供 /api/v1/readiness 与运营「上线就绪」面板)。
-// 仅在显式选择真实厂商(HIVEGET_KYC_PROVIDER=real)时校验凭证; 否则为 mock 演示模式。
+// 仅在显式选择真实厂商(LINKZAM_KYC_PROVIDER=real)时校验凭证; 否则为 mock 演示模式。
 func (s *Service) Readiness() (mode string, live bool, missing []string) {
 	p, ok := s.prov.(*RealProvider)
 	if !ok {
 		return "mock", false, nil
 	}
 	if p.APIKey == "" {
-		missing = append(missing, "HIVEGET_KYC_APIKEY")
+		missing = append(missing, "LINKZAM_KYC_APIKEY")
 	}
 	if p.BaseURL == "" {
-		missing = append(missing, "HIVEGET_KYC_BASEURL")
+		missing = append(missing, "LINKZAM_KYC_BASEURL")
 	}
 	return "real", len(missing) == 0, missing
 }
 
 // NewProvider 构造通道实现。
 func NewProvider() Provider {
-	if os.Getenv("HIVEGET_KYC_PROVIDER") == "real" {
+	if os.Getenv("LINKZAM_KYC_PROVIDER") == "real" {
 		p := &RealProvider{
-			APIKey:  os.Getenv("HIVEGET_KYC_APIKEY"),
-			BaseURL: os.Getenv("HIVEGET_KYC_BASEURL"),
+			APIKey:  os.Getenv("LINKZAM_KYC_APIKEY"),
+			BaseURL: os.Getenv("LINKZAM_KYC_BASEURL"),
 		}
 		p.live = p.APIKey != ""
 		if !p.live {
-			fmt.Println("[kyc] 已选真实通道但 HIVEGET_KYC_APIKEY 未配置, 退回 pending 受理(不自动通过)")
+			fmt.Println("[kyc] 已选真实通道但 LINKZAM_KYC_APIKEY 未配置, 退回 pending 受理(不自动通过)")
 		}
 		return p
 	}

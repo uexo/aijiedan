@@ -2,7 +2,7 @@
 //
 // 设计要点（对齐 B1 的可插拔 + 零依赖保底 + 失败回退范式）：
 //   - 默认规则意图匹配（关键词 → 话术），零外部依赖，演示/冒烟/离线均可用。
-//   - 可选 LLM 兜底：复用 B1 的开关（环境变量 HIVEGET_LLM_API_KEY），有 Key 才走真模型。
+//   - 可选 LLM 兜底：复用 B1 的开关（环境变量 LINKZAM_LLM_API_KEY），有 Key 才走真模型。
 //   - 任何联网失败/超时自动回退规则化兜底或「转人工」提示，绝不挂死、绝不冒充真人。
 //   - 仅依赖标准库 + 复用 internal/clarify（LLMClient 接口与 OpenAI 客户端）与 internal/model。
 package faq
@@ -12,8 +12,8 @@ import (
 	"os"
 	"strings"
 
-	"hiveget/internal/clarify"
-	"hiveget/internal/model"
+	"linkzam/internal/clarify"
+	"linkzam/internal/model"
 )
 
 // Reply AI 给出的应答建议。
@@ -86,7 +86,7 @@ var rules = []intentRule{
 	{
 		intent: "commission",
 		kws:    []string{"佣金", "抽成", "平台费", "服务费", "手续费", "平台怎么赚钱"},
-		reply:  "蜂单（HiveGet）对 AI 开发者接单仅收取 10% 低佣金，并提供会员/企业 SaaS 等增值服务。",
+		reply:  "联赞（LinkZam）对 AI 开发者接单仅收取 10% 低佣金，并提供会员/企业 SaaS 等增值服务。",
 	},
 	{
 		intent: "comm",
@@ -96,7 +96,7 @@ var rules = []intentRule{
 }
 
 // sysFaq LLM 兜底系统提示：始终自称 AI 客服、引导平台内交易、简洁、不确定转人工。
-const sysFaq = `你是「蜂单 HiveGet」AI 接单平台的 AI 客服助手。请用简洁中文回答接单方与需求方在合作沟通中的常见问题（报价、工期、交付、验收、付款托管、退款、改稿、发票、合规等）。
+const sysFaq = `你是「联赞 LinkZam」AI 接单平台的 AI 客服助手。请用简洁中文回答接单方与需求方在合作沟通中的常见问题（报价、工期、交付、验收、付款托管、退款、改稿、发票、合规等）。
 务必遵守：
 1) 始终表明你是 AI 客服，不冒充真人；
 2) 引导用户在平台内完成交易，绝不建议私下联系或加微信；
@@ -108,14 +108,14 @@ type Engine struct {
 	llm clarify.LLMClient
 }
 
-// NewEngine 构造引擎；有 HIVEGET_LLM_API_KEY 时内部客户端为 OpenAI，否则为规则化 Stub（不会真正联网）。
+// NewEngine 构造引擎；有 LINKZAM_LLM_API_KEY 时内部客户端为 OpenAI，否则为规则化 Stub（不会真正联网）。
 func NewEngine() *Engine {
 	return &Engine{llm: clarify.NewClient()}
 }
 
 // Mode 返回当前能力: "llm"(已配 API Key, 可 LLM 兜底) 或 "faq"(仅规则)。
 func (e *Engine) Mode() string {
-	if os.Getenv("HIVEGET_LLM_API_KEY") != "" {
+	if os.Getenv("LINKZAM_LLM_API_KEY") != "" {
 		return model.AITypeLLM
 	}
 	return model.AITypeFAQ

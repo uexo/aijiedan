@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-HiveGet MySQL 重置脚本（不依赖本机 MySQL 客户端）。
+LinkZam MySQL 重置脚本（不依赖本机 MySQL 客户端）。
 
-目标库：192.168.3.18:3306 上的 Docker MySQL 8.0.46（库名 hiveget）。
+目标库：192.168.3.18:3306 上的 Docker MySQL 8.0.46（库名 linkzam）。
 用法：
     python db_reset.py            # DROP+CREATE 并重新应用 migrations/schema.sql
     python db_reset.py --demo     # 同上，并预置合规四门为「dev/demo 就绪态」全开
@@ -25,20 +25,20 @@ import sys
 
 import pymysql
 
-# 连接参数全部可经环境变量覆盖；密码禁止硬编码，必须走 HIVEGET_DB_PASSWORD。
-HOST = os.getenv("HIVEGET_DB_HOST", "192.168.3.18")
-PORT = int(os.getenv("HIVEGET_DB_PORT", "3306"))
-USER = os.getenv("HIVEGET_DB_USER", "root")
-PASSWORD = os.getenv("HIVEGET_DB_PASSWORD", "")
-DB = os.getenv("HIVEGET_DB_NAME", "hiveget")
+# 连接参数全部可经环境变量覆盖；密码禁止硬编码，必须走 LINKZAM_DB_PASSWORD。
+HOST = os.getenv("LINKZAM_DB_HOST", "192.168.3.18")
+PORT = int(os.getenv("LINKZAM_DB_PORT", "3306"))
+USER = os.getenv("LINKZAM_DB_USER", "root")
+PASSWORD = os.getenv("LINKZAM_DB_PASSWORD", "")
+DB = os.getenv("LINKZAM_DB_NAME", "linkzam")
 SCHEMA = os.path.join(os.path.dirname(__file__), "migrations", "schema.sql")
 
 
 def connect(db=None):
     if not PASSWORD:
         raise SystemExit(
-            "ERROR: 未设置 HIVEGET_DB_PASSWORD 环境变量，已中止（禁止在源码硬编码密码）。\n"
-            "用法: HIVEGET_DB_PASSWORD=xxxx python db_reset.py"
+            "ERROR: 未设置 LINKZAM_DB_PASSWORD 环境变量，已中止（禁止在源码硬编码密码）。\n"
+            "用法: LINKZAM_DB_PASSWORD=xxxx python db_reset.py"
         )
     return pymysql.connect(
         host=HOST, port=PORT, user=USER, password=PASSWORD,

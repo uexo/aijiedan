@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-var secret = []byte("hiveget-m0-dev-secret-replace-in-prod")
+var secret = []byte("linkzam-m0-dev-secret-replace-in-prod")
 
 // Claims JWT 载荷
 type Claims struct {

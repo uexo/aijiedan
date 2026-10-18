@@ -1,4 +1,4 @@
-// Package model 定义HiveGet M0 骨架的领域模型。
+// Package model 定义LinkZam M0 骨架的领域模型。
 // 金额统一使用「分」(int64) 存储，避免浮点误差。
 // 所有导出字段均带 json 标签, 作为 API 契约。
 package model
@@ -140,7 +140,7 @@ func RequiredClarifySpec(s TaskSpec) []string {
 	return qs
 }
 
-// CategoryDef 任务类目定义(类目法 taxonomy): 蜂单聚焦 AI 开发者垂直领域。
+// CategoryDef 任务类目定义(类目法 taxonomy): 联赞聚焦 AI 开发者垂直领域。
 // 这是需求大厅筛选/发单下拉的"唯一事实来源", 前端不再硬编码类目。
 type CategoryDef struct {
 	ID    string `json:"id"`    // 机器标识(小写, 用于 task.category 存储与检索)
@@ -340,7 +340,7 @@ const (
 // AI 消息类型: 区分 AI 自动回复与人工采纳的 AI 建议
 const (
 	AITypeFAQ    = "faq"    // 规则意图匹配(默认, 零依赖)
-	AITypeLLM    = "llm"    // LLM 兜底(配置 HIVEGET_FAQ_LLM_API_KEY 时启用)
+	AITypeLLM    = "llm"    // LLM 兜底(配置 LINKZAM_FAQ_LLM_API_KEY 时启用)
 	AITypeSuggest = "suggest" // AI 建议回复, 由真人审核后手动发送(辅助而非代发)
 )
 

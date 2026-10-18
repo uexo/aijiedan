@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>接单方公开画像 · HiveGet</title>
+<style>
+  :root{
+    --bg:#0f1220; --card:#181c2e; --card2:#1f2440; --line:#2b3155;
+    --txt:#e8ecff; --muted:#9aa3c7; --accent:#5b8cff; --good:#37d39b; --warn:#ffb454; --bad:#ff6b81;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+    background:radial-gradient(1200px 600px at 50% -10%,#1b2240 0%,var(--bg) 60%);color:var(--txt);min-height:100vh}
+  .wrap{max-width:720px;margin:0 auto;padding:24px 16px 48px}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:20px}
+  .search{display:flex;gap:8px;margin-bottom:20px}
+  .search input{flex:1;background:var(--card);border:1px solid var(--line);color:var(--txt);
+    padding:12px 14px;border-radius:12px;font-size:15px;outline:none}
+  .search input:focus{border-color:var(--accent)}
+  .search button{background:var(--accent);color:#fff;border:0;padding:0 18px;border-radius:12px;font-size:15px;cursor:pointer}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px;margin-bottom:16px}
+  .head{display:flex;align-items:center;gap:16px}
+  .avatar{width:64px;height:64px;border-radius:16px;background:linear-gradient(135deg,var(--accent),#8a5bff);
+    display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;color:#fff;flex:0 0 auto}
+  .name{font-size:20px;font-weight:700}
+  .role{display:inline-block;margin-top:6px;font-size:12px;color:var(--muted);
+    background:var(--card2);border:1px solid var(--line);padding:3px 10px;border-radius:999px}
+  .trust{margin-left:auto;text-align:center;flex:0 0 auto}
+  .ring{--p:0;width:76px;height:76px;border-radius:50%;
+    background:conic-gradient(var(--good) calc(var(--p)*1%),var(--line) 0);
+    display:flex;align-items:center;justify-content:center}
+  .ring i{width:60px;height:60px;border-radius:50%;background:var(--card);display:flex;
+    flex-direction:column;align-items:center;justify-content:center;font-style:normal}
+  .ring b{font-size:20px}
+  .ring span{font-size:10px;color:var(--muted)}
+  .trust small{display:block;color:var(--muted);font-size:11px;margin-top:4px}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:20px}
+  .stat{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:14px;text-align:center}
+  .stat b{display:block;font-size:22px}
+  .stat span{font-size:11px;color:var(--muted)}
+  .section-title{font-size:13px;color:var(--muted);margin:18px 0 10px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{background:var(--card2);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:13px}
+  .stars{color:var(--warn);letter-spacing:2px}
+  .badges{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+  .badge{font-size:12px;padding:5px 12px;border-radius:999px;border:1px solid var(--line)}
+  .badge.on{background:rgba(55,211,155,.12);border-color:var(--good);color:var(--good)}
+  .badge.off{background:rgba(255,107,129,.10);border-color:var(--bad);color:var(--bad)}
+  .err{background:rgba(255,107,129,.1);border:1px solid var(--bad);color:#ffd0d6;
+    padding:14px;border-radius:12px;font-size:14px}
+  .hint{color:var(--muted);font-size:13px;line-height:1.7}
+  .reason{font-size:11px;color:var(--muted);margin-top:4px}
+  .o-row{cursor:pointer}
+  .o-detail{display:none;padding:6px 0 12px 2px}
+  .o-detail.open{display:block}
+  .kv2{display:grid;grid-template-columns:80px 1fr;gap:6px 12px;font-size:13px;padding:3px 0}
+  .kv2 b{color:var(--muted);font-weight:500}
+  .nav{margin-bottom:14px}
+  .nav a{font-size:13px}
+  a{color:var(--accent)}
+  footer{margin-top:28px;color:var(--muted);font-size:12px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>接单方公开画像</h1>
+  <div class="sub">HiveGet Marketplace · 信用 / 声誉 / 可信分透明可解释</div>
+  <div class="nav"><a href="/">← 返回需求大厅</a></div>
+
+  <div class="search">
+    <input id="uid" placeholder="输入用户 ID，如 P001 / P002" autocomplete="off">
+    <button onclick="go()">查看</button>
+  </div>
+
+  <div id="view"></div>
+
+  <footer>
+    演示服务 <a href="http://localhost:8080" target="_blank">http://localhost:8080</a> ·
+    画像接口 GET /api/v1/users/{id}
+  </footer>
+</div>
+
+<script>
+const api = "http://localhost:8080";
+function go(){
+  const uid = document.getElementById("uid").value.trim();
+  if(!uid){ document.getElementById("view").innerHTML = '<div class="err">请输入用户 ID</div>'; return; }
+  load(uid);
+}
+async function load(uid){
+  const view = document.getElementById("view");
+  view.innerHTML = '<div class="hint">加载中…</div>';
+  try{
+    const r = await fetch(api + "/api/v1/users/" + encodeURIComponent(uid));
+    if(r.status === 404){ view.innerHTML = '<div class="err">用户不存在：'+uid+'</div>'; return; }
+    if(!r.ok){ view.innerHTML = '<div class="err">查询失败：HTTP '+r.status+'</div>'; return; }
+    const j = await r.json();
+    render(j.data);
+  }catch(e){
+    view.innerHTML = '<div class="err">请求错误：'+e.message+'（请确认服务已启动且允许跨域）</div>';
+  }
+}
+function ringColor(p){
+  if(p>=75) return "var(--good)";
+  if(p>=50) return "var(--warn)";
+  return "var(--bad)";
+}
+function render(p){
+  const initial = (p.name||p.id||"?").trim().charAt(0).toUpperCase();
+  const ts = p.trust_score||0;
+  const stars = p.avg_rating ? "★".repeat(Math.round(p.avg_rating)) + "☆".repeat(5-Math.round(p.avg_rating)) : "—";
+  const skills = (p.skills||[]).map(s=>'<span class="chip">'+esc(s)+'</span>').join("") || '<span class="hint">暂无技能标签</span>';
+  const v = document.getElementById("view");
+  v.innerHTML = `
+  <div class="card">
+    <div class="head">
+      <div class="avatar">${esc(initial)}</div>
+      <div>
+        <div class="name">${esc(p.name||p.id)}</div>
+        <span class="role">${esc(p.role||"")}</span>
+      </div>
+      <div class="trust">
+        <div class="ring" style="--p:${ts};background:conic-gradient(${ringColor(ts)} calc(${ts}*1%),var(--line) 0)">
+          <i><b>${ts}</b><span>可信分</span></i>
+        </div>
+        <small>0–100</small>
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat"><b>${p.credit_score??0}</b><span>信用分</span></div>
+      <div class="stat"><b>${stars}</b><span>均分</span></div>
+      <div class="stat"><b>${p.completed_count??0}</b><span>已完成</span></div>
+      <div class="stat"><b>${p.review_count??0}</b><span>评价数</span></div>
+    </div>
+    <div class="badges">
+      <span class="badge ${p.kyc_verified?'on':'off'}">KYC ${p.kyc_verified?'已认证':'未认证'}</span>
+      <span class="badge ${p.tax_bound?'on':'off'}">税源 ${p.tax_bound?'已绑定':'未绑定'}</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">技能标签</div>
+    <div class="chips">${skills}</div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">近期订单（需求方 / 接单方双视角 · 点击展开）</div>
+    ${(p.recent_orders&&p.recent_orders.length)? p.recent_orders.map((o,i)=>{
+      const roleTxt = o.role==="requester"?"需求方":"接单方";
+      const stTxt = (o.status||"").replace(/_/g," ");
+      return `<div class="o-row" onclick="toggle('o'+${i})">
+        <div style="display:flex;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)">
+          <div style="min-width:0">
+            <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(o.task_title||o.id)}</div>
+            <div class="reason">#${esc(o.id)} · ${roleTxt} · 点击展开 ▾</div>
+          </div>
+          <div style="text-align:right;flex:0 0 auto">
+            <div style="font-size:14px;font-weight:700">¥${(o.amount_cents/100).toFixed(2)}</div>
+            <div class="reason">${esc(stTxt)}</div>
+          </div>
+        </div>
+        <div class="o-detail" id="o${i}">
+          <div class="kv2"><b>订单号</b><span>${esc(o.id)}</span></div>
+          <div class="kv2"><b>角色</b><span>${roleTxt}</span></div>
+          <div class="kv2"><b>金额</b><span>¥${(o.amount_cents/100).toFixed(2)}</span></div>
+          <div class="kv2"><b>状态</b><span>${esc(stTxt)}</span></div>
+          <div class="kv2"><b>创建时间</b><span>${o.created_at?new Date(o.created_at).toLocaleString("zh-CN"):"—"}</span></div>
+        </div>
+      </div>`;
+    }).join("") : '<div class="hint">暂无订单记录</div>'}
+  </div>
+
+  <div class="card">
+    <div class="section-title">近期评价（收到的互评 · 点击展开）</div>
+    ${(p.recent_reviews&&p.recent_reviews.length)? p.recent_reviews.map((rv,i)=>{
+      const star = "★".repeat(rv.rating) + "☆".repeat(5-rv.rating);
+      return `<div class="o-row" onclick="toggle('r'+${i})">
+        <div style="padding:11px 0;border-bottom:1px solid var(--line)">
+          <div style="display:flex;justify-content:space-between;gap:12px">
+            <div style="font-size:13px;color:var(--muted)">来自 ${esc(rv.counterparty||"匿名")} · 点击展开 ▾</div>
+            <div class="stars">${star}</div>
+          </div>
+        </div>
+        <div class="o-detail" id="r${i}">
+          <div class="kv2"><b>评价方</b><span>${esc(rv.counterparty||"匿名")}</span></div>
+          <div class="kv2"><b>评分</b><span>${star}</span></div>
+          <div class="kv2"><b>内容</b><span>${esc(rv.comment||"（无文字评价）")}</span></div>
+          <div class="kv2"><b>时间</b><span>${rv.created_at?new Date(rv.created_at).toLocaleString("zh-CN"):"—"}</span></div>
+        </div>
+      </div>`;
+    }).join("") : '<div class="hint">暂无评价记录</div>'}
+  </div>`;
+}
+function toggle(id){ const el=document.getElementById(id); if(el) el.classList.toggle("open"); }
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+// 支持 ?uid= 直达
+const q = new URLSearchParams(location.search).get("uid");
+if(q){ document.getElementById("uid").value = q; load(q); }
+document.getElementById("uid").addEventListener("keydown",e=>{ if(e.key==="Enter") go(); });
+</script>
+</body>
+</html>

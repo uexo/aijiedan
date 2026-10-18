@@ -1,4 +1,4 @@
-# HiveGet · M0 技术骨架
+# LinkZam · M0 技术骨架
 
 AI 接单平台（连接需求方与 AI 开发者的任务众包平台）的 **M0 最小可跑骨架**。
 目标：在"不碰真实资金"的前提下，跑通 **发单 → 匹配 → 接单 → 托管 → 交付 → 验收 → 结算** 主链路，并把**合规校验与拦截逻辑**植入关键节点。
@@ -8,7 +8,7 @@ AI 接单平台（连接需求方与 AI 开发者的任务众包平台）的 **M
 ## 技术栈
 
 - **Go 1.27**（标准库 + `go-sql-driver/mysql`；内存模式仍零外部依赖，仅 MySQL 模式引入驱动）
-- 存储：内存（默认）或 MySQL（设 `HIVEGET_DB_DSN` 切换持久化），DDL 见 `migrations/schema.sql`
+- 存储：内存（默认）或 MySQL（设 `LINKZAM_DB_DSN` 切换持久化），DDL 见 `migrations/schema.sql`
 - 资金托管 stub（生产替换为微信「担保交易 + 服务商分账」）
 - IM stub（`Service` + `Provider`/`Moderator` 可切换接口，默认内存总线 + SSE，生产替换为腾讯云 IM；消息已落库持久化，重启不丢）
 - 轻量 HS256 JWT（仅标准库，生产接真实 KYC 体系）
@@ -16,7 +16,7 @@ AI 接单平台（连接需求方与 AI 开发者的任务众包平台）的 **M
 ## 目录结构
 
 ```
-hiveget/
+linkzam/
 ├── go.mod
 ├── main.go                       # 入口: 装配各模块 + 种子任务 + 启动 :8080
 ├── migrations/
@@ -50,7 +50,7 @@ hiveget/
 
 ## 系统前端重设计（2026-10-11，董事长拍板「重设计整个系统页面」）
 
-基于 `ui-ux-pro-max` 设计系统（Glassmorphism 浅色 · 信任蓝 `#2563EB` · 强调橙 `#EA580C` · Plus Jakarta Sans），将 HiveGet 前端从 MVP 单文件深色控制台升级为完整系统页面套件（零构建、纯静态、同源调用既有 REST API）：
+基于 `ui-ux-pro-max` 设计系统（Glassmorphism 浅色 · 信任蓝 `#2563EB` · 强调橙 `#EA580C` · Plus Jakarta Sans），将 LinkZam 前端从 MVP 单文件深色控制台升级为完整系统页面套件（零构建、纯静态、同源调用既有 REST API）：
 
 - **`design-system.css`**：统一设计 token + 组件类（玻璃卡片 / 状态药丸 / 侧边导航 / 统计卡 / 开关 / Toast）。
 - **`landing.html`**：公开落地页（根路径 `/` 重定向至此），讲清语义匹配 / AI 澄清 / 资金托管 / 合规闸门价值主张与三角色。
@@ -86,8 +86,8 @@ hiveget/
 ## 启动
 
 ```bash
-cd hiveget
-go build -o hiveget.exe .        # 或 go run .
+cd linkzam
+go build -o linkzam.exe .        # 或 go run .
 # 监听 http://localhost:8080
 ```
 
@@ -113,8 +113,8 @@ python db_reset.py --demo
 **2. 确认远程连接授权**（Docker MySQL 默认 `root@localhost`，外部连需授权）：
 
 ```sql
-CREATE USER IF NOT EXISTS 'hiveget'@'%' IDENTIFIED BY '你的密码';
-GRANT ALL PRIVILEGES ON hiveget.* TO 'hiveget'@'%';
+CREATE USER IF NOT EXISTS 'linkzam'@'%' IDENTIFIED BY '你的密码';
+GRANT ALL PRIVILEGES ON linkzam.* TO 'linkzam'@'%';
 FLUSH PRIVILEGES;
 ```
 
@@ -122,7 +122,7 @@ FLUSH PRIVILEGES;
 
 ```bash
 # Windows
-set HIVEGET_DB_DSN=hiveget:你的密码@tcp(192.168.3.18:3306)/hiveget?parseTime=true&charset=utf8mb4
+set LINKZAM_DB_DSN=linkzam:你的密码@tcp(192.168.3.18:3306)/linkzam?parseTime=true&charset=utf8mb4
 go run .
 ```
 
@@ -137,13 +137,13 @@ go run .
 
 ```bash
 # Windows（密码走环境变量，勿硬编码进代码/仓库）
-set HIVEGET_DB_DSN=root:你的密码@tcp(192.168.3.18:3306)/hiveget?parseTime=true&charset=utf8mb4
-go build -o hiveget.exe . && hiveget.exe
+set LINKZAM_DB_DSN=root:你的密码@tcp(192.168.3.18:3306)/linkzam?parseTime=true&charset=utf8mb4
+go build -o linkzam.exe . && linkzam.exe
 ```
 
 验证结果：`migrations/schema.sql` 建库建表成功；启动后 `NewMySQL` 自动 Seed；`smoke_test.py` **53/53 PASS**；落库核对 user / task / match_record / order(completed,settled=1) / delivery / review 表全部持久化。证明持久化、合规闸门、真实用户体系（注册/账号密码登录/RBAC 订单隔离）、评价信用闭环（双向评价→信用分重算→持久化）与需求结构化（结构化 spec + 缺字段澄清兜底）在真实 MySQL 下闭环无误；P1-1 智能匹配（词袋余弦语义召回 + 多因子精排 + 评价反馈闭环）已通过 53/53 冒烟验证。
 
-> 生产环境仍建议按上面第 2 步创建最小权限专用账号（`hiveget@'%'`），不要用 root。
+> 生产环境仍建议按上面第 2 步创建最小权限专用账号（`linkzam@'%'`），不要用 root。
 
 ### ✅ 已验证（2026-10-06，P1-2 收尾）
 
@@ -172,7 +172,7 @@ P2-1 资金账户体系落地（严守「不二清」红线，真实资金通道
 ### ✅ 已验证（2026-10-06，P2-2 即时通讯骨架）
 
 P2-2 即时通讯落地（解决 M0「重启丢消息、无会话列表/已读/审核」硬伤，严守平台内闭环，真实通道仍 stub，待合规线 C3 落地切换）：
-- **通信层升级**：`internal/im` 由内存 `Bus` 重构为 `Service`，持有 `Provider` 接口（`StubProvider` 默认 + `TencentIMProvider` 骨架，env `HIVEGET_IM_PROVIDER=tencent` 切换）与 `Moderator` 接口（`StubModerator` 默认拦截规避平台交易词 + `TencentModerator` 骨架，env `HIVEGET_IM_MODERATOR=tencent` 切换）；对外签名不变，service 调用点零改动。
+- **通信层升级**：`internal/im` 由内存 `Bus` 重构为 `Service`，持有 `Provider` 接口（`StubProvider` 默认 + `TencentIMProvider` 骨架，env `LINKZAM_IM_PROVIDER=tencent` 切换）与 `Moderator` 接口（`StubModerator` 默认拦截规避平台交易词 + `TencentModerator` 骨架，env `LINKZAM_IM_MODERATOR=tencent` 切换）；对外签名不变，service 调用点零改动。
 - **持久化**：`ChatMessage` / `Conversation` 落 `store`（内存 + MySQL 双实现）；`Send` 流程为 校验 → 审核 → 落库 → 触碰会话 → SSE 推送 → 异步调 Provider；命中规避词（微信/vx/私下/转账/支付宝/银行卡/电话 等）返回 `(nil, reason)` 被 400 拦截。
 - **订单联动**：`AcceptMatch` 末尾自动 `SendSystem` 建会话并补 `order_id`，发单→接单后双方即在会话中可沟通交付细节。
 - **端点**：`POST /im`（发，拦截返 400 + reason）、`GET /im?peer=`（SSE 首屏历史 + 实时）、`GET /im/conversations`（列表含未读）、`GET /im/conversations/{peer}`（历史）、`POST /im/conversations/{peer}/read`（已读清零）；权限前置 401。
@@ -185,7 +185,7 @@ P2-2 即时通讯落地（解决 M0「重启丢消息、无会话列表/已读/�
 ### ✅ 已验证（2026-10-06，P2-3 通知中心骨架）
 
 P2-3 通知中心落地（作为 IM 的自然延伸，严守平台内闭环，真实通道仍 stub，不依赖外部资质即可演示）：
-- **通道层**：`internal/notify` 包 `Service` 持有 `Provider` 接口——`StubEmailProvider` / `StubSMSProvider`（默认 nil，env `HIVEGET_NOTIFY_EMAIL=1` / `HIVEGET_NOTIFY_SMS=1` 切换骨架）;`inapp` 站内信默认不经 Provider 直接落库。对外签名与 IM 一致（`Notify(uid,channel,title,body)`），service 调用点零改动。
+- **通道层**：`internal/notify` 包 `Service` 持有 `Provider` 接口——`StubEmailProvider` / `StubSMSProvider`（默认 nil，env `LINKZAM_NOTIFY_EMAIL=1` / `LINKZAM_NOTIFY_SMS=1` 切换骨架）;`inapp` 站内信默认不经 Provider 直接落库。对外签名与 IM 一致（`Notify(uid,channel,title,body)`），service 调用点零改动。
 - **数据模型**：`model` 新增 `Notification`（uid/channel/title/body/status/read_at）+ `ChannelInApp/Email/SMS` 与 `NotiUnread/Read` 常量；`store` 接口 + 内存/MySQL 双实现新增 5 方法（`SaveNotification/GetNotification/ListNotifications/MarkNotificationRead/CountUnread`），`schema.sql` 新增 `notification` 表。
 - **业务事件接入**：`service` 在接单（`AcceptMatch` 双方）、交付（`SubmitDelivery` 待验收）、验收结算（`Settle` 正常双方 + 被合规拦截分支"结算待合规"）、纠纷（`OpenDispute` 通知对方 + 运营 A001 / `ResolveDispute` 结案双方）、提现审批（`ApproveWithdraw` 通过/驳回）处调用 `Notifier.Notify(...)`，形成"动作即通知"自动闭环。
 - **端点**：`GET /api/v1/notifications`（倒序列表，默认 50）、`GET /api/v1/notifications/unread`（未读数）、`POST /api/v1/notifications/{id}/read`（标记已读，越权返回 404）。
@@ -262,8 +262,8 @@ P3 企业版从「最小骨架」推向可商用：组织作为统一结算主�
 
 把 KYC / 支付托管从「stub + 手动翻转」推向可替换的真实通道抽象，并接线支付结果回调：
 
-- **KYC Provider 抽象**（新增 `internal/kyc`）：定义 `Provider` 接口（`Submit` / `Status`），提供 `MockProvider`（dev 自动通过、无厂商资质可演示）与 `RealProvider` 骨架（`HIVEGET_KYC_PROVIDER=real` 切换）。`compliance` 闸门通过 `SetKYCProvider` 注入状态钩子，KYC 从「纯状态位 `u.KYCVerified`」升级为「可查询 Provider 状态」。新增端点 `POST /api/v1/kyc`（提交认证，模拟通道自动打标通过）、`GET /api/v1/kyc`（查状态）。
-- **支付结果回调 webhook**（接线 `payment` 包既有微信 v3 骨架）：`payment.Service` 新增 `IsLive()` 与 `HandleNotify()`；真实通道下 `CreateEscrow` 仅冻结并令订单停在 `pending_escrow`，等待 `POST /api/v1/payments/notify` 回调解析出订单号与支付成败后再推进为 `active`（幂等：已是 active 直接视为成功）；模拟通道下同步记为 active，保证演示连贯。`WeChatProvider.Notify` 保留 AES-256-GCM 解密骨架（需补 `HIVEGET_WECHAT_APIV3_KEY`）。
+- **KYC Provider 抽象**（新增 `internal/kyc`）：定义 `Provider` 接口（`Submit` / `Status`），提供 `MockProvider`（dev 自动通过、无厂商资质可演示）与 `RealProvider` 骨架（`LINKZAM_KYC_PROVIDER=real` 切换）。`compliance` 闸门通过 `SetKYCProvider` 注入状态钩子，KYC 从「纯状态位 `u.KYCVerified`」升级为「可查询 Provider 状态」。新增端点 `POST /api/v1/kyc`（提交认证，模拟通道自动打标通过）、`GET /api/v1/kyc`（查状态）。
+- **支付结果回调 webhook**（接线 `payment` 包既有微信 v3 骨架）：`payment.Service` 新增 `IsLive()` 与 `HandleNotify()`；真实通道下 `CreateEscrow` 仅冻结并令订单停在 `pending_escrow`，等待 `POST /api/v1/payments/notify` 回调解析出订单号与支付成败后再推进为 `active`（幂等：已是 active 直接视为成功）；模拟通道下同步记为 active，保证演示连贯。`WeChatProvider.Notify` 保留 AES-256-GCM 解密骨架（需补 `LINKZAM_WECHAT_APIV3_KEY`）。
 - **Go-live 清单（上线前置，非代码）**：① ICP 备案（执行卡3）；② 微信支付商户号 + 服务商模式（执行卡2·担保交易 JSAPI）；③ 真实 KYC 厂商（阿里云/腾讯云实名）；④ 税源地合作主体（执行卡1）；⑤ 平台不沉淀资金（二清红线，资金经持牌通道冻结/分账）。
 
 ### 方案3 Marketplace 深化（2026-10-07，董事长拍板）
@@ -423,13 +423,13 @@ bash e2e_mysql.sh          # 默认 python 需能 import pymysql(托管 venv)
 PYTHON=/path/to/venv/python bash e2e_mysql.sh
 ```
 
-> 密钥安全：脚本不硬编码密码，从 `.env`（已 gitignore）或环境变量读 `HIVEGET_DB_PASSWORD` / `HIVEGET_DB_DSN`；没有 `.env` 时复制 `.env.example` 为 `.env` 填写即可。当前 MySQL 模式全链路 **218/218 PASS**（含 M2 语义匹配升级后的批量向量召回回归）。
+> 密钥安全：脚本不硬编码密码，从 `.env`（已 gitignore）或环境变量读 `LINKZAM_DB_PASSWORD` / `LINKZAM_DB_DSN`；没有 `.env` 时复制 `.env.example` 为 `.env` 填写即可。当前 MySQL 模式全链路 **218/218 PASS**（含 M2 语义匹配升级后的批量向量召回回归）。
 
 手动分步演示：
 
 ```bash
 python db_reset.py         # 先重置 MySQL(纪律要求)
-go build -o hiveget.exe . && ./hiveget.exe &
+go build -o linkzam.exe . && ./linkzam.exe &
 python smoke_test.py
 ```
 
@@ -450,8 +450,8 @@ python smoke_test.py
 
 | 通道 | 触发变量 | 必需项（缺一则退回 stub/mock） |
 |---|---|---|
-| 资金（微信支付 v3） | `HIVEGET_WECHAT_MCHID` | `APPID` / `SERIAL` / `KEY_PEM` / `APIV3_KEY` / `NOTIFY` |
-| KYC（真实厂商） | `HIVEGET_KYC_PROVIDER=real` | `APIKEY` / `BASEURL` |
+| 资金（微信支付 v3） | `LINKZAM_WECHAT_MCHID` | `APPID` / `SERIAL` / `KEY_PEM` / `APIV3_KEY` / `NOTIFY` |
+| KYC（真实厂商） | `LINKZAM_KYC_PROVIDER=real` | `APIKEY` / `BASEURL` |
 | ICP 备案 | A001 翻转 `icp` 开关 | 备案号落到执行卡3，由运营开启 |
 | 税源地 / 托管 | A001 翻转 `tax_source` / `escrow` | 签约凭证驱动（卡1 / 卡2） |
 
@@ -459,21 +459,21 @@ python smoke_test.py
 
 ## 生产替换指引
 
-1. **存储**：已支持 MySQL（设 `HIVEGET_DB_DSN` 启动即切持久化），生产改为直连托管库；`migrations/schema.sql` 已对齐字段（金额用分、雪花 ID、软删）。
+1. **存储**：已支持 MySQL（设 `LINKZAM_DB_DSN` 启动即切持久化），生产改为直连托管库；`migrations/schema.sql` 已对齐字段（金额用分、雪花 ID、软删）。
 2. **资金**：将 `payment.Service` 替换为微信支付「担保交易下单 + 服务商分账」，严禁二清/资金池。
 3. **IM**：将 `im.Bus` 替换为腾讯云 IM SDK（离线推送 + 已读回执 + 内容审核回写）。
 4. **合规**：`compliance.State.Items` 改为由真实签约状态（备案回执 / 税源地协议 / 支付开通凭证）驱动，而非 admin 手动翻转。
-5. **匹配**：M1 已落地轻量语义召回（词袋余弦，零依赖）+ 多因子精排 + 评价反馈闭环；**M2 已完成**——语义层抽象为可插拔 `Embedder`（`internal/match/embed.go`）：默认 `BagOfWordsEmbedder` 复用 M1 词袋向量（行为完全等价、零依赖保底），设 `HIVEGET_EMBEDDING_MODE=llm` + `HIVEGET_EMBEDDING_API` 即切换 OpenAI 兼容 `/embeddings` 稠密向量（支持 OpenAI/Ollama/自建），调用失败自动回退词袋，召回不挂。召回入口（MatchTask / RecommendTasks / RecommendProviders）统一 batch embed 后 per-pair 向量余弦；需求侧文档 `taskDoc` 已融合 P1-2 澄清后的 `SpecObj`（Deliverables/RequiredFormat/StyleRef/Samples），spec 越完整语义越聚焦。`GET /api/v1/readiness` 返回 `embedding.mode`。
+5. **匹配**：M1 已落地轻量语义召回（词袋余弦，零依赖）+ 多因子精排 + 评价反馈闭环；**M2 已完成**——语义层抽象为可插拔 `Embedder`（`internal/match/embed.go`）：默认 `BagOfWordsEmbedder` 复用 M1 词袋向量（行为完全等价、零依赖保底），设 `LINKZAM_EMBEDDING_MODE=llm` + `LINKZAM_EMBEDDING_API` 即切换 OpenAI 兼容 `/embeddings` 稠密向量（支持 OpenAI/Ollama/自建），调用失败自动回退词袋，召回不挂。召回入口（MatchTask / RecommendTasks / RecommendProviders）统一 batch embed 后 per-pair 向量余弦；需求侧文档 `taskDoc` 已融合 P1-2 澄清后的 `SpecObj`（Deliverables/RequiredFormat/StyleRef/Samples），spec 越完整语义越聚焦。`GET /api/v1/readiness` 返回 `embedding.mode`。
 
 ## 启用真实大模型（AI 能力升级 · B1）
 
-HiveGet 的「AI 语义匹配」与「AI 需求澄清」默认以**零依赖保底版**运行（词袋语义 + 正则澄清），无需任何外部 Key 即可演示。配置环境变量即从保底版升级为真实大模型版，**联网失败 / 超时自动回退保底版，绝不挂**。
+LinkZam 的「AI 语义匹配」与「AI 需求澄清」默认以**零依赖保底版**运行（词袋语义 + 正则澄清），无需任何外部 Key 即可演示。配置环境变量即从保底版升级为真实大模型版，**联网失败 / 超时自动回退保底版，绝不挂**。
 
 | 能力 | 触发变量 | 行为 |
 |---|---|---|
-| 需求澄清（`/clarify`） | `HIVEGET_LLM_API_KEY` | 非空即调 OpenAI 兼容 `/v1/chat/completions`；`Chat` 与 `Extract` 任一失败均回退规则化兜底 |
-| 语义匹配（`MatchTask`/`RecommendTasks`/`RecommendProviders`） | `HIVEGET_EMBEDDING_MODE=llm` + `HIVEGET_EMBEDDING_API` | 调 `/embeddings` 产出稠密向量；`Service.embed` 失败自动回退词袋 |
-| 联网代理 | `HIVEGET_AI_PROXY`（或系统 `HTTP_PROXY`/`HTTPS_PROXY`） | 适配中国大陆访问 OpenAI / DeepSeek / 本地 Ollama 等 |
+| 需求澄清（`/clarify`） | `LINKZAM_LLM_API_KEY` | 非空即调 OpenAI 兼容 `/v1/chat/completions`；`Chat` 与 `Extract` 任一失败均回退规则化兜底 |
+| 语义匹配（`MatchTask`/`RecommendTasks`/`RecommendProviders`） | `LINKZAM_EMBEDDING_MODE=llm` + `LINKZAM_EMBEDDING_API` | 调 `/embeddings` 产出稠密向量；`Service.embed` 失败自动回退词袋 |
+| 联网代理 | `LINKZAM_AI_PROXY`（或系统 `HTTP_PROXY`/`HTTPS_PROXY`） | 适配中国大陆访问 OpenAI / DeepSeek / 本地 Ollama 等 |
 
 `GET /api/v1/readiness` 实时回显当前生效模式：`clarify.mode ∈ {stub, llm}`、`embedding.mode ∈ {bag-of-words, llm}`、`faq.mode ∈ {faq, llm}`、`reqai.mode ∈ {rule, llm}`。
 
@@ -483,7 +483,7 @@ HiveGet 的「AI 语义匹配」与「AI 需求澄清」默认以**零依赖保�
 
 ## AI 客服应答（AI 能力升级 · B3）
 
-接单 IM 会话中的常见问题自动应答（FAQ bot），**规则优先 + 可选 LLM 兜底**（`internal/faq`），复用 B1 的 `HIVEGET_LLM_API_KEY` 开关：
+接单 IM 会话中的常见问题自动应答（FAQ bot），**规则优先 + 可选 LLM 兜底**（`internal/faq`），复用 B1 的 `LINKZAM_LLM_API_KEY` 开关：
 
 - **AI 建议回复**：`POST /api/v1/im/{peer}/ai-reply`（需登录）基于入站消息（或对方最近一条消息）生成应答建议，`matched` 时返回 `text`/`intent`/`type`；前端 task.html 聊天面板「🤖 AI 建议回复」一键填入，发送时带 `ai_type="suggest"` 标记「AI 辅助」（真人审核后发出，`is_ai=false`）。
 - **AI 离线自动回复**：用户开启开关（`POST /api/v1/me/ai-auto-reply` `{on}`）后，对发往自己的提问自动生成一条 AI 应答代己回发（`is_ai=true`、`ai_type=faq|llm`），消息体带「🤖 AI 自动回复：」透明显式前缀，**明确标记 AI、不冒充真人**；收件人未开启则不触发（防环路：自动回复本身不走二次钩子）。
@@ -494,7 +494,7 @@ HiveGet 的「AI 语义匹配」与「AI 需求澄清」默认以**零依赖保�
 
 ## AI 需求翻译 + AI 需求分析（AI 能力升级 · C1）
 
-围绕「需求方 → 接单方」的理解偏差，新增两类互补的 AI 能力（`internal/reqai`，**规则保底 + 可选 LLM 兜底**，复用 B1 的 `HIVEGET_LLM_API_KEY` 开关；任何失败一律回退规则，绝不挂、绝不空）：
+围绕「需求方 → 接单方」的理解偏差，新增两类互补的 AI 能力（`internal/reqai`，**规则保底 + 可选 LLM 兜底**，复用 B1 的 `LINKZAM_LLM_API_KEY` 开关；任何失败一律回退规则，绝不挂、绝不空）：
 
 - **AI 需求翻译（需求方侧）**：把需求方粗糙的描述重写为一份清晰、无歧义、可供接单方直接读懂并执行的「需求书」。仅任务发布者本人可生成/重生成（`POST /api/v1/tasks/{id}/translate`）；规则版组合「需求概述 / 交付物清单 / 交付格式与规范 / 交付期限 / 风格参考 / 预算参考 / 验收提示 / 协作约定」条目，配置 LLM 时由模型润色正文（失败回退规则）。结果落库 `task.translation`（JSON）+ `task.translation_mode`。
 - **AI 需求分析（接单方侧）**：接单方（或任意登录用户）打开任务时一键生成（`POST /api/v1/tasks/{id}/analyze`），自动拆解 **核心目标 / 交付物 / 验收要点 / 易误解点 / 需向需求方确认项**，防止理解偏差；规则版基于结构化规格 + 启发式（格式/改稿轮次/版权授权/交付方式/必填项缺失），配置 LLM 时由模型补全结构化结果（解析失败回退规则）。结果落库 `task.analysis_json` + `task.analysis_mode`。

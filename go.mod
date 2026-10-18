@@ -1,4 +1,4 @@
-module hiveget
+module linkzam
 
 go 1.27
 
