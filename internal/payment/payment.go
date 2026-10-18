@@ -1,12 +1,19 @@
 // Package payment 资金通道层。
-// 红线: 严禁平台先收后付的「二清/资金池」模式, 必须经持牌通道(微信支付)完成冻结/解冻/分账。
+// 红线: 严禁平台先收后付的「二清/资金池」模式, 必须经持牌通道完成冻结/解冻/分账。
 //
-// Provider 抽象两种通道:
+// Provider 抽象三种通道:
 //   - StubProvider: 离线模拟(默认), 演示/测试无商户资质可用, 不接真实资金。
+//   - LakalaProvider: 拉卡拉分账通(合规线 C3 选定生产通道)。持牌机构分账/空中分账,
+//     资金全程留在监管账户, 平台只下发分账指令不过钱——这是二清红线的唯一合规解。
+//     凭证不全时 fail-closed: 托管/分账/退款一律报错, 绝不静默降级。
 //   - WeChatProvider: 微信支付「担保交易(JSAPI 下单, 资金由微信侧冻结/持有) + 分账(Release) + 退款(Refund)」真实形态骨架。
+//     ⚠️ 微信原生分账仅能分出订单额的 30%, 余款滞留平台商户号 = 仍触碰二清红线, 生产不可用, 仅供对照。
 //     已实现: 真实 API 端点、请求/响应结构体、v3 RSA-SHA256 签名与 Authorization 头、私钥加载。
 //     仅当 ZANBUDDY_WECHAT_MCHID/APPID/SERIAL/KEY_PEM 四项齐全时 live=true 才真正发起 HTTP 请求;
 //     缺任一则退回 stub(生成单号/打印), 不影响演示与冒烟。
+//
+// 通道选择: 环境变量 ZANBUDDY_PAY_PROVIDER = lakala | wechat | stub; 未设时保持旧行为
+// (设了微信商户号→微信, 否则 stub)。
 //
 // Service 为对外门面, 保持 Escrow/Release/Refund/CommissionCents 签名不变, 上层 service 调用点零改动。
 // 平台内记账(钱包/流水)由 service 层负责, 不在此处。
@@ -49,7 +56,17 @@ func New() *Service {
 }
 
 // NewProvider 构造通道实现。
+// 选择优先级: 显式 ZANBUDDY_PAY_PROVIDER (lakala|wechat|stub) > 旧行为兼容 (设了微信商户号→微信, 否则 stub)。
+// lakala 为合规线 C3 选定生产通道(持牌机构分账, 平台不碰钱); 凭证不全时 fail-closed 报错, 不静默降级。
 func NewProvider() Provider {
+	switch os.Getenv("ZANBUDDY_PAY_PROVIDER") {
+	case "lakala":
+		return NewLakalaProvider()
+	case "stub":
+		return &StubProvider{}
+	case "wechat":
+		// 显式指定微信: 凭证不全仍退回 stub 形态(沿用旧行为, 仅演示用途)。
+	}
 	mch := os.Getenv("ZANBUDDY_WECHAT_MCHID")
 	if mch != "" {
 		p := &WeChatProvider{
@@ -379,6 +396,9 @@ func (p *WeChatProvider) isLive() bool { return p.live }
 // Readiness 返回资金通道的生产就绪态(供 /api/v1/readiness 与运营「上线就绪」面板)。
 // 仅在商户号已设定(即选了微信通道)时校验其余凭证; 未设商户号视为 stub 演示模式。
 func (s *Service) Readiness() (mode string, live bool, missing []string) {
+	if lk, ok := s.prov.(*LakalaProvider); ok {
+		return "lakala", lk.live, lk.missing()
+	}
 	p, ok := s.prov.(*WeChatProvider)
 	if !ok {
 		return "stub", false, nil

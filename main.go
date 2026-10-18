@@ -100,10 +100,14 @@ func main() {
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web")))) // 用户画像页等静态前端
 	mux.Handle("/", h) // 根路径落地页
 
-	log.Println("Zanbuddy M0 已启动: http://localhost:8080")
+	port := os.Getenv("ZANBUDDY_PORT")
+	if port == "" {
+		port = "8080"
+	}
+	log.Println("Zanbuddy M0 已启动: http://localhost:" + port)
 	log.Println("演示账号(登录 uid): R001=需求方, P001/P002/P003/P004=接单方, A001=运营")
 	log.Println("合规状态: 默认仅 KYC 通过; 用 A001 调 POST /api/v1/compliance 翻转 icp/tax_source/escrow 模拟合规落地")
-	log.Fatal(http.ListenAndServe(":8080", cors(mux)))
+	log.Fatal(http.ListenAndServe(":"+port, cors(mux)))
 }
 
 // cors 允许跨域(便于用户画像页从 file:// 或独立前端直接调用 API; 演示环境宽松策略)。
