@@ -352,6 +352,80 @@ P3 企业版从「最小骨架」推向可商用：组织作为统一结算主�
 
 > **RBAC 订单隔离**：`GET /orders` 未登录返回空列表；普通用户仅见自己作为需求方/接单方的订单；仅运营（A001）可见全量。
 
+## v2 接口（`/api/v2`，与 v1 并行）
+
+2026-10-20 起新增。v1 保持不变，两条链路同进程共存，迁移窗口内互不影响。
+设计依据：`../zanbuddy技术架构与开发方案-v2.md` 与 `../zanbuddy数据模型与接口契约-v2.md`。
+
+### 信封与错误
+
+```json
+{"ok":true,"data":{},"error":null,"trace_id":"9f2c1a7b4e"}
+{"ok":false,"data":null,"error":{"code":"CODE_WRONG","message":"验证码不对","hint":"开发环境是 000000","field":"code"},"trace_id":"9f2c1a7b4e"}
+```
+
+三处与 v1 不同：成功失败看 `ok` 不靠状态码猜；`error.field` 有值时前端直接标红对应输入框；每个响应带 `trace_id`，与日志、`audit_log` 对得上。
+
+### 已实现端点
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/v2/healthz` | 进程存活 |
+| GET | `/api/v2/readyz` | 依赖检查，存储不可用返 503 |
+| POST | `/api/v2/auth/code` | 发验证码；开发模式回显 `dev_code` |
+| POST | `/api/v2/auth/login` | 手机号+验证码，不存在即注册 |
+| POST | `/api/v2/auth/logout` | 清会话 |
+| GET | `/api/v2/me` | 当前用户 + 档案 |
+| PATCH | `/api/v2/me` | 改昵称 |
+| PUT | `/api/v2/me/profile` | 保存供给方档案 |
+| GET | `/api/v2/public/profiles/{slug}` | 公开档案，免登录 |
+
+### 会话
+
+HttpOnly Cookie（`zb_session`）+ CSRF 双提交（`csrf_token` cookie → `X-CSRF-Token` 头）。
+浏览器不必读 token；移动端和开放 API 继续用 `Authorization: Bearer`。
+`ZANBUDDY_JWT_SECRET` 未设置时启动会告警，生产必须显式配置。
+
+### 开发期登录
+
+验证码固定 `000000`，响应里也回显一份，不用翻日志。接真实短信通道（`ZANBUDDY_SMS_PROVIDER`）后自动关闭回显。
+
+```bash
+curl -s -X POST localhost:8080/api/v2/auth/code -H 'Content-Type: application/json' -d '{"phone":"13800001234"}'
+curl -s -c /tmp/ck.txt -X POST localhost:8080/api/v2/auth/login \
+  -H 'Content-Type: application/json' -d '{"phone":"13800001234","code":"000000","role":"provider"}'
+curl -s -b /tmp/ck.txt localhost:8080/api/v2/me
+```
+
+### 迁移 002
+
+在已有库（已执行 `migrations/schema.sql`）上追加 8 张表与 4 张表加列：
+
+```bash
+python migrations/check_002.py                                    # 先静态自检
+mysql -h192.168.3.18 -uroot -p zanbuddy < migrations/002_light_trade.sql
+```
+
+`ALTER` 部分不可重复执行（MySQL 8 不支持 `ADD COLUMN IF NOT EXISTS`），重复会报 1060，属预期。
+`user.slug` 走「加列 → 回填 → 建唯一索引」三步，不能合成一条：存量行短号都是空串，直接建唯一索引会立刻冲突。
+
+### 前端
+
+`web/app/` 为 v2 前端骨架，路径 `/static/app/`：
+
+| 页面 | 地址 |
+|---|---|
+| 登录 | `/static/app/login.html` |
+| 供给方档案 | `/static/app/profile.html` |
+
+零构建：原生 ES module，`assets/runtime.js` 提供 `api / html / validate / toast`，浏览器直接加载，改完刷新即可。
+
+### 验收
+
+```bash
+python test/test_m0_v2.py     # 44 项：健康检查、发码、凭证、登录注册、CSRF、档案规则、公开页白名单
+```
+
 ## 核心 API（前缀 `/api/v1`）
 
 | 方法 | 路径 | 说明 | 合规闸门 |
