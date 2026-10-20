@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>设计系统 · zanbuddy v3</title>
+<link rel="stylesheet" href="ds.css">
+<style>
+  .sw{height:64px;border:1px solid var(--rule);border-radius:1px}
+  .sw-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .sw-row .tiny{margin-top:6px;line-height:1.4}
+  .demo{border:1px dashed var(--rule-2);padding:20px;background:var(--card);display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  table.ds{width:100%;border-collapse:collapse;font-size:.85rem}
+  table.ds th{text-align:left;padding:10px 12px;background:var(--paper-2);font-size:.72rem;letter-spacing:.06em;color:var(--ink-3);font-weight:600}
+  table.ds td{padding:11px 12px;border-top:1px solid var(--rule);vertical-align:top}
+  @media(max-width:640px){.sw-row{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="wrap">
+    <a class="brand" href="index.html"><span class="mk">赞</span> zanbuddy <small>联赞</small></a>
+    <div class="nlinks">
+      <a href="index.html">首页</a>
+      <a href="auth.html">登录</a>
+      <a href="post.html">发需求</a>
+      <a href="match.html">候选人</a>
+      <a href="flow.html">订单与背书</a>
+      <a href="credit.html">信用档案</a>
+      <a href="app.html">工作台</a>
+      <a href="profile.html">我的档案</a>
+      <a href="system.html" class="on">设计系统</a>
+    </div>
+  </div>
+</nav>
+
+<main class="wrap" style="padding-top:40px;padding-bottom:72px">
+
+  <div class="eyebrow" style="margin-bottom:10px">Design System v3 · 2026-10-20</div>
+  <h1 style="font-size:2.2rem;margin-bottom:14px">凭证 / 档案</h1>
+  <p class="lead" style="max-width:44em;margin-bottom:10px">
+    产品的核心资产是"不可伪造的记录"，界面就该长得像记录。所以这套视觉不是 SaaS 蓝玻璃，是纸、墨、印章——安静、可核对、不像营销页。
+  </p>
+  <div class="flex wrapw g8" style="margin-bottom:36px">
+    <span class="tag tag-mono">E-Ink Paper</span>
+    <span class="tag tag-mono">Swiss Modernism 2.0</span>
+    <span class="tag tag-mono">单一强调色</span>
+    <span class="tag tag-mono">无 emoji 图标</span>
+    <span class="tag tag-mono">WCAG AA</span>
+  </div>
+
+  <hr class="rule">
+
+  <!-- 颜色 -->
+  <section style="padding:32px 0">
+    <h2 style="font-size:1.25rem;margin-bottom:6px">01 颜色</h2>
+    <p class="tiny muted" style="margin-bottom:18px">纸张三阶 + 墨四阶 + 一个印章红。绿色与赭色只做状态语义，不做装饰。</p>
+    <div class="sw-row" style="margin-bottom:12px">
+      <div><div class="sw" style="background:#FAF7F0"></div><div class="tiny"><b>paper</b><br><span class="mono">#FAF7F0</span> 页面底</div></div>
+      <div><div class="sw" style="background:#F2EDE2"></div><div class="tiny"><b>paper-2</b><br><span class="mono">#F2EDE2</span> 分区/表头</div></div>
+      <div><div class="sw" style="background:#FFFDF8"></div><div class="tiny"><b>card</b><br><span class="mono">#FFFDF8</span> 卡片</div></div>
+      <div><div class="sw" style="background:#DCD4C3"></div><div class="tiny"><b>rule</b><br><span class="mono">#DCD4C3</span> 分隔线</div></div>
+    </div>
+    <div class="sw-row" style="margin-bottom:12px">
+      <div><div class="sw" style="background:#161514"></div><div class="tiny"><b>ink</b><br><span class="mono">#161514</span> 正文/主按钮</div></div>
+      <div><div class="sw" style="background:#3A3630"></div><div class="tiny"><b>ink-2</b><br><span class="mono">#3A3630</span> 次级正文</div></div>
+      <div><div class="sw" style="background:#6B655B"></div><div class="tiny"><b>ink-3</b><br><span class="mono">#6B655B</span> 辅助文字</div></div>
+      <div><div class="sw" style="background:#948C7E"></div><div class="tiny"><b>ink-4</b><br><span class="mono">#948C7E</span> 仅元信息</div></div>
+    </div>
+    <div class="sw-row">
+      <div><div class="sw" style="background:#B23A2E"></div><div class="tiny"><b>seal</b> 唯一强调<br><span class="mono">#B23A2E</span> 背书/CTA</div></div>
+      <div><div class="sw" style="background:#F6E7E3"></div><div class="tiny"><b>seal-wash</b><br><span class="mono">#F6E7E3</span> 选中态底色</div></div>
+      <div><div class="sw" style="background:#3E6B4F"></div><div class="tiny"><b>ok</b> 仅状态<br><span class="mono">#3E6B4F</span> 已完成/实名</div></div>
+      <div><div class="sw" style="background:#8A6A22"></div><div class="tiny"><b>warn</b> 仅状态<br><span class="mono">#8A6A22</span> 待验收/提示</div></div>
+    </div>
+    <div class="note note-warn" style="margin-top:16px">
+      对比度：ink 于 paper 约 <b>15.8:1</b>，ink-3 约 <b>4.9:1</b>（均过 AA）。<b>ink-4 不用于正文</b>，只用于编号、时间戳等元信息（3.4:1，属大字号/非关键信息豁免）。
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <!-- 字体 -->
+  <section style="padding:32px 0">
+    <h2 style="font-size:1.25rem;margin-bottom:6px">02 字体：三种角色，各司其职</h2>
+    <p class="tiny muted" style="margin-bottom:18px">无衬线负责结构与操作，衬线只负责"人说的话"，等宽只负责"可核对的数据"。</p>
+    <div class="grid g3" style="gap:16px">
+      <div class="card card-pad">
+        <div class="eyebrow" style="margin-bottom:8px">Sans · Inter / 系统中文</div>
+        <div style="font-size:1.5rem;font-weight:600;letter-spacing:-.03em;margin-bottom:6px">他交付了什么</div>
+        <div class="tiny muted" style="margin-bottom:8px">标题、正文、按钮、表单、导航。字重只用 400/500/600，不用 700 以上——过粗会像促销。</div>
+        <span class="mono tiny">--sans</span>
+      </div>
+      <div class="card card-pad">
+        <div class="eyebrow" style="margin-bottom:8px">Serif · Newsreader / 宋体</div>
+        <div class="serif" style="font-size:1.15rem;line-height:1.65;margin-bottom:6px">"他没推诿，最后一次是周六晚上改完的。"</div>
+        <div class="tiny muted" style="margin-bottom:8px">只用于背书原文与印章文字。衬线让人读起来像读一封证词，而不是读一条评论。</div>
+        <span class="mono tiny">--serif</span>
+      </div>
+      <div class="card card-pad">
+        <div class="eyebrow" style="margin-bottom:8px">Mono · 等宽</div>
+        <div class="mono" style="font-size:1.4rem;margin-bottom:6px">12 · 16 · 3%</div>
+        <div class="tiny muted" style="margin-bottom:8px">订单号、金额、周期、单数、费率、时间戳。等宽 + 表格数字对齐 = 可核对感。</div>
+        <span class="mono tiny">--mono</span>
+      </div>
+    </div>
+
+    <table class="ds" style="margin-top:20px">
+      <thead><tr><th>层级</th><th>字号</th><th>用途</th><th>备注</th></tr></thead>
+      <tbody>
+        <tr><td>H1</td><td class="mono">clamp(2.1–3.5rem)</td><td>首页主张、档案姓名</td><td>行高 1.16，字距 -0.035em</td></tr>
+        <tr><td>H2</td><td class="mono">clamp(1.5–2.1rem)</td><td>区块标题</td><td>—</td></tr>
+        <tr><td>H3</td><td class="mono">1.12rem</td><td>卡片内小标题</td><td>—</td></tr>
+        <tr><td>正文</td><td class="mono">1rem / 1.6</td><td>说明与流程</td><td>行长控制在 34–44em</td></tr>
+        <tr><td>辅助</td><td class="mono">.8rem</td><td>提示、元信息</td><td>不用小于 12px</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <hr class="rule">
+
+  <!-- 组件 -->
+  <section style="padding:32px 0">
+    <h2 style="font-size:1.25rem;margin-bottom:6px">03 组件</h2>
+    <p class="tiny muted" style="margin-bottom:18px">全部直角 2px。圆角是"消费品"语言，直角是"文件"语言。</p>
+
+    <div class="grid g2" style="gap:16px">
+      <div class="card">
+        <div style="padding:14px 18px;border-bottom:1px solid var(--rule)" class="eyebrow">按钮 · 四种层级</div>
+        <div class="demo">
+          <button class="btn btn-ink">发起合作</button>
+          <button class="btn btn-seal">发布背书</button>
+          <button class="btn btn-line">看信用档案</button>
+          <button class="btn btn-quiet btn-sm">次要操作</button>
+          <button class="btn btn-ink" disabled>不可用</button>
+        </div>
+        <div class="tiny muted" style="padding:0 18px 16px">一屏只允许<b>一个</b>实心按钮。实心=这一步唯一该做的事。</div>
+      </div>
+
+      <div class="card">
+        <div style="padding:14px 18px;border-bottom:1px solid var(--rule)" class="eyebrow">标签与印章</div>
+        <div class="demo">
+          <span class="tag tag-mono">LLM 工作流</span>
+          <span class="tag tag-ok tag-mono">已实名</span>
+          <span class="tag tag-warn tag-mono">背书较少</span>
+          <span class="tag tag-seal tag-mono">复购 1 次</span>
+          <span class="seal">背书原件</span>
+          <span class="seal seal-ok">已存证</span>
+        </div>
+        <div class="tiny muted" style="padding:0 18px 16px">印章固定旋转 -2°，只用衬线；它是"这个信息被谁担过保"的视觉隐喻。</div>
+      </div>
+
+      <div class="card">
+        <div style="padding:14px 18px;border-bottom:1px solid var(--rule)" class="eyebrow">数据条 · 可核对</div>
+        <div style="padding:16px 18px">
+          <div class="data">
+            <div class="d"><div class="k">完成</div><div class="v">12</div></div>
+            <div class="d"><div class="k">平均周期</div><div class="v">16</div></div>
+            <div class="d"><div class="k">复购</div><div class="v">5</div></div>
+            <div class="d"><div class="k">背书</div><div class="v">7</div></div>
+          </div>
+        </div>
+        <div class="tiny muted" style="padding:0 18px 16px">数字一律等宽 + tabular-nums，单位小一号。禁止用大号渐变数字做"战绩"。</div>
+      </div>
+
+      <div class="card">
+        <div style="padding:14px 18px;border-bottom:1px solid var(--rule)" class="eyebrow">背书引用</div>
+        <div style="padding:16px 18px">
+          <blockquote class="quote quote-sm">"他把退款审批做成一个能自己跑的 Agent，人工处理从每天 40 单降到 6 单。"</blockquote>
+        </div>
+        <div class="tiny muted" style="padding:0 18px 16px">左侧 2px 印章红竖线。引号用中文双引号，不用装饰性大引号图形。</div>
+      </div>
+
+      <div class="card">
+        <div style="padding:14px 18px;border-bottom:1px solid var(--rule)" class="eyebrow">推荐理由 · 必须挂事实</div>
+        <div style="padding:12px 18px">
+          <div class="reason"><span class="n">01</span><div>技能命中 <b>LLM 工作流 / Python</b>
+            <div style="margin-top:3px"><span class="anchor">↗ 查看来源</span></div></div></div>
+          <div class="reason"><span class="n">02</span><div>有 <b>可当场运行</b> 的作品
+            <div style="margin-top:3px"><span class="anchor">↗ 打开 demo</span></div></div></div>
+          <div class="reason"><span class="n">03</span><div><b>王倩</b> 为他背书并复购
+            <div style="margin-top:3px"><span class="anchor">↗ 读原文 · ZB-2417</span></div></div></div>
+        </div>
+        <div class="tiny muted" style="padding:0 18px 16px">每条理由下必须有一个 <span class="mono">↗</span> 锚点。没有锚点 = 不允许出现。</div>
+      </div>
+
+      <div class="card">
+        <div style="padding:14px 18px;border-bottom:1px solid var(--rule)" class="eyebrow">订单状态 · 四态</div>
+        <div class="demo">
+          <span class="state state-todo">待确认</span>
+          <span class="state state-live">进行中</span>
+          <span class="state state-check">待验收</span>
+          <span class="state state-done">已完成</span>
+          <span class="state state-todo">已取消</span>
+        </div>
+        <div class="tiny muted" style="padding:0 18px 16px">没有进度百分比、没有子状态。状态点用 5px 圆点，颜色 + 文字双编码。</div>
+      </div>
+
+      <div class="card">
+        <div style="padding:14px 18px;border-bottom:1px solid var(--rule)" class="eyebrow">表单 · 门槛就在输入框旁边</div>
+        <div style="padding:16px 18px">
+          <div class="field" style="margin-bottom:10px">
+            <label class="label">交付什么<span class="req">*</span></label>
+            <input class="input" value="可自动执行的 Python Agent">
+            <div class="hint">提示语说清"能填什么"，不说"请输入"。</div>
+          </div>
+          <div class="flex jb ac">
+            <span class="count short">还差 6 字</span>
+            <button class="btn btn-seal btn-sm" disabled>发布</button>
+          </div>
+        </div>
+        <div class="tiny muted" style="padding:0 18px 16px">规则不做成提交后报错。<b>字数、必填、勾选</b>都在输入时就反馈，按钮自己变灰。</div>
+      </div>
+
+      <div class="card">
+        <div style="padding:14px 18px;border-bottom:1px solid var(--rule)" class="eyebrow">选择 · 三种粒度</div>
+        <div style="padding:16px 18px">
+          <div class="seg" style="margin-bottom:12px">
+            <button aria-pressed="true">需求方</button>
+            <button aria-pressed="false">供给方</button>
+          </div>
+          <div class="pick on" style="margin-bottom:10px">
+            <span class="box"></span>
+            <span><span class="t">他会把交付物做完</span><span class="d">而不是只给方案</span></span>
+          </div>
+          <div class="chips">
+            <button class="chip" aria-pressed="true">Python</button>
+            <button class="chip" aria-pressed="true">LLM 应用</button>
+            <button class="chip" aria-pressed="false">前端</button>
+          </div>
+        </div>
+        <div class="tiny muted" style="padding:0 18px 16px">两个选项用段控，二到四个用方块，多选用标签。<b>不发明新控件</b>去表达同一件事。</div>
+      </div>
+
+      <div class="card">
+        <div style="padding:14px 18px;border-bottom:1px solid var(--rule)" class="eyebrow">列表的三种状态</div>
+        <div style="padding:16px 18px">
+          <div class="empty" style="margin-bottom:12px;padding:22px 16px">
+            <div class="mark">空</div>
+            <h4>还没有订单</h4>
+            <p>发一句话需求，会有人接。</p>
+          </div>
+          <div style="margin-bottom:12px">
+            <div class="skel skel-line" style="width:70%"></div>
+            <div class="skel skel-line" style="width:44%;margin-bottom:0"></div>
+          </div>
+          <div class="errbox">
+            <h4>没读出来</h4>
+            <p>系统没抽出交付物形态。检查一下这句话是不是太短，或 <code>手工填写</code>。</p>
+          </div>
+        </div>
+        <div class="tiny muted" style="padding:0 18px 16px">每个列表都必须有<b>空、加载、失败</b>三种形态。只画成功态的设计，上线那天就崩。</div>
+      </div>
+
+      <div class="card">
+        <div style="padding:14px 18px;border-bottom:1px solid var(--rule)" class="eyebrow">完成度 · 只用于档案</div>
+        <div style="padding:16px 18px">
+          <div class="flex jb ac" style="margin-bottom:6px">
+            <span class="tiny muted">档案完成度</span>
+            <span class="mono tiny">70%</span>
+          </div>
+          <div class="meter" style="margin-bottom:14px"><i style="width:70%"></i></div>
+          <div class="flex g8 wrapw">
+            <span class="tag tag-mono">ZB-2609</span>
+            <span class="tag tag-ok tag-mono">已验收</span>
+          </div>
+        </div>
+        <div class="tiny muted" style="padding:0 18px 16px">进度条只出现一次：<b>档案</b>。订单进度用四态，绝不用百分比。</div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <!-- 规则 -->
+  <section style="padding:32px 0">
+    <h2 style="font-size:1.25rem;margin-bottom:16px">04 该做与不该做</h2>
+    <table class="ds">
+      <thead><tr><th style="width:22%">维度</th><th>做</th><th>不做</th></tr></thead>
+      <tbody>
+        <tr><td>装饰</td><td>留白、细线、纸纹</td><td>渐变玻璃、彩色投影、发光边框</td></tr>
+        <tr><td>图标</td><td>线性 SVG（1.8–2px 描边）</td><td>emoji、"金牌""钻石"类徽章</td></tr>
+        <tr><td>数字</td><td>等宽、可点开溯源</td><td>评分、等级、匹配度百分比</td></tr>
+        <tr><td>动效</td><td>150–250ms 淡入位移</td><td>弹跳、缩放、视差、滚动跑马灯</td></tr>
+        <tr><td>文案</td><td>陈述事实 + 主动暴露缺点</td><td>"AI 认为他很合适"、夸张形容词</td></tr>
+        <tr><td>人像</td><td>姓名首字印章</td><td>AI 生成假头像、通用剪影</td></tr>
+        <tr><td>说服</td><td>证据、订单号、原文</td><td>倒计时、剩余名额、社会认同刷屏</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <hr class="rule">
+
+  <!-- 映射 -->
+  <section style="padding:32px 0">
+    <h2 style="font-size:1.25rem;margin-bottom:6px">05 与 PRD 的对应</h2>
+    <p class="tiny muted" style="margin-bottom:16px">每个设计决策都能回溯到一条需求，避免"看起来更完整"的功能混进来。</p>
+    <table class="ds">
+      <thead><tr><th style="width:14%">需求</th><th style="width:28%">设计落点</th><th>关键约束</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">FR-01</td><td>post 页三步：一句话 → 抽取可改 → 发布</td><td>必填仅两项；≤3 步到候选人；缺验收标准时标红</td></tr>
+        <tr><td class="mono">FR-02</td><td>固定 3 张卡片，第 4 个位置是"改写需求"</td><td>不多不少，不做"加载更多"</td></tr>
+        <tr><td class="mono">FR-03</td><td>每卡 3 条理由 + <span class="mono">↗</span> 事实锚点</td><td>无锚点的理由不许出现</td></tr>
+        <tr><td class="mono">FR-04</td><td>卡片结构：人 → 背书人 → 原话 → 数据 → 两按钮</td><td>首屏不滚动看完全部核心信息</td></tr>
+        <tr><td class="mono">FR-05</td><td>flow 页四态状态机 + 取消支线</td><td>不可跳步，无进度百分比</td></tr>
+        <tr><td class="mono">FR-06</td><td>验收按钮 + 交付物清单 + 审计时间线</td><td>平台只记录事实，不碰钱</td></tr>
+        <tr><td class="mono">FR-07</td><td>三问勾选 + 12 字实时门禁 + 不可编辑提示</td><td>前端硬校验，低于门槛按钮禁用并说明差多少</td></tr>
+        <tr><td class="mono">FR-08</td><td>credit 页免登录 + 导出 PDF/图片 + 短链</td><td>无登录墙、无二维码引导下载 App</td></tr>
+        <tr><td class="mono">FR-09</td><td>"无订单背书 0" 上榜 + "背书较少"诚实标注</td><td>宁可少，不可假</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <hr class="rule">
+
+  <!-- 无障碍 -->
+  <section style="padding:32px 0 8px">
+    <h2 style="font-size:1.25rem;margin-bottom:16px">06 无障碍与实现</h2>
+    <div class="grid g2" style="gap:16px">
+      <div class="card card-pad">
+        <div class="eyebrow" style="margin-bottom:10px">硬指标</div>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:9px" class="tiny">
+          <li>· 正文对比度 ≥ 4.5:1（ink / ink-2 / ink-3 均达标）</li>
+          <li>· 可点区域 ≥ 40×40（移动端 ≥ 44）</li>
+          <li>· 焦点环 2px 印章红 + 3px 偏移，键盘可走完全流程</li>
+          <li>· 状态不只靠颜色：圆点 + 文字双编码</li>
+          <li>· 尊重 <span class="mono">prefers-reduced-motion</span>，关闭全部动画</li>
+        </ul>
+      </div>
+      <div class="card card-pad">
+        <div class="eyebrow" style="margin-bottom:10px">落地方式</div>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:9px" class="tiny">
+          <li>· 纯静态、零构建：<span class="mono">web/v3/ds.css</span> + 9 个 HTML</li>
+          <li>· Go 侧只需把 <span class="mono">/static/v3/</span> 挂上，API 复用现有 REST</li>
+          <li>· 不做前端框架迁移，不做组件库重写</li>
+          <li>· 纯本地字体栈，零外部请求（预览环境 CSP 会拦远程字体）</li>
+          <li>· 现有 <span class="mono">web/</span> 保留为 escrow 模式（旧回归 147 项不受影响）</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+  <!-- 页面清单 -->
+  <section style="padding:32px 0 8px">
+    <h2 style="font-size:1.25rem;margin-bottom:6px">07 页面清单与走法</h2>
+    <p class="tiny muted" style="margin-bottom:16px">九页。公开四页，登录后五页。没有一页是"以后可能要"。</p>
+    <table class="ds">
+      <thead><tr><th style="width:18%">页面</th><th style="width:12%">可见性</th><th style="width:32%">解决什么</th><th>从哪进</th></tr></thead>
+      <tbody>
+        <tr><td>index</td><td>公开</td><td>说清这是什么、不是什么</td><td>直接访问</td></tr>
+        <tr><td>auth</td><td>公开</td><td>手机号验证码，一个号一个身份</td><td>顶栏「登录」、发单前置</td></tr>
+        <tr><td>credit</td><td>公开</td><td>把信誉带走：打印、长图、短链</td><td>任何人分享的链接</td></tr>
+        <tr><td>system</td><td>公开</td><td>这页设计系统本身</td><td>首页页脚</td></tr>
+        <tr><td>post</td><td>登录</td><td>一句话发需求，三步到候选人</td><td>顶栏「发一句话需求」</td></tr>
+        <tr><td>match</td><td>登录</td><td>3 张卡片，看出该选谁</td><td>发单后自动进入</td></tr>
+        <tr><td>flow</td><td>登录</td><td>四态推进、验收、写背书</td><td>卡片「发起合作」、待办</td></tr>
+        <tr><td>app</td><td>登录</td><td>待办、订单、档案三件事</td><td>登录后默认（需求方）</td></tr>
+        <tr><td>profile</td><td>登录</td><td>供给方档案，被推荐的前提</td><td>登录后默认（供给方）、顶栏</td></tr>
+      </tbody>
+    </table>
+    <div class="note" style="margin-top:16px">
+      主路径只有一条：<b>index → post → match → flow → credit</b>。auth 是前置，app 和 profile 是回访入口。
+      任何页面都必须能一次点击回到这条主路径上，不留断头路。
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap flex jb wrapw g16">
+    <span class="mono" style="font-size:.7rem">zanbuddy design system v3 · 2026-10-20</span>
+    <a class="mono" href="index.html" style="font-size:.7rem">← 回到首页</a>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -106,14 +106,19 @@ func (s *mysqlStore) NextID(prefix string) string {
 	return prefix + "-" + time.Now().Format("20060102150405") + "-" + itoa(n)
 }
 
+// userCols user 表的查询列清单。
+// 抽成常量的原因: 原先 4 处 SELECT 各写一遍完整列表, 加一列要改四处, 漏一处就是
+// "少扫一个字段"的静默错(不报错, 只是值永远为空)。以后加列只改这里。
+const userCols = "id,account,password_hash,real_name,phone,name,role,kyc_verified,skills,credit_score,tax_bound,ai_auto_reply,slug,onboarded,created_at"
+
 // --- Users ---
 func (s *mysqlStore) GetUser(id string) (*model.User, bool) {
 	u := &model.User{}
 	var skills []byte
-	var kyc, tax, aiReply int
+	var kyc, tax, aiReply, onboarded int
 	var account, phash, realName, phone sql.NullString
-	err := s.db.QueryRow("SELECT id,account,password_hash,real_name,phone,name,role,kyc_verified,skills,credit_score,tax_bound,ai_auto_reply,created_at FROM `user` WHERE id=? AND deleted_at IS NULL", id).
-		Scan(&u.ID, &account, &phash, &realName, &phone, &u.Name, &u.Role, &kyc, &skills, &u.CreditScore, &tax, &aiReply, &u.CreatedAt)
+	err := s.db.QueryRow("SELECT "+userCols+" FROM `user` WHERE id=? AND deleted_at IS NULL", id).
+		Scan(&u.ID, &account, &phash, &realName, &phone, &u.Name, &u.Role, &kyc, &skills, &u.CreditScore, &tax, &aiReply, &u.Slug, &onboarded, &u.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, false
 	}
@@ -127,6 +132,7 @@ func (s *mysqlStore) GetUser(id string) (*model.User, bool) {
 	u.KYCVerified = kyc == 1
 	u.TaxBound = tax == 1
 	u.AIAutoReply = aiReply == 1
+	u.Onboarded = onboarded == 1
 	if len(skills) > 0 {
 		_ = json.Unmarshal(skills, &u.Skills)
 	}
@@ -136,10 +142,10 @@ func (s *mysqlStore) GetUser(id string) (*model.User, bool) {
 func (s *mysqlStore) GetUserByAccount(account string) (*model.User, bool) {
 	u := &model.User{}
 	var skills []byte
-	var kyc, tax, aiReply int
+	var kyc, tax, aiReply, onboarded int
 	var phash, realName, phone sql.NullString
-	err := s.db.QueryRow("SELECT id,account,password_hash,real_name,phone,name,role,kyc_verified,skills,credit_score,tax_bound,ai_auto_reply,created_at FROM `user` WHERE account=? AND deleted_at IS NULL", account).
-		Scan(&u.ID, &u.Account, &phash, &realName, &phone, &u.Name, &u.Role, &kyc, &skills, &u.CreditScore, &tax, &aiReply, &u.CreatedAt)
+	err := s.db.QueryRow("SELECT "+userCols+" FROM `user` WHERE account=? AND deleted_at IS NULL", account).
+		Scan(&u.ID, &u.Account, &phash, &realName, &phone, &u.Name, &u.Role, &kyc, &skills, &u.CreditScore, &tax, &aiReply, &u.Slug, &onboarded, &u.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, false
 	}
@@ -152,22 +158,119 @@ func (s *mysqlStore) GetUserByAccount(account string) (*model.User, bool) {
 	u.KYCVerified = kyc == 1
 	u.TaxBound = tax == 1
 	u.AIAutoReply = aiReply == 1
+	u.Onboarded = onboarded == 1
 	if len(skills) > 0 {
 		_ = json.Unmarshal(skills, &u.Skills)
 	}
 	return u, true
 }
 
+// PutUser 写用户。列清单必须与 userCols 对齐:
+// 曾经只给 SELECT 加了新列却漏了这里的 INSERT/UPDATE, 结果 slug 和 onboarded 读出来永远是空,
+// 表现为"档案明明存了但公开页一直 404"。加列时两处一起改。
 func (s *mysqlStore) PutUser(u *model.User) {
+	if u.Slug == "" {
+		u.Slug = fallbackSlug(u.ID) // 唯一索引兜底, 见 store.go 里的说明
+	}
 	jb, _ := json.Marshal(u.Skills)
-	_, _ = s.db.Exec(`INSERT INTO user (id,account,password_hash,real_name,phone,name,role,kyc_verified,skills,credit_score,tax_bound,ai_auto_reply,created_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-		ON DUPLICATE KEY UPDATE account=VALUES(account),password_hash=VALUES(password_hash),real_name=VALUES(real_name),phone=VALUES(phone),name=VALUES(name),role=VALUES(role),kyc_verified=VALUES(kyc_verified),skills=VALUES(skills),credit_score=VALUES(credit_score),tax_bound=VALUES(tax_bound),ai_auto_reply=VALUES(ai_auto_reply)`,
-		u.ID, nullStr(u.Account), nullStr(u.PasswordHash), nullStr(u.RealName), nullStr(u.Phone), u.Name, u.Role, boolToInt(u.KYCVerified), jb, u.CreditScore, boolToInt(u.TaxBound), boolToInt(u.AIAutoReply), u.CreatedAt)
+	_, _ = s.db.Exec("INSERT INTO `user` (id,account,password_hash,real_name,phone,name,role,kyc_verified,skills,credit_score,tax_bound,ai_auto_reply,slug,onboarded,created_at)"+
+		" VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"+
+		" ON DUPLICATE KEY UPDATE account=VALUES(account),password_hash=VALUES(password_hash),real_name=VALUES(real_name),"+
+		"phone=VALUES(phone),name=VALUES(name),role=VALUES(role),kyc_verified=VALUES(kyc_verified),skills=VALUES(skills),"+
+		"credit_score=VALUES(credit_score),tax_bound=VALUES(tax_bound),ai_auto_reply=VALUES(ai_auto_reply),"+
+		"slug=VALUES(slug),onboarded=VALUES(onboarded)",
+		u.ID, nullStr(u.Account), nullStr(u.PasswordHash), nullStr(u.RealName), nullStr(u.Phone), u.Name, u.Role,
+		boolToInt(u.KYCVerified), jb, u.CreditScore, boolToInt(u.TaxBound), boolToInt(u.AIAutoReply),
+		u.Slug, boolToInt(u.Onboarded), u.CreatedAt)
+}
+
+// GetUserBySlug 按公开短号查用户。短号在 002 迁移里已回填为 id 小写并建唯一索引。
+func (s *mysqlStore) GetUserBySlug(slug string) (*model.User, bool) {
+	if slug == "" {
+		return nil, false
+	}
+	u := &model.User{}
+	var skills []byte
+	var kyc, tax, aiReply, onboarded int
+	var account, phash, realName, phone sql.NullString
+	err := s.db.QueryRow("SELECT "+userCols+" FROM `user` WHERE slug=? AND deleted_at IS NULL", slug).
+		Scan(&u.ID, &account, &phash, &realName, &phone, &u.Name, &u.Role, &kyc, &skills, &u.CreditScore, &tax, &aiReply, &u.Slug, &onboarded, &u.CreatedAt)
+	if err != nil {
+		return nil, false
+	}
+	u.Account = account.String
+	u.PasswordHash = phash.String
+	u.RealName = realName.String
+	u.Phone = phone.String
+	u.KYCVerified = kyc == 1
+	u.TaxBound = tax == 1
+	u.AIAutoReply = aiReply == 1
+	u.Onboarded = onboarded == 1
+	if len(skills) > 0 {
+		_ = json.Unmarshal(skills, &u.Skills)
+	}
+	return u, true
+}
+
+// GetUserByPhone 按手机号查用户。user.phone 没有唯一索引(历史原因), 所以多个命中时取第一条,
+// 由应用层在注册时保证不重复。
+func (s *mysqlStore) GetUserByPhone(phone string) (*model.User, bool) {
+	if phone == "" {
+		return nil, false
+	}
+	u := &model.User{}
+	var skills []byte
+	var kyc, tax, aiReply, onboarded int
+	var account, phash, realName, phoneCol sql.NullString
+	err := s.db.QueryRow("SELECT "+userCols+" FROM `user` WHERE phone=? AND deleted_at IS NULL LIMIT 1", phone).
+		Scan(&u.ID, &account, &phash, &realName, &phoneCol, &u.Name, &u.Role, &kyc, &skills, &u.CreditScore, &tax, &aiReply, &u.Slug, &onboarded, &u.CreatedAt)
+	if err != nil {
+		return nil, false
+	}
+	u.Account = account.String
+	u.PasswordHash = phash.String
+	u.RealName = realName.String
+	u.Phone = phoneCol.String
+	u.KYCVerified = kyc == 1
+	u.TaxBound = tax == 1
+	u.AIAutoReply = aiReply == 1
+	u.Onboarded = onboarded == 1
+	if len(skills) > 0 {
+		_ = json.Unmarshal(skills, &u.Skills)
+	}
+	return u, true
+}
+
+// GetProfile 读供给方档案。JSON 列在建表时就是 NOT NULL 带默认值, 所以扫进 []byte 不会遇到 NULL。
+func (s *mysqlStore) GetProfile(userID string) (*model.ProviderProfile, bool) {
+	p := &model.ProviderProfile{}
+	var skills, portfolio []byte
+	err := s.db.QueryRow("SELECT user_id,headline,bio,skills,portfolio,availability,completeness,updated_at FROM provider_profile WHERE user_id=?", userID).
+		Scan(&p.UserID, &p.Headline, &p.Bio, &skills, &portfolio, &p.Availability, &p.Completeness, &p.UpdatedAt)
+	if err != nil {
+		return nil, false
+	}
+	if len(skills) > 0 {
+		_ = json.Unmarshal(skills, &p.Skills)
+	}
+	if len(portfolio) > 0 {
+		_ = json.Unmarshal(portfolio, &p.Portfolio)
+	}
+	return p, true
+}
+
+func (s *mysqlStore) PutProfile(p *model.ProviderProfile) {
+	sk, _ := json.Marshal(p.Skills)
+	pf, _ := json.Marshal(p.Portfolio)
+	_, _ = s.db.Exec(`INSERT INTO provider_profile (user_id,headline,bio,skills,portfolio,availability,completeness,updated_at)
+		VALUES (?,?,?,?,?,?,?,?)
+		ON DUPLICATE KEY UPDATE headline=VALUES(headline),bio=VALUES(bio),skills=VALUES(skills),
+		portfolio=VALUES(portfolio),availability=VALUES(availability),completeness=VALUES(completeness),updated_at=VALUES(updated_at)`,
+		p.UserID, p.Headline, p.Bio, sk, pf, p.Availability, p.Completeness, p.UpdatedAt)
 }
 
 func (s *mysqlStore) ListProviders() []*model.User {
-	rows, err := s.db.Query("SELECT id,account,password_hash,real_name,phone,name,role,kyc_verified,skills,credit_score,tax_bound,ai_auto_reply,created_at FROM `user` WHERE role=? AND deleted_at IS NULL", model.RoleProvider)
+	rows, err := s.db.Query("SELECT "+userCols+" FROM `user` WHERE role=? AND deleted_at IS NULL", model.RoleProvider)
 	if err != nil {
 		return nil
 	}
@@ -176,9 +279,9 @@ func (s *mysqlStore) ListProviders() []*model.User {
 	for rows.Next() {
 		u := &model.User{}
 		var skills []byte
-		var kyc, tax, aiReply int
+		var kyc, tax, aiReply, onboarded int
 		var account, phash, realName, phone sql.NullString
-		if err := rows.Scan(&u.ID, &account, &phash, &realName, &phone, &u.Name, &u.Role, &kyc, &skills, &u.CreditScore, &tax, &aiReply, &u.CreatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &account, &phash, &realName, &phone, &u.Name, &u.Role, &kyc, &skills, &u.CreditScore, &tax, &aiReply, &u.Slug, &onboarded, &u.CreatedAt); err != nil {
 			return nil
 		}
 		u.Account = account.String
@@ -188,6 +291,7 @@ func (s *mysqlStore) ListProviders() []*model.User {
 		u.KYCVerified = kyc == 1
 		u.TaxBound = tax == 1
 		u.AIAutoReply = aiReply == 1
+	u.Onboarded = onboarded == 1
 		if len(skills) > 0 {
 			_ = json.Unmarshal(skills, &u.Skills)
 		}
@@ -198,7 +302,7 @@ func (s *mysqlStore) ListProviders() []*model.User {
 
 // ListUsers 返回全部用户(含需求方/接单方/运营), 供运营看板聚合。
 func (s *mysqlStore) ListUsers() []*model.User {
-	rows, err := s.db.Query("SELECT id,account,password_hash,real_name,phone,name,role,kyc_verified,skills,credit_score,tax_bound,ai_auto_reply,created_at FROM `user` WHERE deleted_at IS NULL")
+	rows, err := s.db.Query("SELECT "+userCols+" FROM `user` WHERE deleted_at IS NULL")
 	if err != nil {
 		return nil
 	}
@@ -207,9 +311,9 @@ func (s *mysqlStore) ListUsers() []*model.User {
 	for rows.Next() {
 		u := &model.User{}
 		var skills []byte
-		var kyc, tax, aiReply int
+		var kyc, tax, aiReply, onboarded int
 		var account, phash, realName, phone sql.NullString
-		if err := rows.Scan(&u.ID, &account, &phash, &realName, &phone, &u.Name, &u.Role, &kyc, &skills, &u.CreditScore, &tax, &aiReply, &u.CreatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &account, &phash, &realName, &phone, &u.Name, &u.Role, &kyc, &skills, &u.CreditScore, &tax, &aiReply, &u.Slug, &onboarded, &u.CreatedAt); err != nil {
 			return nil
 		}
 		u.Account = account.String
@@ -219,6 +323,7 @@ func (s *mysqlStore) ListUsers() []*model.User {
 		u.KYCVerified = kyc == 1
 		u.TaxBound = tax == 1
 		u.AIAutoReply = aiReply == 1
+	u.Onboarded = onboarded == 1
 		if len(skills) > 0 {
 			_ = json.Unmarshal(skills, &u.Skills)
 		}

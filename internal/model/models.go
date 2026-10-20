@@ -31,7 +31,29 @@ type User struct {
 	CreditScore  int      `json:"credit_score"` // 可携带信用分 0-100
 	TaxBound     bool     `json:"tax_bound"`    // 是否已绑定税源地(接单方结算合规, 个体入驻)
 	AIAutoReply  bool     `json:"ai_auto_reply"` // 是否开启 IM 离线自动回复(AI 客服, 明确标记 AI, 不冒充真人)
+	Slug         string   `json:"slug,omitempty"` // 公开短号(4-8 位), /p/{slug} 用; 内部 ID 不对外暴露
+	Onboarded    bool     `json:"onboarded"`     // 是否走完供给方档案引导(未完成不进召回池)
 	CreatedAt    int64    `json:"created_at"`
+}
+
+// PortfolioItem 作品链接。label 是给人看的名字, url 是可点开的地址。
+type PortfolioItem struct {
+	Label string `json:"label"`
+	URL   string `json:"url"`
+}
+
+// ProviderProfile 供给方档案(provider_profile 表)。
+// 这是被匹配的前提, 也是背书卡片"一句话定位/技能标签/作品"三项事实的来源。
+// Completeness 由 supply 域计算后落库, 用于召回排序, 不在查询时聚合。
+type ProviderProfile struct {
+	UserID       string          `json:"user_id"`
+	Headline     string          `json:"headline"`     // 一句话定位, 卡片第二行, ≤60 字
+	Bio          string          `json:"bio"`          // 补充说明, ≤200 字
+	Skills       []string        `json:"skills"`       // 3-5 个, 超过 5 个匹配理由会退化成废话
+	Portfolio    []PortfolioItem `json:"portfolio"`    // 最多 3 条
+	Availability int             `json:"availability"` // 1 可接单 / 0 暂停(暂停不掉信用)
+	Completeness int             `json:"completeness"` // 0-100
+	UpdatedAt    int64           `json:"updated_at"`
 }
 
 // TaskStatus 需求单状态

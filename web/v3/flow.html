@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>订单与背书 · zanbuddy 联赞</title>
+<link rel="stylesheet" href="ds.css">
+<style>
+  /* 状态机 */
+  .machine{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border:1px solid var(--rule);background:var(--card)}
+  .st{padding:18px 16px;border-right:1px solid var(--rule);position:relative}
+  .st:last-child{border-right:0}
+  .st .n{font-family:var(--mono);font-size:.64rem;color:var(--ink-4);letter-spacing:.12em}
+  .st .t{font-weight:600;margin:6px 0 4px;font-size:.96rem}
+  .st .d{font-size:.76rem;color:var(--ink-3);line-height:1.5}
+  .st.on{background:var(--seal-wash)}
+  .st.on .t{color:var(--seal-2)}
+  .st.on::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--seal)}
+  .st.done .t{color:var(--ok)}
+  .cancel-bar{margin-top:-1px;border:1px dashed var(--rule-2);padding:9px 14px;font-size:.78rem;color:var(--ink-3);
+    display:flex;align-items:center;gap:8px;background:var(--paper-2)}
+  @media(max-width:760px){.machine{grid-template-columns:repeat(2,1fr)}.st:nth-child(2){border-right:0}}
+
+  /* 三问 */
+  .q{display:flex;gap:10px;padding:11px 12px;border:1px solid var(--rule);border-radius:var(--r);
+    cursor:pointer;transition:border-color .16s,background .16s;background:var(--card);margin-bottom:8px}
+  .q:hover{border-color:var(--rule-2)}
+  .q.on{border-color:var(--seal);background:var(--seal-wash)}
+  .q .box{width:16px;height:16px;border:1px solid var(--rule-2);border-radius:1px;flex:0 0 auto;margin-top:3px;
+    display:flex;align-items:center;justify-content:center;background:var(--card)}
+  .q.on .box{background:var(--seal);border-color:var(--seal)}
+  .q .box svg{width:11px;height:11px;stroke:#fff;opacity:0}
+  .q.on .box svg{opacity:1}
+  .q .t{font-size:.88rem;font-weight:500}
+  .q .s{font-size:.75rem;color:var(--ink-3);margin-top:2px}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="wrap">
+    <a class="brand" href="index.html"><span class="mk">赞</span> zanbuddy <small>联赞</small></a>
+    <div class="nlinks">
+      <a href="post.html">发需求</a>
+      <a href="match.html">找人</a>
+      <a href="credit.html">信用档案</a>
+      <a href="flow.html" class="on">订单与背书</a>
+      <a href="app.html" class="btn btn-line btn-sm" style="margin-left:8px">我的工作台</a>
+    </div>
+  </div>
+</nav>
+
+<main class="wrap" style="padding-top:32px;padding-bottom:64px">
+
+  <div class="flex jb ac wrapw g12" style="margin-bottom:20px">
+    <div>
+      <div class="eyebrow" style="margin-bottom:6px">订单 <span class="mono" style="color:var(--ink-2)">ZB-2609</span></div>
+      <h1 style="font-size:1.6rem">退款审批 Agent <span class="state state-check" style="vertical-align:middle;margin-left:8px">待验收</span></h1>
+    </div>
+    <div class="flex g8">
+      <button class="btn btn-line btn-sm" type="button" onclick="toast('原型演示：下载交付物')">下载交付物</button>
+      <button class="btn btn-seal btn-sm" type="button" onclick="document.getElementById('endorse').scrollIntoView({behavior:'smooth'})">去验收</button>
+    </div>
+  </div>
+
+  <!-- 状态机 -->
+  <div class="machine" style="margin-bottom:6px">
+    <div class="st done"><div class="n">S1</div><div class="t">待确认</div><div class="d">你选定人，他确认接单。双方联系方式在此解锁。</div></div>
+    <div class="st done"><div class="n">S2</div><div class="t">进行中</div><div class="d">他交付，你只看到交付物。不设进度百分比。</div></div>
+    <div class="st on"><div class="n">S3</div><div class="t">待验收</div><div class="d">你点"验收通过"即完成。平台只记录事实。</div></div>
+    <div class="st"><div class="n">S4</div><div class="t">已完成</div><div class="d">24 小时内触发双向背书邀请。</div></div>
+  </div>
+  <div class="cancel-bar">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    任一阶段可取消 → <span class="mono">已取消</span>（终态）。没有子状态、没有进度条、不可跳步。
+  </div>
+
+  <div class="split split-wide" style="gap:28px;margin-top:28px">
+
+    <!-- 左：订单详情 -->
+    <div>
+      <div class="card card-pad" style="margin-bottom:18px">
+        <div class="eyebrow" style="margin-bottom:12px">这笔交易</div>
+
+        <div class="flex ac g12" style="margin-bottom:16px">
+          <div class="av">陈</div>
+          <div class="grow">
+            <div class="flex ac g8"><b>陈默</b><span class="tag tag-ok tag-mono">已实名</span></div>
+            <div class="tiny muted">接单方 · 已确认接单 2026-10-08</div>
+          </div>
+          <a class="btn btn-line btn-sm" href="credit.html">信用档案</a>
+        </div>
+
+        <div class="grid g2" style="gap:14px;margin-bottom:16px">
+          <div style="border:1px solid var(--rule);padding:12px 14px">
+            <div class="mono tiny" style="color:var(--ink-4);letter-spacing:.1em;margin-bottom:4px">交付物</div>
+            <div style="font-size:.9rem">一个可运行的 Agent：输入订单号 → 输出退款判定 + 理由 + 引用条款</div>
+          </div>
+          <div style="border:1px solid var(--rule);padding:12px 14px">
+            <div class="mono tiny" style="color:var(--ink-4);letter-spacing:.1em;margin-bottom:4px">怎么算交付完成</div>
+            <div style="font-size:.9rem">用 50 条历史订单回测，判定一致率 ≥ 85%，且能当场演示</div>
+          </div>
+        </div>
+
+        <div class="data" style="margin-bottom:16px">
+          <div class="d"><div class="k">交易额</div><div class="v">6,800.00</div></div>
+          <div class="d"><div class="k">服务费 3%</div><div class="v">204.00</div></div>
+          <div class="d"><div class="k">他实收</div><div class="v">6,800.00</div></div>
+          <div class="d"><div class="k">周期</div><div class="v">12<span style="font-size:.68rem"> 天</span></div></div>
+        </div>
+
+        <div class="note">
+          <b>平台不碰钱。</b>试点期服务费由需求方另行支付（3%，¥204.00），不托管、不垫资。交易款由你们直接结算——平台只记录交付事实。
+        </div>
+      </div>
+
+      <!-- 交付物 -->
+      <div class="card" style="margin-bottom:18px">
+        <div style="padding:16px 24px;border-bottom:1px solid var(--rule)" class="flex jb ac">
+          <b style="font-size:.96rem">交付物与过程记录</b>
+          <span class="tag tag-mono">3 个文件 · 2 条记录</span>
+        </div>
+        <div style="padding:8px 24px 16px">
+          <div class="reason" style="padding:12px 0"><span class="n">01</span>
+            <div class="grow"><b>refund_agent.zip</b> <span class="tiny muted">· 源码 + 部署说明</span>
+              <div class="tiny muted" style="margin-top:2px">上传于 2026-10-19 21:04</div></div>
+            <button class="btn btn-quiet btn-sm" type="button" onclick="toast('原型演示：下载')">下载</button></div>
+          <div class="reason" style="padding:12px 0"><span class="n">02</span>
+            <div class="grow"><b>回测报告.pdf</b> <span class="tiny muted">· 50 条历史订单，一致率 88%</span>
+              <div class="tiny muted" style="margin-top:2px">上传于 2026-10-19 21:06</div></div>
+            <button class="btn btn-quiet btn-sm" type="button" onclick="toast('原型演示：查看')">查看</button></div>
+          <div class="reason" style="padding:12px 0"><span class="n">03</span>
+            <div class="grow"><b>演示录屏.mp4</b> <span class="tiny muted">· 2 分 14 秒，含失败案例</span>
+              <div class="tiny muted" style="margin-top:2px">上传于 2026-10-19 21:09</div></div>
+            <button class="btn btn-quiet btn-sm" type="button" onclick="toast('原型演示：播放')">播放</button></div>
+          <div class="note note-warn" style="margin-top:10px">
+            沟通过程在微信，不在这里。平台只记三件事：<b>交付物上传、验收确认、问题标记</b>——这三件足够让背书可追溯。
+          </div>
+        </div>
+      </div>
+
+      <!-- 验收 + 背书 -->
+      <div class="card" id="endorse" style="padding:24px">
+        <div class="flex jb ac wrapw g10" style="margin-bottom:6px">
+          <h2 style="font-size:1.2rem">验收，然后留下一句真话</h2>
+          <span class="tag tag-mono">双向 · 你也可以被背书</span>
+        </div>
+        <p class="tiny muted" style="margin-bottom:18px">验收通过后 24 小时内可写。少于 12 个字提交不了；发出后不可编辑，只能追加。</p>
+
+        <div class="flex g8 wrapw" style="margin-bottom:20px">
+          <button class="btn btn-ink" type="button" onclick="toast('已验收通过 · 原型演示')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5"/></svg>
+            验收通过
+          </button>
+          <button class="btn btn-line" type="button" onclick="toast('原型演示：标记问题（非仲裁）')">标记问题</button>
+          <span class="tiny muted" style="align-self:center">标记问题不是投诉，只是记录事实，不做仲裁。</span>
+        </div>
+
+        <hr class="rule" style="margin:0 0 20px">
+
+        <div class="eyebrow" style="margin-bottom:10px">先选你愿意回答的问题 · 至少两个</div>
+
+        <label class="q" data-q="1" onclick="toggleQ(this)">
+          <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>
+          <span><span class="t">他交付了什么？</span><span class="s">具体到能看见的东西，不要写"服务很好"</span></span>
+        </label>
+        <label class="q" data-q="2" onclick="toggleQ(this)">
+          <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>
+          <span><span class="t">哪一点超出你的预期？</span><span class="s">可以是一个细节、一次主动、一个他没被要求却做了的事</span></span>
+        </label>
+        <label class="q" data-q="3" onclick="toggleQ(this)">
+          <span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>
+          <span><span class="t">你会不会再次合作？为什么？</span><span class="s">不愿意也如实写，这比夸他更有用</span></span>
+        </label>
+
+        <div class="field" style="margin-top:16px">
+          <label class="label" for="body">写给下一个要找他的人 <span class="req">*</span></label>
+          <textarea id="body" class="textarea" style="min-height:130px" oninput="validate()"
+            placeholder="例：他把退款审批做成了一个能自己跑的 Agent，50 条历史订单回测一致率 88%。我临时要加一个"节假日不自动退"的规则，他没加钱，第二天就改好了。"></textarea>
+          <div class="flex jb ac wrapw g8">
+            <span class="hint">已选 <b id="qCount">0</b>/3 问 · <b id="charCount">0</b> 字（门槛 12 字）</span>
+            <span class="err" id="why" style="display:none"></span>
+          </div>
+        </div>
+
+        <div class="note note-warn" style="margin-bottom:16px">
+          <b>发出后不可编辑，只可追加。</b>可编辑等于可撤回，可撤回等于可要挟——不可篡改是这份信用资产的定价基础。
+        </div>
+
+        <div class="flex ac g12 wrapw">
+          <button class="btn btn-seal" id="submitBtn" type="button" disabled onclick="submitEndorse()">发布背书</button>
+          <span class="tiny muted" id="gate">至少选 2 个问题，且写满 12 个字</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右：时间线 -->
+    <aside class="rail">
+      <div class="card card-pad" style="margin-bottom:16px">
+        <div class="eyebrow" style="margin-bottom:12px">审计时间线</div>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:0" class="tiny">
+          <li style="padding:0 0 14px 16px;border-left:1px solid var(--rule);position:relative">
+            <span style="position:absolute;left:-3px;top:3px;width:5px;height:5px;border-radius:50%;background:var(--seal)"></span>
+            <b>待验收</b><div class="muted">2026-10-19 21:09 · 接单方提交交付物</div></li>
+          <li style="padding:0 0 14px 16px;border-left:1px solid var(--rule);position:relative">
+            <span style="position:absolute;left:-3px;top:3px;width:5px;height:5px;border-radius:50%;background:var(--rule-2)"></span>
+            <b>进行中</b><div class="muted">2026-10-08 10:22 · 双方确认合作，联系方式解锁</div></li>
+          <li style="padding:0 0 14px 16px;border-left:1px solid var(--rule);position:relative">
+            <span style="position:absolute;left:-3px;top:3px;width:5px;height:5px;border-radius:50%;background:var(--rule-2)"></span>
+            <b>待确认</b><div class="muted">2026-10-07 16:40 · 你选择了陈默（推荐 1/3）</div></li>
+          <li style="padding:0 0 0 16px;border-left:1px solid transparent;position:relative">
+            <span style="position:absolute;left:-3px;top:3px;width:5px;height:5px;border-radius:50%;background:var(--rule-2)"></span>
+            <b>发单</b><div class="muted">2026-10-07 16:31 · 一句话需求，3 位候选人</div></li>
+        </ul>
+      </div>
+
+      <div class="card card-pad">
+        <div class="eyebrow" style="margin-bottom:8px">为什么不用五星</div>
+        <p class="tiny muted">五星在中文互联网已经失去区分度，4.8 和 5.0 没有差别。一条带细节的话，信息量远高于一个分数。
+          所以这里没有评分、没有等级、没有勋章——信任不能游戏化。</p>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<footer class="foot">
+  <div class="wrap flex jb wrapw g16">
+    <span class="mono" style="font-size:.7rem">zanbuddy 联赞 · 订单 ZB-2609</span>
+    <span class="mono" style="font-size:.7rem">四态订单机 · 不设子状态 · 不设进度百分比</span>
+  </div>
+</footer>
+
+<div id="toast" class="card" style="position:fixed;left:50%;bottom:26px;transform:translate(-50%,16px);z-index:200;
+  padding:11px 18px;background:var(--ink);color:var(--paper);border-color:var(--ink);opacity:0;pointer-events:none;
+  transition:opacity .2s,transform .2s;font-size:.86rem"></div>
+
+<script>
+function toggleQ(el){ el.classList.toggle('on'); validate(); }
+
+function countChars(s){
+  // 中文按字、英文数字按词，去掉空白与标点
+  const noPunct = s.replace(/[\s，。、；：！？,.;:!?"'（）()《》【】\-—…]/g, '');
+  return noPunct.length;
+}
+
+function validate(){
+  const q = document.querySelectorAll('.q.on').length;
+  const c = countChars(document.getElementById('body').value);
+  document.getElementById('qCount').textContent = q;
+  document.getElementById('charCount').textContent = c;
+
+  const ok = q >= 2 && c >= 12;
+  document.getElementById('submitBtn').disabled = !ok;
+
+  const why = document.getElementById('why');
+  if (ok) {
+    why.style.display = 'none';
+    document.getElementById('gate').textContent = '可以发布 · 发出后不可编辑';
+  } else {
+    why.style.display = 'inline';
+    const parts = [];
+    if (q < 2) parts.push('还差 ' + (2 - q) + ' 个问题');
+    if (c < 12) parts.push('还差 ' + (12 - c) + ' 字');
+    why.textContent = parts.join(' · ');
+    document.getElementById('gate').textContent = '至少选 2 个问题，且写满 12 个字';
+  }
+}
+
+function submitEndorse(){
+  toast('背书已发布 · 不可编辑，只可追加（原型演示）');
+}
+
+let tt;
+function toast(msg){
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.style.opacity = 1; el.style.transform = 'translate(-50%,0)';
+  clearTimeout(tt); tt = setTimeout(() => { el.style.opacity = 0; el.style.transform = 'translate(-50%,16px)'; }, 2600);
+}
+validate();
+</script>
+</body>
+</html>

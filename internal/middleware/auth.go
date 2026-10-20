@@ -8,11 +8,19 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"time"
 )
 
-var secret = []byte("zanbuddy-m0-dev-secret-replace-in-prod")
+// secret 生产必须由 ZANBUDDY_JWT_SECRET 覆盖。留默认值是为了让开发和演示
+// 不上环境变量也能跑; 生产环境用默认值启动等于把会话签名公开, 所以 main 里会告警。
+var secret = func() []byte {
+	if v := os.Getenv("ZANBUDDY_JWT_SECRET"); v != "" {
+		return []byte(v)
+	}
+	return []byte("zanbuddy-m0-dev-secret-replace-in-prod")
+}()
 
 // Claims JWT 载荷
 type Claims struct {

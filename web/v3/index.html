@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>zanbuddy 联赞 · 认识靠谱的人，因为你信任的人为他背过书</title>
+<meta name="description" content="AI 小交付的信任凭证平台。固定 3 位候选，每个推荐挂在可验证事实上，每条背书来自真实完成的订单。">
+<link rel="stylesheet" href="ds.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="wrap">
+    <a class="brand" href="index.html">
+      <span class="mk">赞</span> zanbuddy <small>联赞</small>
+    </a>
+    <div class="nlinks">
+      <a href="#how">怎么运作</a>
+      <a href="credit.html">信用档案</a>
+      <a href="#fee">试点费率</a>
+      <a href="auth.html">登录</a>
+      <a class="btn btn-ink btn-sm" href="post.html" style="margin-left:8px">发一句话需求</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ── HERO ───────────────────────────────────────────── -->
+<header class="sec" style="padding-top:56px;padding-bottom:40px">
+  <div class="wrap">
+    <div class="grid g2" style="gap:48px;align-items:center">
+      <div>
+        <div class="eyebrow" style="margin-bottom:18px">防御期 · 只做一个品类 · AI 小交付</div>
+        <h1 style="margin-bottom:20px">认识靠谱的人，<br>因为你信任的人<br><span style="color:var(--seal)">为他背过书。</span></h1>
+        <p class="lead" style="max-width:34em;margin-bottom:26px">
+          匹配早就完成了，成交没有发生——你面对五个陌生人，说不出"就你了"。
+          <br>这里不给五星评分，不给比价，只给一条能指认到具体人的凭证：某个真实合作过的人，说了某句带细节的话。
+        </p>
+
+        <form class="card card-pad" onsubmit="event.preventDefault();var v=document.getElementById('ask').value.trim();location.href='post.html'+(v?'?brief='+encodeURIComponent(v):'')" style="max-width:520px">
+          <label class="label" for="ask" style="display:block;margin-bottom:8px">
+            用一句话说清你要交付什么<span class="req">*</span>
+          </label>
+          <textarea id="ask" class="textarea" style="min-height:84px;font-size:.95rem"
+            placeholder="例：把客服的退款审批做成一个能自动跑的 Agent，输入订单号就能判断该退不该退。"></textarea>
+          <div class="flex ac jb wrapw g8" style="margin-top:12px">
+            <span class="hint">必填只有两个：交付什么、怎么算交付完成。</span>
+            <button class="btn btn-seal" type="submit">
+              看看谁被背书过
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            </button>
+          </div>
+        </form>
+
+        <div class="flex wrapw g16" style="margin-top:22px">
+          <span class="tiny muted flex ac g6">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--ok)" stroke-width="2.2"><path d="M20 6L9 17l-5-5"/></svg>
+            固定 3 位候选人
+          </span>
+          <span class="tiny muted flex ac g6">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--ok)" stroke-width="2.2"><path d="M20 6L9 17l-5-5"/></svg>
+            每条理由挂 1 个可验证事实
+          </span>
+          <span class="tiny muted flex ac g6">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--ok)" stroke-width="2.2"><path d="M20 6L9 17l-5-5"/></svg>
+            无订单的赞，零权重
+          </span>
+        </div>
+      </div>
+
+      <!-- 一张卡片即产品 -->
+      <div class="rise" style="position:relative">
+        <div class="eyebrow" style="margin-bottom:10px">一位候选人的全部判断依据</div>
+        <div class="card card-pad stamp-edge" style="padding-top:22px">
+          <div class="flex ac g12" style="margin-bottom:14px">
+            <div class="av">陈</div>
+            <div class="grow">
+              <div class="flex ac g8">
+                <strong style="font-size:1.02rem">陈默</strong>
+                <span class="tag tag-ok tag-mono">已实名</span>
+              </div>
+              <div class="tiny muted">把重复流程做成能跑起来的 Agent</div>
+            </div>
+          </div>
+
+          <div class="flex ac g8 tiny" style="color:var(--ink-3);margin-bottom:8px">
+            <span class="seal seal-sm">背书</span>
+            <span><b style="color:var(--ink-2)">李明</b> · 前同事，一起交付过 2 个项目</span>
+          </div>
+          <blockquote class="quote quote-sm" style="margin-bottom:14px">
+            "他把我们客服的退款审批做成了一个 Agent，上线两周人工处理从每天 40 单降到 6 单。中间我改了三次需求，他没推诿，最后一次是周六晚上改完的。"
+          </blockquote>
+
+          <div class="data" style="margin-bottom:14px">
+            <div class="d"><div class="k">完成</div><div class="v">12<span style="font-size:.7rem"> 单</span></div></div>
+            <div class="d"><div class="k">平均周期</div><div class="v">16<span style="font-size:.7rem"> 天</span></div></div>
+            <div class="d"><div class="k">复购</div><div class="v">5<span style="font-size:.7rem"> 人</span></div></div>
+            <div class="d"><div class="k">背书</div><div class="v">7<span style="font-size:.7rem"> 条</span></div></div>
+          </div>
+
+          <div class="flex g8">
+            <a class="btn btn-ink btn-sm grow" href="match.html">发起合作</a>
+            <a class="btn btn-line btn-sm grow" href="credit.html">看完整信用档案</a>
+          </div>
+        </div>
+        <div class="tiny mono" style="margin-top:10px;color:var(--ink-4);text-align:right">
+          卡片上每个数字都可点开溯源 — 这是产品，其余是附属品
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap"><hr class="rule"></div>
+
+<!-- ── 不是什么 ───────────────────────────────────────── -->
+<section class="sec-tight">
+  <div class="wrap">
+    <div class="eyebrow" style="margin-bottom:14px">边界 / 用排除法锁定</div>
+    <div class="grid g3" style="gap:16px">
+      <div class="card card-pad">
+        <div class="flex ac jb"><h3 class="strike">外包比价市场</h3>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-4)" stroke-width="1.8"><path d="M18 6L6 18M6 6l12 12"/></svg></div>
+        <p class="tiny" style="margin-top:8px">比价把交易拉回价格维度，而价格维度上背书毫无价值——用户会直接选最便宜的。</p>
+      </div>
+      <div class="card card-pad">
+        <div class="flex ac jb"><h3 class="strike">内容社区</h3>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-4)" stroke-width="1.8"><path d="M18 6L6 18M6 6l12 12"/></svg></div>
+        <p class="tiny" style="margin-top:8px">瀑布流、动态、关注都需要内容供给密度，冷启动期没有，做了就是个没人发帖的空场。</p>
+      </div>
+      <div class="card card-pad">
+        <div class="flex ac jb"><h3 class="strike">项目管理工具</h3>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-4)" stroke-width="1.8"><path d="M18 6L6 18M6 6l12 12"/></svg></div>
+        <p class="tiny" style="margin-top:8px">甘特图、工时、进度百分比是供给方内部的事。平台一管，核心动作就被埋了。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── 怎么运作 ───────────────────────────────────────── -->
+<section class="sec" id="how" style="background:var(--paper-2);border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)">
+  <div class="wrap">
+    <div class="flex jb ac wrapw g16" style="margin-bottom:32px">
+      <div>
+        <div class="eyebrow" style="margin-bottom:10px">三个动作 / 超过两次点击就是设计失败</div>
+        <h2>你的全部路径</h2>
+      </div>
+      <a class="btn btn-line btn-sm" href="flow.html">看订单与背书流程 →</a>
+    </div>
+
+    <div class="grid g3" style="gap:0;border:1px solid var(--rule);background:var(--card)">
+      <div style="padding:26px 24px;border-right:1px solid var(--rule)">
+        <div class="mono" style="font-size:.72rem;color:var(--seal);letter-spacing:.14em">SC-1</div>
+        <h3 style="margin:8px 0 10px">说一句话</h3>
+        <p class="tiny">不用填表。系统自动抽出交付物形态、技能标签、预算区间，允许你改。30 秒内看到 3 位候选人。</p>
+      </div>
+      <div style="padding:26px 24px;border-right:1px solid var(--rule)">
+        <div class="mono" style="font-size:.72rem;color:var(--seal);letter-spacing:.14em">SC-2</div>
+        <h3 style="margin:8px 0 10px">60 秒判断</h3>
+        <p class="tiny">一张卡片给全：他是谁、谁为他背书、背书原话、可验证的交付数据。点开才看作品，第一层只回答"靠不靠谱"。</p>
+      </div>
+      <div style="padding:26px 24px">
+        <div class="mono" style="font-size:.72rem;color:var(--seal);letter-spacing:.14em">SC-3</div>
+        <h3 style="margin:8px 0 10px">留下这份信誉</h3>
+        <p class="tiny">验收后双向邀请写背书。三个结构化问题引导你写出带细节的一句，少于 12 字直接拒收。发出后不可编辑。</p>
+      </div>
+    </div>
+
+    <div class="note" style="margin-top:20px">
+      <b>沟通在平台外发生。</b>第一版不做站内聊天——与其做一个更差的微信，不如诚实地承认微信已经赢了。
+      平台只记录三件事：交付物上传、验收确认、问题标记。
+    </div>
+  </div>
+</section>
+
+<!-- ── 卡片解剖 ──────────────────────────────────────── -->
+<section class="sec">
+  <div class="wrap">
+    <div class="grid g2" style="gap:40px;align-items:start">
+      <div>
+        <div class="eyebrow" style="margin-bottom:10px">设计原则 01 / 一张卡片即产品</div>
+        <h2 style="margin-bottom:16px">第一层只有四件事</h2>
+        <p class="lead" style="margin-bottom:24px">人不会做二十维的决策，人会找一个信任的人替他做决策。所以卡片上最重要的不是技能标签，是那两个名字和那两句话。</p>
+        <ol style="list-style:none;display:flex;flex-direction:column;gap:14px">
+          <li class="flex g12"><span class="mono" style="color:var(--seal);font-size:.75rem;padding-top:3px">01</span>
+            <div><b style="font-size:.94rem">他是谁</b><div class="tiny muted">姓名 + 一句话能力定位 + 实名状态。没有等级、没有勋章、没有"金牌"。</div></div></li>
+          <li class="flex g12"><span class="mono" style="color:var(--seal);font-size:.75rem;padding-top:3px">02</span>
+            <div><b style="font-size:.94rem">谁为他背书</b><div class="tiny muted">背书人姓名 + 与他的关系。名字是可指认的人，不是"某客户"。</div></div></li>
+          <li class="flex g12"><span class="mono" style="color:var(--seal);font-size:.75rem;padding-top:3px">03</span>
+            <div><b style="font-size:.94rem">那两句带细节的话</b><div class="tiny muted">原文，不可编辑、只可追加。短于 12 字的背书进不来。</div></div></li>
+          <li class="flex g12"><span class="mono" style="color:var(--seal);font-size:.75rem;padding-top:3px">04</span>
+            <div><b style="font-size:.94rem">能核对的交付数据</b><div class="tiny muted">完成单数、平均周期、复购人数。每个数字可点开到订单号。</div></div></li>
+        </ol>
+      </div>
+
+      <div class="card card-pad" style="background:var(--paper-2)">
+        <div class="eyebrow" style="margin-bottom:14px">一张卡片的三条推荐理由 — 每条挂一个事实</div>
+        <div style="background:var(--card);border:1px solid var(--rule);padding:18px">
+          <div class="reason"><span class="n">01</span><div>技能标签命中 <b>LLM 工作流 / Python / 客服自动化</b>，与你的需求重合 3 项
+            <div style="margin-top:4px"><span class="anchor">↗ 查看技能标签来源</span></div></div></div>
+          <div class="reason"><span class="n">02</span><div>有 1 个<b>可当场运行</b>的作品：退款审批 Agent，demo 可直接点开
+            <div style="margin-top:4px"><span class="anchor">↗ 打开 demo</span></div></div></div>
+          <div class="reason"><span class="n">03</span><div><b>王倩</b>（他的客户，2026-06）为他背书，并在 3 个月后复购第 2 单
+            <div style="margin-top:4px"><span class="anchor">↗ 读原文 · 订单 #ZB-2417</span></div></div></div>
+        </div>
+        <div class="note note-warn" style="margin-top:14px">
+          禁止出现"AI 认为他很合适"这类无法追溯的表述。写不出三条带事实的理由，这个候选人就不许展示。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── 费率 ─────────────────────────────────────────── -->
+<section class="sec" id="fee" style="border-top:1px solid var(--rule);background:var(--paper-2)">
+  <div class="wrap">
+    <div class="grid g2" style="gap:40px;align-items:center">
+      <div>
+        <div class="eyebrow" style="margin-bottom:10px">试点费率 / 明示，不藏在条款里</div>
+        <h2 style="margin-bottom:14px">交易额的 <span style="color:var(--seal);font-family:var(--mono)">3%</span>，成交才收</h2>
+        <p class="lead" style="margin-bottom:16px">行业普遍抽佣 15–20%。我们收 3%，因为平台不承担交付责任、不垫资、不做仲裁——收的每一分钱都必须小于替你省下的钱。</p>
+        <div class="flex wrapw g8">
+          <span class="tag tag-mono">验收通过才计费</span>
+          <span class="tag tag-mono">向下取整到分</span>
+          <span class="tag tag-mono">单笔最低 ¥0.01</span>
+          <span class="tag tag-mono">单笔封顶 ¥2,000</span>
+          <span class="tag tag-mono">未成交 ¥0</span>
+        </div>
+      </div>
+      <div class="card" style="overflow:hidden">
+        <table style="width:100%;border-collapse:collapse;font-size:.86rem">
+          <thead>
+            <tr style="background:var(--paper-2);text-align:left">
+              <th style="padding:10px 16px;font-weight:600;font-size:.74rem;letter-spacing:.06em;color:var(--ink-3)">交易额</th>
+              <th style="padding:10px 16px;font-weight:600;font-size:.74rem;letter-spacing:.06em;color:var(--ink-3)">服务费</th>
+              <th style="padding:10px 16px;font-weight:600;font-size:.74rem;letter-spacing:.06em;color:var(--ink-3)">说明</th>
+            </tr>
+          </thead>
+          <tbody class="mono">
+            <tr style="border-top:1px solid var(--rule)"><td style="padding:11px 16px">¥1,000.00</td><td style="padding:11px 16px">¥30.00</td><td style="padding:11px 16px;color:var(--ink-3);font-family:var(--sans)">标准</td></tr>
+            <tr style="border-top:1px solid var(--rule)"><td style="padding:11px 16px">¥199.99</td><td style="padding:11px 16px">¥5.99</td><td style="padding:11px 16px;color:var(--ink-3);font-family:var(--sans)">向下取整，不多收零头</td></tr>
+            <tr style="border-top:1px solid var(--rule)"><td style="padding:11px 16px">¥0.10</td><td style="padding:11px 16px">¥0.01</td><td style="padding:11px 16px;color:var(--ink-3);font-family:var(--sans)">触下限</td></tr>
+            <tr style="border-top:1px solid var(--rule)"><td style="padding:11px 16px">¥200,000</td><td style="padding:11px 16px">¥2,000</td><td style="padding:11px 16px;color:var(--ink-3);font-family:var(--sans)">触封顶，超出另议</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── CTA ──────────────────────────────────────────── -->
+<section class="sec">
+  <div class="wrap">
+    <div class="grid g2" style="gap:16px">
+      <a class="card card-pad card-lift" href="match.html" style="display:block">
+        <div class="eyebrow" style="margin-bottom:10px">需求方</div>
+        <h3 style="margin-bottom:8px">我有个活要交出去</h3>
+        <p class="tiny" style="margin-bottom:16px">一句话描述，30 秒看到 3 位被真实背书过的开发者。成交前你不必露身份。</p>
+        <span class="btn btn-ink btn-sm">开始发单
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </a>
+      <a class="card card-pad card-lift" href="credit.html" style="display:block">
+        <div class="eyebrow" style="margin-bottom:10px">供给方</div>
+        <h3 style="margin-bottom:8px">我想让做过的事变成凭据</h3>
+        <p class="tiny" style="margin-bottom:16px">每个供给方一个公开信用页，聚合全部背书与交付记录，可导出带走。链接不属于平台，属于你。</p>
+        <span class="btn btn-line btn-sm">看一份信用档案
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="flex jb wrapw g16">
+      <div class="flex ac g8">
+        <span class="brand" style="font-size:.9rem"><span class="mk" style="width:20px;height:20px;font-size:.62rem">赞</span> zanbuddy</span>
+        <span class="mono" style="font-size:.68rem;color:var(--ink-4)">联赞 · 让靠谱可被验证</span>
+      </div>
+      <div class="flex wrapw g16">
+        <a href="#">用户协议</a><a href="#">隐私政策</a><a href="#">背书规则</a>
+        <a href="system.html">设计系统</a>
+        <span class="mono" style="font-size:.7rem">ICP 备案号：待填</span>
+      </div>
+    </div>
+    <p class="tiny" style="margin-top:14px;color:var(--ink-4);max-width:60em">
+      平台定位为信息撮合，不承担交付责任、不托管资金、不做仲裁。试用期数据仅用于验证"背书是否降低决策成本"。
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>

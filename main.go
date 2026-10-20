@@ -14,6 +14,8 @@ import (
 	"zanbuddy/internal/compliance"
 	"zanbuddy/internal/faq"
 	"zanbuddy/internal/handler"
+	"zanbuddy/internal/httpapi"
+	"zanbuddy/internal/identity"
 	"zanbuddy/internal/im"
 	"zanbuddy/internal/kyc"
 	"zanbuddy/internal/model"
@@ -95,10 +97,20 @@ func main() {
 	seedTask(st)
 
 	h := handler.New(svc)
+
+	// v2 接入层与身份域。v1 的 /api/v1 原样保留, 两条链路并行, 迁移窗口内互不影响。
+	// SMS 未接真实通道时走开发模式: 验证码固定 000000 并在响应里回显, 生产接通道后自动关闭。
+	idSvc := identity.New(st, os.Getenv("ZANBUDDY_SMS_PROVIDER") == "" || os.Getenv("ZANBUDDY_SMS_PROVIDER") == "log")
+
 	mux := http.NewServeMux()
+	mux.Handle("/api/v2/", httpapi.NewServer(idSvc, st, "2.0.0").Routes())
 	mux.Handle("/api/", h)
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web")))) // 用户画像页等静态前端
 	mux.Handle("/", h) // 根路径落地页
+
+	if os.Getenv("ZANBUDDY_JWT_SECRET") == "" {
+		log.Println("警告: ZANBUDDY_JWT_SECRET 未设置, 正在用开发默认值签名会话; 生产必须设置")
+	}
 
 	port := os.Getenv("ZANBUDDY_PORT")
 	if port == "" {

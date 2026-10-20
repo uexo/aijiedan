@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>登录 · zanbuddy 联赞</title>
+<meta name="description" content="手机号验证码登录。需求方和供给方是同一个账号的两种用法。">
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="wrap">
+    <a class="brand" href="login.html"><span class="mk">赞</span> zanbuddy <small>联赞</small></a>
+    <div class="nlinks">
+      <a class="btn btn-line btn-sm" href="profile.html">供给方档案</a>
+    </div>
+  </div>
+</nav>
+
+<main class="stage">
+  <div class="stage-split">
+
+    <section class="auth-intro">
+      <div class="eyebrow mb16">登录 / 注册</div>
+      <h1 class="mb16">一个手机号，<br>一个身份。</h1>
+      <p class="lead mb24">没有密码要记，也没有第三方账号要授权。输手机号，收验证码，进去。</p>
+      <ul class="facts">
+        <li><b>01</b><span>需求方和供给方是同一个账号的两种用法，随时能切，不用注册两遍</span></li>
+        <li><b>02</b><span>手机号只用于登录和交付节点通知，不发营销短信</span></li>
+        <li><b>03</b><span>实名信息只在接单时补，注册这一步不要</span></li>
+      </ul>
+    </section>
+
+    <section class="card card-pad rise">
+      <ol class="steps mb20" id="steps">
+        <li class="s on" data-step="1"><span class="n">1</span><span>手机号</span></li>
+        <li class="dash" aria-hidden="true"></li>
+        <li class="s" data-step="2"><span class="n">2</span><span>身份</span></li>
+        <li class="dash" aria-hidden="true"></li>
+        <li class="s" data-step="3"><span class="n">3</span><span>验证码</span></li>
+      </ol>
+
+      <div id="form-err" class="errbox mb16" hidden></div>
+
+      <form id="f" novalidate autocomplete="on">
+
+        <!-- 第一步：手机号 -->
+        <div data-pane="1">
+          <div class="field">
+            <label class="label" for="phone">手机号<span class="req">*</span></label>
+            <div class="flex g8">
+              <span class="prefix mono tiny">+86</span>
+              <input id="phone" name="phone" class="input mono grow" type="tel" inputmode="numeric"
+                maxlength="11" autocomplete="tel" placeholder="11 位手机号" aria-describedby="phone-hint">
+            </div>
+            <div class="hint" id="phone-hint">没注册过的号码会自动创建账号。</div>
+          </div>
+          <button class="btn btn-ink btn-block btn-lg" type="button" id="to-role">继续</button>
+        </div>
+
+        <!-- 第二步：身份 -->
+        <div data-pane="2" hidden>
+          <div class="label mb8">你更可能先做哪件事</div>
+          <div class="picks" id="roles" role="radiogroup" aria-label="身份选择">
+            <div class="pick" role="radio" aria-checked="false" tabindex="0" data-role="demand">
+              <span class="box" aria-hidden="true"></span>
+              <span>
+                <span class="t">我要找人做事</span>
+                <span class="d">发需求，看 3 位候选人</span>
+              </span>
+            </div>
+            <div class="pick" role="radio" aria-checked="false" tabindex="0" data-role="supply">
+              <span class="box" aria-hidden="true"></span>
+              <span>
+                <span class="t">我想接单</span>
+                <span class="d">填档案，等人来找</span>
+              </span>
+            </div>
+          </div>
+          <div class="hint mt8">这只决定进去先看哪个页面，之后随时能切。</div>
+          <div class="flex g8 mt16">
+            <button class="btn btn-line" type="button" id="back-1">返回</button>
+            <button class="btn btn-ink grow" type="button" id="to-code" disabled>下一步</button>
+          </div>
+        </div>
+
+        <!-- 第三步：验证码 -->
+        <div data-pane="3" hidden>
+          <div class="field">
+            <label class="label" for="code">验证码<span class="req">*</span></label>
+            <div class="flex g8">
+              <input id="code" name="code" class="input mono grow" type="text" inputmode="numeric"
+                maxlength="6" autocomplete="one-time-code" placeholder="6 位数字" aria-describedby="code-hint">
+              <button class="btn btn-line" type="button" id="resend">重新获取</button>
+            </div>
+            <div class="hint" id="code-hint">已发送至 <span class="mono" id="sent-to">—</span>，10 分钟内有效。</div>
+            <div class="note mt8">开发环境验证码见服务端日志。</div>
+          </div>
+          <button class="btn btn-ink btn-block btn-lg" type="submit" id="submit">登录</button>
+          <button class="btn btn-quiet btn-sm mt8" type="button" id="back-2">换个号码</button>
+        </div>
+
+      </form>
+    </section>
+
+  </div>
+</main>
+
+<noscript><div class="noscript">需要开启 JavaScript 才能登录。</div></noscript>
+<script type="module" src="assets/login.js"></script>
+</body>
+</html>

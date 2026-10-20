@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>我的档案 · zanbuddy 联赞</title>
+<meta name="description" content="档案决定你会不会被推荐。填的每一项都会变成别人判断你的依据。">
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="wrap">
+    <a class="brand" href="profile.html"><span class="mk">赞</span> zanbuddy <small>联赞</small></a>
+    <div class="nlinks">
+      <button class="btn btn-line btn-sm" type="button" id="logout">退出</button>
+    </div>
+  </div>
+</nav>
+
+<main class="wrap page">
+
+  <div class="flex ac jb wrapw g12 mb6">
+    <h1>我的档案</h1>
+    <span class="state state-done" id="avail-state">接单中</span>
+  </div>
+  <p class="muted mb20">这份档案不公开挂在网上。它只在有人发需求、系统算到你的时候出现，出现的形式是右边这张卡。</p>
+
+  <section class="card card-pad mb20">
+    <div class="flex ac jb wrapw g8 mb8">
+      <span class="label">档案完成度</span>
+      <span class="mono tiny muted" id="pct">0%</span>
+    </div>
+    <div class="meter"><i id="bar"></i></div>
+    <ul class="score-list" id="score-list">
+      <li class="score-row" data-score="headline"><span>一句话定位</span><span class="pt">20</span></li>
+      <li class="score-row" data-score="skills"><span>技能 ≥ 3 个</span><span class="pt">30</span></li>
+      <li class="score-row" data-score="portfolio"><span>作品 ≥ 1 条</span><span class="pt">20</span></li>
+      <li class="score-row" data-score="bio"><span>补充说明</span><span class="pt">15</span></li>
+      <li class="score-row" data-score="availability"><span>可接单</span><span class="pt">15</span></li>
+    </ul>
+    <p class="tiny muted mt8" id="tip">先写一句定位，再选 3 个技能。</p>
+  </section>
+
+  <div id="load-err" class="errbox mb16" hidden></div>
+
+  <div class="split">
+
+    <form id="f" class="stack" novalidate>
+
+      <section class="card card-pad">
+        <div class="flex ac jb wrapw g8 mb8">
+          <label class="label" for="headline">一句话定位<span class="req">*</span></label>
+          <span class="count" id="c-headline">0 / 60</span>
+        </div>
+        <input id="headline" name="headline" class="input" maxlength="60" autocomplete="off"
+          placeholder="把重复流程做成能跑起来的 Agent">
+        <div class="hint mt8">卡片上第一眼看到的就是这句。写「做什么」，不写「热爱技术」。</div>
+      </section>
+
+      <section class="card card-pad">
+        <div class="flex ac jb wrapw g8 mb8">
+          <label class="label" for="bio">补充说明</label>
+          <span class="count" id="c-bio">0 / 200</span>
+        </div>
+        <textarea id="bio" name="bio" class="textarea" maxlength="200"
+          placeholder="做过什么、怎么交付、擅长哪类问题。200 字以内。"></textarea>
+        <div class="hint mt8">这段只在档案页出现，不占卡片首屏。</div>
+      </section>
+
+      <section class="card card-pad">
+        <div class="flex ac jb wrapw g8 mb8">
+          <span class="label">技能标签<span class="req">*</span></span>
+          <span class="count" id="c-skills">已选 0 / 5 · 至少 3 个</span>
+        </div>
+        <div class="chips" id="skills" role="group" aria-label="技能标签"></div>
+        <div class="hint mt8">选 3–5 个就够。选太多等于没选，推荐理由会变得说不清。</div>
+      </section>
+
+      <section class="card card-pad">
+        <div class="flex ac jb wrapw g8 mb8">
+          <span class="label">作品链接</span>
+          <button class="btn btn-quiet btn-sm" type="button" id="add-pf">+ 再加一条</button>
+        </div>
+        <div id="portfolio"></div>
+        <div class="empty" id="pf-empty">
+          <div class="mark">作</div>
+          <h4>还没有作品</h4>
+          <p>一个能点开的链接，比十句自我介绍有用。最多 3 条。</p>
+        </div>
+        <div class="note mt12">链接打不开的，推荐理由里不会引用它。</div>
+      </section>
+
+      <section class="card card-pad">
+        <div class="flex ac jb wrapw g8">
+          <div>
+            <div class="label mb6">接单状态</div>
+            <div class="hint" id="avail-hint">关闭后不出现在推荐里，不掉信用，也不删档案。</div>
+          </div>
+          <label class="switch" for="availability">
+            <input type="checkbox" id="availability" name="availability" checked>
+            <span class="track" aria-hidden="true"></span>
+            <span class="st" id="avail-text">可接单</span>
+          </label>
+        </div>
+      </section>
+
+      <div class="flex ac jb wrapw g10">
+        <span class="tiny muted" id="save-hint">保存后才会进入推荐池。</span>
+        <button class="btn btn-ink btn-lg" type="submit" id="save">保存档案</button>
+      </div>
+
+    </form>
+
+    <aside class="rail">
+      <div class="eyebrow mb8">别人看到的你</div>
+
+      <div class="card card-pad">
+        <div id="pv-skel">
+          <div class="skel skel-line w60"></div>
+          <div class="skel skel-line w80"></div>
+          <div class="skel skel-line w40"></div>
+        </div>
+
+        <div id="pv-body" hidden>
+          <div class="flex ac g12 mb12">
+            <div class="av" id="pv-av">我</div>
+            <div class="grow">
+              <div class="flex ac g8 wrapw">
+                <strong id="pv-name">—</strong>
+                <span class="state" id="pv-state">接单中</span>
+              </div>
+              <div class="tiny muted" id="pv-headline">还没写定位</div>
+            </div>
+          </div>
+
+          <p class="tiny mb12" id="pv-bio"></p>
+
+          <div class="flex wrapw g6 mb12" id="pv-skills"></div>
+
+          <ul class="pv-links" id="pv-links"></ul>
+
+          <hr class="rule">
+
+          <div class="flex ac jb mb6">
+            <span class="tiny muted">完整度</span>
+            <span class="mono tiny" id="pv-pct">0%</span>
+          </div>
+          <div class="meter"><i id="pv-bar"></i></div>
+        </div>
+      </div>
+
+      <p class="tiny muted mt12">档案里的作品链接会进数据条。填了链接但没通过验收的，不会显示成「作品」。</p>
+    </aside>
+
+  </div>
+</main>
+
+<noscript><div class="noscript">需要开启 JavaScript 才能编辑档案。</div></noscript>
+<script type="module" src="assets/profile.js"></script>
+</body>
+</html>

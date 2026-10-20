@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>登录 · zanbuddy 联赞</title>
+<meta name="description" content="手机号验证码登录。一个手机号一个身份，需求方和供给方在同一个账号下切换。">
+<link rel="stylesheet" href="ds.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="wrap">
+    <a class="brand" href="index.html"><span class="mk">赞</span> zanbuddy <small>联赞</small></a>
+    <div class="nlinks">
+      <a href="credit.html">信用档案</a>
+      <a href="index.html">回首页</a>
+    </div>
+  </div>
+</nav>
+
+<main class="stage">
+  <div class="stage-split">
+
+    <!-- 左：为什么不用密码 -->
+    <div>
+      <div class="eyebrow" style="margin-bottom:16px">登录 / 注册</div>
+      <h1 style="font-size:clamp(1.7rem,3vw,2.3rem);margin-bottom:18px">
+        一个手机号，<br>一个身份。
+      </h1>
+      <p class="lead" style="font-size:1rem;margin-bottom:24px">
+        没有密码要记，也没有第三方账号要授权。输手机号，收验证码，进去。
+      </p>
+
+      <div style="border-top:1px solid var(--rule);padding-top:16px">
+        <div class="flex g10" style="align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--rule)">
+          <span class="mono tiny" style="color:var(--ink-4);width:20px;padding-top:2px">01</span>
+          <span class="tiny" style="color:var(--ink-2)">需求方和供给方是同一个账号的两种用法，随时能切，不用注册两遍</span>
+        </div>
+        <div class="flex g10" style="align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--rule)">
+          <span class="mono tiny" style="color:var(--ink-4);width:20px;padding-top:2px">02</span>
+          <span class="tiny" style="color:var(--ink-2)">手机号只用于登录和交付节点通知，不发营销短信</span>
+        </div>
+        <div class="flex g10" style="align-items:flex-start;padding:10px 0">
+          <span class="mono tiny" style="color:var(--ink-4);width:20px;padding-top:2px">03</span>
+          <span class="tiny" style="color:var(--ink-2)">实名信息只在写背书、接单时补，注册这一步不要</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右：表单 -->
+    <div class="card card-pad rise" style="padding:26px">
+      <h2 style="font-size:1.22rem;margin-bottom:4px">继续</h2>
+      <p class="tiny muted" style="margin-bottom:20px">没注册过的号码会自动创建账号。</p>
+
+      <form id="f" novalidate>
+        <div class="field">
+          <label class="label" for="phone">手机号<span class="req">*</span></label>
+          <div class="flex g8">
+            <span class="input mono" style="width:62px;flex:0 0 auto;display:flex;align-items:center;
+              justify-content:center;color:var(--ink-3);background:var(--paper-2)">+86</span>
+            <input id="phone" class="input mono grow" type="tel" inputmode="numeric" maxlength="11"
+              autocomplete="tel" placeholder="11 位手机号" aria-describedby="phone-err">
+          </div>
+          <div class="err" id="phone-err" hidden>号码不对，检查一下位数</div>
+        </div>
+
+        <div class="field">
+          <label class="label" for="code">验证码<span class="req">*</span></label>
+          <div class="flex g8">
+            <input id="code" class="input mono grow" type="text" inputmode="numeric" maxlength="6"
+              autocomplete="one-time-code" placeholder="6 位数字" aria-describedby="code-err">
+            <button class="btn btn-line" type="button" id="send" style="flex:0 0 auto;min-width:104px">获取验证码</button>
+          </div>
+          <div class="err" id="code-err" hidden>验证码是 6 位</div>
+          <div class="hint" id="send-hint" hidden></div>
+        </div>
+
+        <!-- 首次注册才出现：选身份 -->
+        <div id="role-block" hidden style="margin-bottom:16px">
+          <div class="label" style="margin-bottom:8px">你更可能先做哪件事</div>
+          <div class="grid g2" style="gap:8px">
+            <div class="pick" role="radio" aria-checked="false" tabindex="0" data-role="demand">
+              <span class="box"></span>
+              <span><span class="t">我要找人做事</span><span class="d">发需求，看 3 位候选人</span></span>
+            </div>
+            <div class="pick" role="radio" aria-checked="false" tabindex="0" data-role="supply">
+              <span class="box"></span>
+              <span><span class="t">我想接单</span><span class="d">填档案，等人来找</span></span>
+            </div>
+          </div>
+          <div class="hint" style="margin-top:8px">这只决定进去先看哪个页面，之后随时能切。</div>
+        </div>
+
+        <button class="btn btn-ink btn-block btn-lg" type="submit" id="go" disabled>登录</button>
+
+        <p class="tiny muted" style="margin-top:14px;line-height:1.6">
+          继续即表示同意<a href="#" style="color:var(--ink-2);border-bottom:1px solid var(--rule-2)">用户协议</a>和
+          <a href="#" style="color:var(--ink-2);border-bottom:1px solid var(--rule-2)">隐私政策</a>。
+        </p>
+      </form>
+
+      <!-- 登录态之后的状态，用于演示 -->
+      <div id="done" hidden style="text-align:center;padding:16px 0">
+        <div class="seal" style="transform:rotate(-2deg);margin-bottom:14px">已登录</div>
+        <p class="tiny muted" id="done-msg"></p>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+  var phone = document.getElementById('phone');
+  var code  = document.getElementById('code');
+  var send  = document.getElementById('send');
+  var go    = document.getElementById('go');
+  var roleBlock = document.getElementById('role-block');
+  var toastEl = document.getElementById('toast');
+  var pick = null;          /* 选中的角色 */
+  var sent = false;         /* 是否已发过码 */
+
+  function toast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastEl._t);
+    toastEl._t = setTimeout(function(){ toastEl.classList.remove('show'); }, 2200);
+  }
+  function validPhone(){ return /^1[3-9]\d{9}$/.test(phone.value.trim()); }
+  function validCode(){ return /^\d{6}$/.test(code.value.trim()); }
+  function refresh(){
+    go.disabled = !(validPhone() && validCode());
+    document.getElementById('phone-err').hidden = !(phone.value && !validPhone());
+    document.getElementById('code-err').hidden = !(code.value && !validCode());
+  }
+
+  phone.addEventListener('input', function(){
+    phone.value = phone.value.replace(/\D/g,'').slice(0,11);
+    refresh();
+  });
+  code.addEventListener('input', function(){
+    code.value = code.value.replace(/\D/g,'').slice(0,6);
+    refresh();
+  });
+
+  /* 发码：第一次发码后才问身份 —— 先让人进去，再问他要做什么 */
+  var left = 0, timer = null;
+  send.addEventListener('click', function(){
+    if(!validPhone()){ document.getElementById('phone-err').hidden = false; phone.focus(); return; }
+    sent = true;
+    left = 60;
+    send.disabled = true;
+    document.getElementById('send-hint').hidden = false;
+    tick();
+    timer = setInterval(tick, 1000);
+    toast('验证码已发送，测试环境随便填 6 位数字');
+    if(!pick) roleBlock.hidden = false;
+  });
+  function tick(){
+    if(left <= 0){
+      clearInterval(timer);
+      send.disabled = false;
+      send.textContent = '重新获取';
+      return;
+    }
+    send.textContent = left + ' 秒';
+    document.getElementById('send-hint').textContent = '没收到？60 秒后可以重发。';
+    left--;
+  }
+
+  /* 角色单选 */
+  Array.prototype.forEach.call(document.querySelectorAll('.pick'), function(el){
+    function choose(){
+      Array.prototype.forEach.call(document.querySelectorAll('.pick'), function(o){ o.setAttribute('aria-checked','false'); });
+      el.setAttribute('aria-checked','true');
+      pick = el.dataset.role;
+    }
+    el.addEventListener('click', choose);
+    el.addEventListener('keydown', function(e){
+      if(e.key === ' ' || e.key === 'Enter'){ e.preventDefault(); choose(); }
+    });
+  });
+
+  document.getElementById('f').addEventListener('submit', function(e){
+    e.preventDefault();
+    if(!validPhone() || !validCode()) return;
+    var role = pick || 'demand';
+    setTimeout(function(){
+      location.href = role === 'supply' ? 'profile.html' : 'app.html';
+    }, 220);
+    go.textContent = '正在进入…';
+    go.disabled = true;
+  });
+
+  refresh();
+})();
+</script>
+</body>
+</html>

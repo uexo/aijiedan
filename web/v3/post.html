@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>发需求 · zanbuddy 联赞</title>
+<meta name="description" content="一句话说清要交付什么，系统抽出三项结构信息，你确认后立刻看到 3 位候选人。">
+<link rel="stylesheet" href="ds.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="wrap">
+    <a class="brand" href="index.html"><span class="mk">赞</span> zanbuddy <small>联赞</small></a>
+    <div class="nlinks">
+      <a href="app.html">工作台</a>
+      <a href="credit.html">信用档案</a>
+      <a href="auth.html" class="btn btn-line btn-sm" style="margin-left:8px">登录</a>
+    </div>
+  </div>
+</nav>
+
+<main class="wrap" style="max-width:760px;padding-top:34px;padding-bottom:64px">
+
+  <div class="steps" style="margin-bottom:26px" aria-label="发单步骤">
+    <span class="s on" data-step="1"><span class="n">1</span>说一句话</span>
+    <span class="dash"></span>
+    <span class="s" data-step="2"><span class="n">2</span>确认抽出来的信息</span>
+    <span class="dash"></span>
+    <span class="s" data-step="3"><span class="n">3</span>发布</span>
+  </div>
+
+  <!-- ── 第一步 ─────────────────────────────── -->
+  <section id="s1">
+    <h1 style="font-size:1.62rem;margin-bottom:10px">你要交付什么</h1>
+    <p class="muted" style="font-size:.94rem;margin-bottom:22px">
+      用平时说话的方式写。写完下一步，系统会把它拆成结构化信息，拆错了你改。
+    </p>
+
+    <div class="card card-pad">
+      <label class="label" for="brief" style="display:block;margin-bottom:8px">
+        一句话需求<span class="req">*</span>
+      </label>
+      <textarea id="brief" class="textarea" style="min-height:120px;font-size:.96rem"
+        placeholder="例：把客服的退款审批做成一个能自动跑的 Agent，输入订单号就能判断该退不该退，并给出理由。用 Python，接我们现有的工单系统。"></textarea>
+      <div class="flex ac jb wrapw g8" style="margin-top:10px">
+        <span class="tiny muted">写清"做成什么"和"什么算做完"，别的不写也能发。</span>
+        <span class="count" id="c1">0 字</span>
+      </div>
+
+      <div style="border-top:1px solid var(--rule);margin-top:16px;padding-top:14px">
+        <button class="btn btn-quiet btn-sm" type="button" id="toggle-more" style="padding-left:0">
+          再加点细节（选填）
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div id="more" hidden style="padding-top:12px">
+          <div class="field">
+            <label class="label" for="budget">预算</label>
+            <div class="chips" id="budget-chips">
+              <button class="chip" type="button">¥1 千以内</button>
+              <button class="chip" type="button">¥1 千 – 5 千</button>
+              <button class="chip" type="button">¥5 千 – 2 万</button>
+              <button class="chip" type="button">¥2 万以上</button>
+              <button class="chip" type="button">先不定</button>
+            </div>
+            <div class="hint">预算只是筛选参考，不进候选人排序理由。定价由你和对方谈。</div>
+          </div>
+          <div class="field" style="margin-bottom:0">
+            <label class="label" for="deadline">希望什么时候交付</label>
+            <input id="deadline" class="input" type="text" placeholder="例：月底前，或 2 周内">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex ac jb wrapw g10" style="margin-top:18px">
+      <span class="tiny muted">发布不收费，成交也不收（试点期）。</span>
+      <button class="btn btn-seal btn-lg" type="button" id="next">
+        下一步
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </button>
+    </div>
+    <div class="err" id="e1" hidden style="margin-top:8px">至少写 10 个字，让系统知道要做什么</div>
+  </section>
+
+  <!-- ── 第二步：抽取中 ───────────────────────── -->
+  <section id="s2-loading" hidden>
+    <h1 style="font-size:1.62rem;margin-bottom:10px">正在拆你的需求</h1>
+    <p class="muted" style="font-size:.94rem;margin-bottom:22px">抽三项：交付物形态、需要的技能、预算区间。</p>
+    <div class="grid" style="gap:12px">
+      <div class="skel-card">
+        <div class="skel skel-line" style="width:32%"></div>
+        <div class="skel skel-line" style="width:78%"></div>
+        <div class="skel skel-line" style="width:56%;margin-bottom:0"></div>
+      </div>
+      <div class="skel-card">
+        <div class="skel skel-line" style="width:24%"></div>
+        <div class="flex g8" style="margin-top:10px">
+          <div class="skel" style="width:64px;height:22px"></div>
+          <div class="skel" style="width:82px;height:22px"></div>
+          <div class="skel" style="width:52px;height:22px"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 第二步：结果可改 ─────────────────────── -->
+  <section id="s2" hidden>
+    <div class="flex ac jb wrapw g10" style="margin-bottom:6px">
+      <h1 style="font-size:1.62rem">抽成这样，对不对</h1>
+      <span class="tag tag-mono">规则抽取 + AI 兜底</span>
+    </div>
+    <p class="muted" style="font-size:.94rem;margin-bottom:20px">
+      带红星的只有两项。其余留空不影响发单，只是候选人会少一点。
+    </p>
+
+    <div class="card card-pad" style="margin-bottom:12px">
+      <div class="flex ac jb" style="margin-bottom:8px">
+        <div class="label">交付物形态<span class="req">*</span></div>
+        <span class="tiny muted">改一下措辞不会重排候选人</span>
+      </div>
+      <input id="r1" class="input" type="text" value="可自动执行的 Python Agent，接入现有工单系统">
+      <div class="hint">用来匹配技能，也用来写进背书里的"他交付了什么"。</div>
+    </div>
+
+    <div class="card card-pad" style="margin-bottom:12px">
+      <div class="flex ac jb" style="margin-bottom:8px">
+        <div class="label">怎么算交付完成<span class="req">*</span></div>
+        <span class="tag tag-warn tag-mono" id="warn-accept">原话里没写清，建议补一句</span>
+      </div>
+      <input id="r2" class="input" type="text" value="输入订单号能输出「退/不退」和理由，回测通过 20 条历史工单" placeholder="例：输入订单号能输出「退/不退」和理由，跑通 20 条历史工单">
+      <div class="hint">这一项决定验收卡在哪一步。写不清楚，验收时容易吵。</div>
+    </div>
+
+    <div class="card card-pad" style="margin-bottom:12px">
+      <div class="label" style="margin-bottom:8px">需要的技能</div>
+      <div class="chips" id="skill-chips">
+        <button class="chip" type="button" aria-pressed="true">Python</button>
+        <button class="chip" type="button" aria-pressed="true">LLM 应用</button>
+        <button class="chip" type="button" aria-pressed="true">API 对接</button>
+        <button class="chip" type="button">RAG</button>
+        <button class="chip" type="button">前端</button>
+        <button class="chip" type="button">数据清洗</button>
+      </div>
+      <div class="hint" style="margin-top:8px">点掉不需要的。技能标签是推荐理由的事实锚点之一。</div>
+    </div>
+
+    <div class="grid g2" style="gap:12px">
+      <div class="card card-pad" style="grid-column:1/-1">
+        <div class="label" style="margin-bottom:8px">预算区间</div>
+        <div class="chips" id="budget-chips-2">
+          <button class="chip" type="button">1 千以内</button>
+          <button class="chip" type="button" aria-pressed="true">1 千 – 5 千</button>
+          <button class="chip" type="button">5 千 – 2 万</button>
+          <button class="chip" type="button">2 万以上</button>
+          <button class="chip" type="button">先不定</button>
+        </div>
+      </div>
+      <div class="card card-pad" style="grid-column:1/-1">
+        <div class="label" style="margin-bottom:8px">需求方信息</div>
+        <div class="flex ac g10">
+          <div class="av av-sm">某</div>
+          <div>
+            <div style="font-size:.86rem;font-weight:600">某 AI 团队</div>
+            <div class="tiny muted">成交前对你匿名</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note" style="margin-top:16px">
+      候选人看到的是"某 AI 团队创始人"，看不到你的公司名和手机号。验收通过后才开放联系方式。
+    </div>
+
+    <div class="flex ac jb wrapw g10" style="margin-top:22px">
+      <button class="btn btn-quiet" type="button" id="back">返回改原话</button>
+      <button class="btn btn-seal btn-lg" type="button" id="publish">发布，看候选人</button>
+    </div>
+  </section>
+
+  <!-- ── 第三步：已发布 ───────────────────────── -->
+  <section id="s3" hidden>
+    <div class="card card-pad" style="text-align:center;padding:38px 24px">
+      <div class="seal" style="margin-bottom:16px">已发布</div>
+      <h1 style="font-size:1.5rem;margin-bottom:8px">需求已收下</h1>
+      <p class="muted" style="font-size:.92rem;max-width:30em;margin:0 auto 22px">
+        正在按技能、信用、背书数量算候选人。固定出 3 位，不多不少。
+      </p>
+      <a class="btn btn-ink btn-lg" href="match.html">
+        看这 3 位
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+    </div>
+  </section>
+
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+  var brief = document.getElementById('brief');
+  var steps = document.querySelectorAll('.steps .s');
+  var toastEl = document.getElementById('toast');
+
+  function toast(m){
+    toastEl.textContent = m;
+    toastEl.classList.add('show');
+    clearTimeout(toastEl._t);
+    toastEl._t = setTimeout(function(){ toastEl.classList.remove('show'); }, 2200);
+  }
+  function setStep(n){
+    Array.prototype.forEach.call(steps, function(s){
+      var i = +s.dataset.step;
+      s.classList.toggle('on', i === n);
+      s.classList.toggle('done', i < n);
+    });
+  }
+  function show(id){
+    ['s1','s2-loading','s2','s3'].forEach(function(x){
+      document.getElementById(x).hidden = (x !== id);
+    });
+    window.scrollTo({top:0, behavior:'smooth'});
+  }
+
+  /* 字数 */
+  var c1 = document.getElementById('c1');
+  brief.addEventListener('input', function(){
+    var n = brief.value.trim().length;
+    c1.textContent = n + ' 字';
+    c1.className = 'count' + (n >= 10 ? ' ok' : n ? ' short' : '');
+    document.getElementById('e1').hidden = true;
+  });
+
+  document.getElementById('toggle-more').addEventListener('click', function(){
+    var m = document.getElementById('more');
+    m.hidden = !m.hidden;
+  });
+
+  /* 单选组通用：chips 多选、预算单选 */
+  function bindChips(sel, single){
+    Array.prototype.forEach.call(document.querySelectorAll(sel + ' .chip'), function(c){
+      c.addEventListener('click', function(){
+        if(single){
+          Array.prototype.forEach.call(document.querySelectorAll(sel + ' .chip'), function(o){ o.removeAttribute('aria-pressed'); });
+          c.setAttribute('aria-pressed','true');
+        } else {
+          c.setAttribute('aria-pressed', c.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+        }
+      });
+    });
+  }
+  bindChips('#budget-chips', true);
+  bindChips('#budget-chips-2', true);
+  bindChips('#skill-chips', false);
+
+  /* 第一步 → 抽取中 → 结果 */
+  document.getElementById('next').addEventListener('click', function(){
+    if(brief.value.trim().length < 10){
+      document.getElementById('e1').hidden = false;
+      brief.focus();
+      return;
+    }
+    setStep(2);
+    show('s2-loading');
+    setTimeout(function(){
+      show('s2');
+      /* 原话里没提验收标准，就把这项标出来 */
+      var t = brief.value;
+      var hasDone = /跑通|验收|能输出|通过|上线|测试|判断/.test(t);
+      document.getElementById('warn-accept').hidden = hasDone;
+      if(!hasDone) document.getElementById('r2').value = '';
+    }, 900);
+  });
+
+  document.getElementById('back').addEventListener('click', function(){
+    setStep(1);
+    show('s1');
+  });
+
+  document.getElementById('publish').addEventListener('click', function(){
+    if(!document.getElementById('r1').value.trim() || !document.getElementById('r2').value.trim()){
+      toast('两项带红星的填完才能发');
+      return;
+    }
+    setStep(3);
+    show('s3');
+  });
+
+  /* 从首页带过来的那句话；没带就看 demo 参数 */
+  var q = new URLSearchParams(location.search);
+  var carry = q.get('brief');
+  if(carry){
+    brief.value = carry;
+    brief.dispatchEvent(new Event('input'));
+  } else if(q.get('demo') === '1'){
+    brief.value = '把客服的退款审批做成一个能自动跑的 Agent，输入订单号就能判断该退不该退，并给出理由。用 Python，接我们现有的工单系统。';
+    brief.dispatchEvent(new Event('input'));
+  }
+})();
+</script>
+</body>
+</html>

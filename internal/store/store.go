@@ -3,6 +3,8 @@
 package store
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"sort"
 	"strings"
 	"sync"
@@ -11,6 +13,22 @@ import (
 
 	"zanbuddy/internal/model"
 )
+
+// fallbackSlug 给没有短号的用户补一个确定性短号。
+//
+// 为什么需要: v1 的注册路径不生成 slug, 而 002 迁移给 user.slug 建了唯一索引。
+// 两条空值会立刻撞 1062, 表现为"第二个注册的人报服务端错误"。
+// 用 id 的哈希前 3 字节: 确定性(重试不会产生新值)、固定 7 字符、碰撞概率可忽略。
+func fallbackSlug(id string) string {
+	if id == "" {
+		return ""
+	}
+	if len(id) <= 8 {
+		return strings.ToLower(id)
+	}
+	sum := sha256.Sum256([]byte(id))
+	return "u" + hex.EncodeToString(sum[:3])
+}
 
 // Store 存储抽象: 内存(MemStore)与 MySQL(mysqlStore)都遵循此接口。
 // 上层 service/handler 仅依赖接口, 切换存储不影响业务代码。
@@ -33,6 +51,10 @@ type Store interface {
 	NextID(prefix string) string
 	GetUser(id string) (*model.User, bool)
 	GetUserByAccount(account string) (*model.User, bool)
+	GetUserBySlug(slug string) (*model.User, bool)
+	GetUserByPhone(phone string) (*model.User, bool)
+	GetProfile(userID string) (*model.ProviderProfile, bool)
+	PutProfile(p *model.ProviderProfile)
 	PutUser(u *model.User)
 	ListUsers() []*model.User
 	ListProviders() []*model.User
@@ -116,6 +138,7 @@ type Store interface {
 type MemStore struct {
 	mu         sync.RWMutex
 	users      map[string]*model.User
+	profiles   map[string]*model.ProviderProfile
 	tasks      map[string]*model.Task
 	taskIndex  map[string]map[string]bool // 倒排索引: 拉丁词 -> 任务ID集合(加速关键词检索)
 	matches    map[string]*model.MatchRecord
@@ -142,6 +165,7 @@ type MemStore struct {
 func NewMem() *MemStore {
 	s := &MemStore{
 		users:      map[string]*model.User{},
+		profiles:   map[string]*model.ProviderProfile{},
 		tasks:      map[string]*model.Task{},
 		taskIndex:  map[string]map[string]bool{},
 		matches:    map[string]*model.MatchRecord{},
@@ -217,9 +241,66 @@ func (s *MemStore) GetUserByAccount(account string) (*model.User, bool) {
 	return nil, false
 }
 func (s *MemStore) PutUser(u *model.User) {
+	if u.Slug == "" {
+		u.Slug = fallbackSlug(u.ID)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.users[u.ID] = u
+}
+
+// GetUserBySlug 按公开短号查用户。公开信用页 /p/{slug} 用, slug 为空时不匹配任何人。
+func (s *MemStore) GetUserBySlug(slug string) (*model.User, bool) {
+	if slug == "" {
+		return nil, false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, u := range s.users {
+		if u.Slug == slug {
+			return u, true
+		}
+	}
+	return nil, false
+}
+
+// GetUserByPhone 按手机号查用户。验证码登录的第一跳: 有号即登录, 无号即注册。
+func (s *MemStore) GetUserByPhone(phone string) (*model.User, bool) {
+	if phone == "" {
+		return nil, false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, u := range s.users {
+		if u.Phone == phone {
+			return u, true
+		}
+	}
+	return nil, false
+}
+
+// GetProfile 返回档案副本而非指针。mysqlStore 每次查询都是新对象, 内存实现若返指针,
+// 调用方改了返回值却没落库, 两套实现就会出现行为差异——一致性测试会盯这一条。
+func (s *MemStore) GetProfile(userID string) (*model.ProviderProfile, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	p, ok := s.profiles[userID]
+	if !ok {
+		return nil, false
+	}
+	cp := *p
+	cp.Skills = append([]string(nil), p.Skills...)
+	cp.Portfolio = append([]model.PortfolioItem(nil), p.Portfolio...)
+	return &cp, true
+}
+
+func (s *MemStore) PutProfile(p *model.ProviderProfile) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cp := *p
+	cp.Skills = append([]string(nil), p.Skills...)
+	cp.Portfolio = append([]model.PortfolioItem(nil), p.Portfolio...)
+	s.profiles[p.UserID] = &cp
 }
 func (s *MemStore) ListProviders() []*model.User {
 	s.mu.RLock()
