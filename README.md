@@ -382,7 +382,9 @@ P3 企业版从「最小骨架」推向可商用：组织作为统一结算主�
 | POST | `/api/v2/tasks/{id}/take` | 接单方认领；409 `TASK_TAKEN` 表示已被接走，403 `ROLE_NOT_PROVIDER` / `PROFILE_INCOMPLETE` 表示没资格 |
 | POST | `/api/v2/orders/{id}/confirm` | 需求方点头，订单 pending_escrow → active（四态：待确认 → 进行中） |
 | POST | `/api/v2/orders/{id}/decline` | 需求方退回，订单取消且任务重新开放；body `{reason}` 可选，超 60 字截断 |
-| GET | `/api/v2/me/orders` | 我参与的单（接的 + 发的），带四态、对端定位/信用分与 `needs_me` |
+| POST | `/api/v2/orders/{id}/deliveries` | 接单方交付，订单 active → delivered（四态：进行中 → 待验收）；body `{content, link, items[]}`，201 返回订单视图 |
+| GET | `/api/v2/orders/{id}/deliveries` | 这一单的交付记录（含历史轮次），仅交易双方可读 |
+| GET | `/api/v2/me/orders` | 我参与的单（接的 + 发的），带四态、对端定位/信用分、`needs_me`、交付轮次与最近一轮交付 |
 | GET | `/api/v2/meta/categories` | 类目清单，前端筛选条的唯一来源 |
 | GET | `/api/v2/public/profiles/{slug}` | 公开档案，免登录 |
 
@@ -404,6 +406,41 @@ P3 企业版从「最小骨架」推向可商用：组织作为统一结算主�
 退回原因按字截断到 60 字，接单方在「我接的单」里能看到。
 
 v2 是轻交易：**确认开工不碰钱**，不预扣款、不进托管。将来接托管模式时，`trade.Confirm` 是唯一要动的地方。
+
+### 交付
+
+确认开工之后，球在接单方这边：不交，需求方没有东西可验收，这一单会永远停在进行中。
+`POST /orders/{id}/deliveries` 把订单推到 `delivered`（对外四态 = 待验收）。
+
+请求体：
+
+```json
+{
+  "content": "RAG 问答系统已跑通，R3 的 Windows 启动脚本还差一版。",
+  "link": "https://example.com/rag.zip",
+  "items": [
+    {"item_id": "R1", "done": true, "note": "PDF/Word 都通了"},
+    {"item_id": "R3", "done": false, "note": "Windows 启动脚本明天补"}
+  ]
+}
+```
+
+规则（`internal/trade` 定，handler 只传输）：
+
+- **只有这一单的接单方能交**。需求方、别的接单方一律 403 `NOT_ORDER_PROVIDER`；权限先判、状态后判。
+- **只有进行中能交**。未确认开工 409「还没确认开工」；已交付 409「已经交付过了」；已结束 409「已经结束了」。对外统一 `ORDER_NOT_IN_PROGRESS`，具体卡在哪由 message 说清。
+- **说明必填、有上限**：`content` 空白 400 `DELIVERY_EMPTY`，超 1000 字 400 `DELIVERY_TOO_LONG`（不静默截断——截掉的可能是最关键的验收说明）。`link` 只收 http/https，最长 500。
+- **有需求清单就必须逐项交代**：缺项 / 不存在的项 / 重复项 400 `DELIVERY_ITEM_INVALID`（message 指出是哪几项）；没做完的项不写原因 400 `DELIVERY_ITEM_NOTE`。
+- **轮次上限** `max_revisions`（默认 3）。这个上限要等「验收打回」接上才有意义，现在先守住不退化成无限提交。
+
+交付记录与订单状态在同一个原子点落库（`Store.DeliverOrder`：内存模式一把锁，MySQL 一个事务 +
+`SELECT ... FOR UPDATE`）。轮次在实现内部算——两个并发的提交各自 Count 一次再 +1，会同时拿到第 2 轮。
+
+`needs_me` 跟着状态走：待确认 = 需求方，进行中 = 接单方，待验收先留空——验收按钮还没接上，
+给一个点了没用的按钮比不催更糟。待验收状态下双方都能读到最近一轮交付（`last_delivery`，含逐项结果与未完成数）。
+
+前端：大厅「我接的单」里，进行中的单直接展开交付表单——说明 + 链接 + 按需求清单逐项勾选与备注；
+顶部横幅提醒"有 N 单该交付了"；交付后这一条变成待验收，双方都能看到同一份内容。
 
 ### 会话
 
@@ -483,11 +520,15 @@ python test/test_m0_v2.py      # 44 项：健康检查、发码、凭证、登�
 python test/test_m0_hall.py    # 70 项：档案落库比对、角色口径、大厅筛选/排序/分页/脱敏、类目清单
 python test/test_m0_claim.py   # 40 项：谁能认领、认领后下架、重复认领、我的单、并发抢单只成一单
 python test/test_m0_confirm.py # 62 项：谁能点头、确认进入进行中、退回后重新开放、原因截断、并发确认只算一次
-node web/app/_flow.mjs         # 33 项：真浏览器 登录→填档案→大厅→认领→需求方登录点头→退回，截图到 web/app/_shots/
+python test/test_m0_deliver.py # 69 项：谁能交付、未开工/重复交付、说明与链接校验、逐项清单、待验收双方可见
+node web/app/_flow.mjs         # 44 项：真浏览器 登录→填档案→大厅→认领→点头→按清单交付→需求方看交付，截图到 web/app/_shots/
 ```
 
 `test_m0_confirm.py` 不写死任务号：它从大厅里找两张开放需求按需求方手机号登录，
 所以跟在 `test_m0_claim.py` 后面跑也不会因为单子被占而失败。
+
+`test_m0_deliver.py` 用种子里的 `T-DEMO-001`（带 3 项需求清单）与 `T-DEMO-002`（无清单）各走一遍：
+这两条单在 MySQL 模式下也验证了 `delivery.items_json` / `link` 的落库与读回。
 
 ## 核心 API（前缀 `/api/v1`）
 

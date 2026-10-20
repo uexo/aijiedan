@@ -5,6 +5,7 @@ package store
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"sort"
 	"strings"
 	"sync"
@@ -12,6 +13,17 @@ import (
 	"time"
 
 	"zanbuddy/internal/model"
+)
+
+// 存储层的哨兵错误。只用于"判断与写入落在同一个原子点"的那几个方法:
+// 上层拿得到具体原因, 才能给用户一句说得通的话, 而不是统一报"服务出错"。
+var (
+	// ErrOrderGone 订单不存在。
+	ErrOrderGone = errors.New("store: order not found")
+	// ErrNotDeliverable 订单此刻不在可交付状态(别人先动过, 或还没开工/已交付)。
+	ErrNotDeliverable = errors.New("store: order not deliverable")
+	// ErrRevisionLimit 改稿轮次已用尽。
+	ErrRevisionLimit = errors.New("store: revision limit reached")
 )
 
 // fallbackSlug 给没有短号的用户补一个确定性短号。
@@ -87,6 +99,16 @@ type Store interface {
 	// 需求方能同时确认两份, 同一件事付两次钱; 只退订单不退 task,
 	// 单子从大厅消失且谁也接不到, 只能人工改库。
 	CancelPendingOrder(orderID, taskID, by, reason string, at int64) bool
+	// DeliverOrder 记一条交付, 同时把订单从 from 推进到 to, 两件事落在同一个原子点。
+	//
+	// 为什么不是 PutDelivery 再 TransitionOrder: 两步之间失败会留下
+	// "交付记录在库里、订单还在进行中"的孤儿, 下一次交付又生成一轮,
+	// 需求方看到两轮内容一样的交付。轮次也必须在这里算——
+	// 两个并发的提交各自 Count 一次再各自 +1, 会同时拿到第 2 轮。
+	//
+	// 返回的 *model.Delivery 由实现生成 ID 与轮次, 上层不再猜。
+	DeliverOrder(orderID, content, link string, items []model.DeliveryItem,
+		from []model.OrderStatus, to model.OrderStatus, maxRound int, at int64) (*model.Delivery, error)
 	ListOrders() []*model.Order
 	ListOrdersByUser(userID string) []*model.Order
 	ListOrdersByTask(taskID string) []*model.Order
@@ -426,6 +448,11 @@ func (s *MemStore) SearchTasks(f TaskFilter) []*model.Task {
 			useIdx = true
 		}
 	}
+	// 3) 索引只存整词: 输 "py" 查不到 "python", 输 "用 P" 里那个单字母 p 也不在索引里。
+	// 空结果一律回落到全量扫描 + 子串匹配——宁可慢一点, 不能让人搜到 0 条。
+	if useIdx && len(cand) == 0 {
+		useIdx = false
+	}
 	// 2) 遍历候选(或全量)应用分面过滤。
 	var out []*model.Task
 	for id, t := range s.tasks {
@@ -462,13 +489,30 @@ func (s *MemStore) SearchTasks(f TaskFilter) []*model.Task {
 		}
 		out = append(out, t)
 	}
+	// 排序带 id 兜底(与 mysql.go 的 ORDER BY 对齐): 种子需求的 created_at 相同,
+	// 只比时间的话同分的几条顺序随机, 翻页会重复或漏项。
 	switch f.Sort {
 	case "budget_desc":
-		sort.Slice(out, func(i, j int) bool { return out[i].BudgetCents > out[j].BudgetCents })
+		sort.SliceStable(out, func(i, j int) bool {
+			if out[i].BudgetCents != out[j].BudgetCents {
+				return out[i].BudgetCents > out[j].BudgetCents
+			}
+			return out[i].ID < out[j].ID
+		})
 	case "budget_asc":
-		sort.Slice(out, func(i, j int) bool { return out[i].BudgetCents < out[j].BudgetCents })
+		sort.SliceStable(out, func(i, j int) bool {
+			if out[i].BudgetCents != out[j].BudgetCents {
+				return out[i].BudgetCents < out[j].BudgetCents
+			}
+			return out[i].ID < out[j].ID
+		})
 	default: // newest
-		sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt > out[j].CreatedAt })
+		sort.SliceStable(out, func(i, j int) bool {
+			if out[i].CreatedAt != out[j].CreatedAt {
+				return out[i].CreatedAt > out[j].CreatedAt
+			}
+			return out[i].ID < out[j].ID
+		})
 	}
 	if f.Limit > 0 && len(out) > f.Limit {
 		out = out[:f.Limit]
@@ -620,6 +664,54 @@ func (s *MemStore) CancelPendingOrder(orderID, taskID, by, reason string, at int
 		s.indexTask(t)
 	}
 	return true
+}
+
+// DeliverOrder 一把写锁内完成: 判状态 → 数轮次 → 落交付 → 推进订单。
+// 内存实现里这把锁就是"事务"。
+func (s *MemStore) DeliverOrder(orderID, content, link string, items []model.DeliveryItem,
+	from []model.OrderStatus, to model.OrderStatus, maxRound int, at int64) (*model.Delivery, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	o, ok := s.orders[orderID]
+	if !ok {
+		return nil, ErrOrderGone
+	}
+	okFrom := false
+	for _, st := range from {
+		if o.Status == st {
+			okFrom = true
+			break
+		}
+	}
+	if !okFrom {
+		return nil, ErrNotDeliverable
+	}
+
+	round := 0
+	for _, d := range s.deliveries {
+		if d.OrderID == orderID {
+			round++
+		}
+	}
+	round++
+	if round > maxRound {
+		return nil, ErrRevisionLimit
+	}
+
+	d := &model.Delivery{
+		ID:        s.NextID("D"),
+		OrderID:   orderID,
+		Round:     round,
+		Content:   content,
+		Link:      link,
+		Items:     items,
+		Status:    "submitted",
+		CreatedAt: at,
+	}
+	s.deliveries[d.ID] = d
+	o.Status = to
+	return d, nil
 }
 func (s *MemStore) ListOrders() []*model.Order {
 	s.mu.RLock()

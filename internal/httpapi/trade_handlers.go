@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	"zanbuddy/internal/model"
 	"zanbuddy/internal/trade"
 )
 
@@ -62,6 +63,54 @@ func (s *Server) declineOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteOK(w, r, s.Trade.View(o, cl.UserID))
+}
+
+// deliverOrder 接单方交付。
+//
+// 201 而不是 200: 交付是一条新记录(第一次交付还带着"这一单进入待验收"),
+// 不是把已有资源改个字段。
+//
+// 返回的是订单视图本身, 而不是交付记录: 前端拿它直接替换列表里的那一行,
+// 状态、轮次、最近一轮内容都在里面, 不用再拉一次 /me/orders。
+func (s *Server) deliverOrder(w http.ResponseWriter, r *http.Request) {
+	cl, _ := Claims(r)
+	var body struct {
+		Content string `json:"content"`
+		Link    string `json:"link"`
+		Items   []struct {
+			ItemID string `json:"item_id"`
+			Done   bool   `json:"done"`
+			Note   string `json:"note"`
+			Link   string `json:"link"`
+		} `json:"items"`
+	}
+	if !DecodeJSON(r, &body) {
+		WriteErr(w, r, http.StatusBadRequest, "BAD_JSON", "请求格式不对")
+		return
+	}
+
+	items := make([]model.DeliveryItem, 0, len(body.Items))
+	for _, it := range body.Items {
+		items = append(items, model.DeliveryItem{ItemID: it.ItemID, Done: it.Done, Note: it.Note, Link: it.Link})
+	}
+
+	o, _, err := s.Trade.Deliver(r.PathValue("id"), cl.UserID, body.Content, body.Link, items)
+	if err != nil {
+		writeTradeErr(w, r, err)
+		return
+	}
+	WriteCreated(w, r, s.Trade.View(o, cl.UserID))
+}
+
+// listDeliveries 这一单的交付记录(含历史轮次), 只有交易双方能看。
+func (s *Server) listDeliveries(w http.ResponseWriter, r *http.Request) {
+	cl, _ := Claims(r)
+	items, err := s.Trade.Deliveries(r.PathValue("id"), cl.UserID)
+	if err != nil {
+		writeTradeErr(w, r, err)
+		return
+	}
+	WriteOK(w, r, map[string]interface{}{"items": items, "total": len(items)})
 }
 
 // writeTradeErr 把交易域的错误翻成信封。未知错误不吐内部细节, 只给 trace。

@@ -155,6 +155,13 @@ func seedTasks(st store.Store) {
 			SpecObj: model.TaskSpec{
 				Deliverables: "1 套可运行源码 + 部署文档", RequiredFormat: "Python 项目(zip) + README",
 				DeadlineAt: now + 7*day, StyleRef: "生产级可维护代码",
+				// 带清单的两条需求: 交付要按项交代、验收要按项比对,
+				// 演示时能看出"逐项"和"一句话交付"的区别。
+				Items: []model.RequirementItem{
+					{ID: "R1", Desc: "文档上传 + 解析(PDF/Word)"},
+					{ID: "R2", Desc: "基于检索的中文问答接口"},
+					{ID: "R3", Desc: "部署文档与启动脚本"},
+				},
 			},
 		},
 		{
@@ -182,6 +189,11 @@ func seedTasks(st store.Store) {
 			SpecObj: model.TaskSpec{
 				Deliverables: "清洗脚本 + 标注集 + 意图分布报告", RequiredFormat: "CSV + Python 脚本",
 				DeadlineAt: now + 9*day, StyleRef: "标注规则要写清楚, 换人能复用",
+				Items: []model.RequirementItem{
+					{ID: "R1", Desc: "去重与手机号/地址脱敏"},
+					{ID: "R2", Desc: "按 12 个意图分类的标注集"},
+					{ID: "R3", Desc: "意图分布报告"},
+				},
 			},
 		},
 		{

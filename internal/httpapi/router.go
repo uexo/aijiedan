@@ -50,6 +50,9 @@ func (s *Server) Routes() http.Handler {
 	// 需求方这一侧: 认领要有人点头才算数, 不点头要能退回大厅。
 	mux.Handle("POST /api/v2/orders/{id}/confirm", RequireAuth(http.HandlerFunc(s.confirmOrder)))
 	mux.Handle("POST /api/v2/orders/{id}/decline", RequireAuth(http.HandlerFunc(s.declineOrder)))
+	// 接单方这一侧: 确认开工之后单子停在进行中, 交付是唯一能推着它走的一步。
+	mux.Handle("POST /api/v2/orders/{id}/deliveries", RequireAuth(http.HandlerFunc(s.deliverOrder)))
+	mux.Handle("GET /api/v2/orders/{id}/deliveries", RequireAuth(http.HandlerFunc(s.listDeliveries)))
 
 	// 公开页: 免登录, 是信用资产的对外出口
 	mux.HandleFunc("GET /api/v2/public/profiles/{slug}", s.publicProfile)

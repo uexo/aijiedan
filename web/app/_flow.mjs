@@ -192,6 +192,53 @@ const pState = ((await page.locator('#mine-list .oitem .state').first().textCont
 step('接单方也看到进行中', /进行中/.test(pState), pState);
 await page.screenshot({ path: path.join(OUT, 'provider-confirmed.png'), fullPage: true });
 
+/* 8.85 交付：进行中之后球在接单方这边，不交这一单永远走不动。
+   需求清单要先逐项交代，交完单子进待验收，需求方才有东西可看。 */
+await page.reload({ waitUntil: 'networkidle' });
+await page.waitForSelector('#mine-list [data-ask-deliver]', { timeout: 10000 });
+const pBanner = ((await page.textContent('#banner')) || '').trim();
+step('顶部提醒该交付了', /该交付/.test(pBanner), pBanner);
+
+await page.locator('#mine-list [data-ask-deliver]').first().click();
+const dbox = page.locator('[data-box^="deliver-"]:not([hidden])');
+step('交付前先亮出表单', (await dbox.count()) === 1);
+const rows = await dbox.locator('.drow').count();
+step('交付按需求清单逐项列出', rows >= 3, `${rows} 项`);
+await page.screenshot({ path: path.join(OUT, 'deliver-form.png'), fullPage: true });
+
+await dbox.locator('textarea').fill('RAG 问答系统已跑通，R3 的 Windows 启动脚本还差一版。');
+await dbox.locator('input[type="url"]').fill('https://example.com/rag.zip');
+
+// 第三项没做完又不写原因：这一步应该在客户端就被拦住
+await dbox.locator('.drow').nth(2).locator('input[type="checkbox"]').uncheck();
+await dbox.locator('[data-do-deliver]').click();
+await page.waitForTimeout(400);
+const guardToast = ((await page.textContent('#toast').catch(() => '')) || '').trim();
+step('未完成项不写原因会被拦下', /没做完/.test(guardToast), guardToast);
+step('被拦下时单子没被推走', (await page.locator('#mine-list [data-ask-deliver]').count()) === 1);
+
+await dbox.locator('.drow').nth(2).locator('input[type="text"]').fill('Windows 启动脚本明天补上');
+await dbox.locator('[data-do-deliver]').click();
+await page.waitForTimeout(900);
+
+const pDelState = ((await page.locator('#mine-list .oitem .state').first().textContent()) || '').trim();
+step('交付后变成待验收', /待验收/.test(pDelState), pDelState);
+const pDelToast = ((await page.textContent('#toast').catch(() => '')) || '').trim();
+step('交付给了回执', /已交付/.test(pDelToast), pDelToast);
+const shown = ((await page.locator('#mine-list .oitem .dshow').first().textContent()) || '').trim();
+step('交付记录里有说明和逐项结果', /RAG 问答系统已跑通/.test(shown) && /未完成/.test(shown), shown.slice(0, 60));
+step('交完这一单不再需要他动', (await page.locator('#mine-list [data-ask-deliver]').count()) === 0);
+await page.screenshot({ path: path.join(OUT, 'provider-delivered.png'), fullPage: true });
+
+/* 8.86 需求方看到同一份交付 */
+await dp.reload({ waitUntil: 'networkidle' });
+await dp.waitForTimeout(600);
+const dRevState = ((await dp.locator('#mine-list .oitem .state').first().textContent()) || '').trim();
+step('需求方看到待验收', /待验收/.test(dRevState), dRevState);
+const dShown = ((await dp.locator('#mine-list .oitem .dshow').first().textContent()) || '').trim();
+step('需求方读到同一份交付', /RAG 问答系统已跑通/.test(dShown), dShown.slice(0, 60));
+await dp.screenshot({ path: path.join(OUT, 'demand-review.png'), fullPage: true });
+
 /* 8.9 再接一单，被需求方退回大厅 */
 const r001next = page.locator('.task', { hasText: '需求方甲' }).first();
 const nextTitle = ((await r001next.locator('.tlink').textContent()) || '').trim();

@@ -313,6 +313,9 @@ type Delivery struct {
 	OrderID   string         `json:"order_id"`
 	Round     int            `json:"round"`  // 第几轮交付
 	Content   string         `json:"content"` // 交付总说明(自由文本)
+	// Link 交付物入口。平台不托管文件(二清与存储成本都不该压在撮合上),
+	// 所以交付物靠网盘/仓库/文档链接传递, 这一条是给需求方点开看的东西。
+	Link      string         `json:"link,omitempty"`
 	Items     []DeliveryItem `json:"items,omitempty"` // 本次交付逐需求项完成情况
 	Status    string         `json:"status"` // submitted / accepted / rejected
 	CreatedAt int64          `json:"created_at"`

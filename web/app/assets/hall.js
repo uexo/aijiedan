@@ -192,7 +192,7 @@ function renderMine() {
   if (isProvider) {
     el.mineTitle.textContent = '我接的单';
     el.navMineLabel.textContent = '我接的单';
-    el.mineNote.textContent = '认领之后等需求方确认，确认后进入进行中。';
+    el.mineNote.textContent = '认领之后等需求方确认；确认开工的单在「进行中」，交完等验收。';
   } else if (pending > 0) {
     el.mineTitle.textContent = '等你确认';
     el.navMineLabel.textContent = '等你确认';
@@ -248,14 +248,89 @@ function orderItem(o) {
     </div>
     ${o.counterparty_headline ? html`<p class="otag">${o.counterparty_headline}</p>` : ''}
     ${o.cancel_reason ? html`<p class="tiny muted mt6">退回原因：${o.cancel_reason}</p>` : ''}
+    ${deliveryBox(o)}
     ${o.needs_me ? actionUI(o) : ''}
   </li>`;
+}
+
+/* 最近一轮交付。待验收时这是需求方唯一的判断依据:
+   不看内容只看到一个"待验收"标签，人会直接去私聊问"你交了啥"。 */
+function deliveryBox(o) {
+  const d = o.last_delivery;
+  if (!d) return '';
+  const undone = Number(d.undone_count) || 0;
+  const linkOk = d.link && /^https?:\/\//i.test(d.link);
+  return html`
+  <div class="dshow">
+    <div class="flex ac jb wrapw g8">
+      <span class="tiny muted">第 ${d.round} 轮交付 · ${ago(d.created_at)}</span>
+      ${undone > 0 ? html`<span class="state state-todo">${undone} 项未完成</span>` : ''}
+    </div>
+    <p class="dtext">${d.content}</p>
+    ${linkOk ? html`<p class="tiny mt6"><a href="${d.link}" target="_blank" rel="noopener noreferrer">打开交付物 →</a></p>` : ''}
+    ${(d.items || []).length
+      ? html`<ul class="ditems">
+          ${(d.items || []).map(
+            (it) => html`<li class="${it.done ? 'don' : 'dun'}">
+              <span class="mono">${it.item_id}</span>
+              <span>${it.done ? '已完成' : '未完成'}</span>
+              ${it.note ? html`<span class="dnote">${it.note}</span>` : ''}
+            </li>`
+          )}
+        </ul>`
+      : ''}
+  </div>`;
+}
+
+/* 这一单该谁动。按身份和四态分派，而不是堆一串 if:
+   接单方在进行中只有一个动作(交付)，需求方在待确认只有一个动作(点头)。 */
+function actionUI(o) {
+  if (o.role === 'provider' && o.state === 'in_progress') return deliverUI(o);
+  return confirmUI(o);
+}
+
+/* 交付这一格要按需求清单逐项交代。没有清单的需求就只填说明和链接，
+   有清单的不逐项填，需求方验收时没法判断"哪一条做到了"。 */
+function deliverUI(o) {
+  const reqs = Array.isArray(o.requirements) ? o.requirements : [];
+  const round = Number(o.delivery_round) || 0;
+  const max = Number(o.max_revisions) || 0;
+  return html`
+  <div class="oact" data-act="${o.id}">
+    <button class="btn btn-ink btn-sm" type="button" data-ask-deliver="${o.id}">提交交付</button>
+    <span class="tiny muted">交付后进入待验收${max > 0 ? '，已交 ' + round + '/' + max + ' 轮' : ''}</span>
+  </div>
+
+  <div class="obox" hidden data-box="deliver-${o.id}">
+    <p><strong>交付这一单？</strong>${reqs.length ? '按需求清单逐项交代完成情况，' : ''}提交后进入待验收，自己撤不回来。</p>
+    <label class="label" for="dc-${o.id}">交付说明（必填，1000 字内）</label>
+    <textarea class="input" id="dc-${o.id}" rows="3" maxlength="1000" placeholder="做了什么、怎么用、有哪些已知限制"></textarea>
+    <label class="label mt8" for="dl-${o.id}">交付物链接（可选）</label>
+    <input class="input" id="dl-${o.id}" type="url" maxlength="500" placeholder="https:// 网盘 / 仓库 / 文档地址">
+    ${reqs.length
+      ? html`<div class="dlist mt12">
+          ${reqs.map(
+            (it) => html`<div class="drow">
+              <label class="dcheck">
+                <input type="checkbox" data-done="${it.id}" checked>
+                <span><span class="mono">${it.id}</span> ${it.desc}</span>
+              </label>
+              <input class="input input-sm" type="text" maxlength="200" data-note="${it.id}" placeholder="完成说明；没做完就写清原因">
+            </div>`
+          )}
+        </div>`
+      : ''}
+    <div class="flex ac g8 wrapw mt8">
+      <button class="btn btn-ink btn-sm" type="button" data-do-deliver="${o.id}">确认交付</button>
+      <button class="btn btn-quiet btn-sm" type="button" data-close-box="${o.id}">再等等</button>
+    </div>
+  </div>`;
 }
 
 /* 确认开工、退回，都要点两下。认领点错还能去别处找单，
    这两下点错就把一单推下去了或者推回去了，没有撤回。
    退回还要留一句原因: 接单方有权知道为什么没成。 */
-function actionUI(o) {
+function confirmUI(o) {
   const who = o.counterparty || '对方';
   return html`
   <div class="oact" data-act="${o.id}">
@@ -339,7 +414,21 @@ function paintWho(p) {
     ? html`${name} · 档案完整度 ${pct}%`
     : html`<a href="profile.html">${name} · 档案完整度 ${pct}%，去补全</a>`;
 
-  if (pct < 100) {
+  // 进行中的单在等接单方交付。这条要排在档案提醒前面:
+  // 补档案是"以后更划算"，交付是"这一单现在卡着"。
+  const toDeliver = mineItems.filter((o) => o.needs_me).length;
+  if (toDeliver > 0) {
+    el.banner.innerHTML = html`<strong>有 ${toDeliver} 单该交付了。</strong>交了之后单子进入待验收，需求方才有东西可以看。 <button class="btn btn-line btn-sm" type="button" id="jump-mine">去交付</button>`;
+    el.banner.hidden = false;
+    const jump = document.getElementById('jump-mine');
+    if (jump) {
+      jump.addEventListener('click', () => {
+        mineOpen = true;
+        renderMine();
+        el.mine.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
+  } else if (pct < 100) {
     el.banner.innerHTML = html`<strong>档案还差一块。</strong>补齐之后，系统算到你的时候才有东西可说。 <a href="profile.html">去补全 →</a>`;
     el.banner.hidden = false;
   }
@@ -561,6 +650,63 @@ el.mineToggle.addEventListener('click', () => {
   renderMine();
 });
 
+/* ---------- 接单方: 交付 ---------- */
+
+/* 交付是轻交易里唯一"由接单方推着走"的动作: 不点这一下, 单子永远停在进行中。
+   提交前不再多一次确认框——盒子本身就是确认，再问一遍只是多一次点击。 */
+async function doDeliver(id, btn) {
+  const box = el.mineList.querySelector('[data-box="deliver-' + id + '"]');
+  const contentEl = document.getElementById('dc-' + id);
+  const linkEl = document.getElementById('dl-' + id);
+  const content = contentEl ? contentEl.value.trim() : '';
+
+  if (!content) {
+    toast('写一句交付说明，需求方才好验收', 'warn');
+    if (contentEl) contentEl.focus();
+    return;
+  }
+
+  // 有清单就按项上报。没做完的项不写原因，验收时看到的就是一个没解释的空洞，
+  // 需求方只能来回问，所以这一条在提交前拦掉。
+  const items = Array.from(box ? box.querySelectorAll('[data-done]') : []).map((cb) => {
+    const iid = cb.dataset.done;
+    const noteEl = box.querySelector('[data-note="' + iid + '"]');
+    return { item_id: iid, done: !!cb.checked, note: noteEl ? noteEl.value.trim() : '' };
+  });
+  const missing = items.find((it) => !it.done && !it.note);
+  if (missing) {
+    toast('第 ' + missing.item_id + ' 项没做完，写一句原因', 'warn');
+    const ne = box ? box.querySelector('[data-note="' + missing.item_id + '"]') : null;
+    if (ne) ne.focus();
+    return;
+  }
+
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '提交中…';
+  try {
+    const o = await api('POST', '/orders/' + encodeURIComponent(id) + '/deliveries', {
+      content: content,
+      link: linkEl ? linkEl.value.trim() : '',
+      items: items,
+    });
+    // 服务端回的是落库后的订单视图（含轮次与最近一轮内容），直接换掉这一行
+    replaceItem(o);
+    renderMine();
+    toast('已交付，等' + (o.counterparty || '需求方') + '验收', 'ok');
+  } catch (err) {
+    const code = err instanceof ApiError ? err.code : '';
+    if (code === 'ORDER_NOT_IN_PROGRESS' || code === 'ORDER_NOT_FOUND') {
+      await loadOrders(); // 状态被别处改过（比如刚被打回又交过），让界面跟上
+      toast(err.message || '这一单现在不能交付', 'warn');
+      return;
+    }
+    toast((err && err.message) || '没交上，再试一次', 'err');
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
 /* ---------- 需求方: 确认开工 / 退回大厅 ---------- */
 
 function openBox(id, which) {
@@ -639,6 +785,11 @@ el.mineList.addEventListener('click', (e) => {
     openBox(askD.dataset.askDecline, 'decline');
     return;
   }
+  const askDel = e.target.closest('[data-ask-deliver]');
+  if (askDel) {
+    openBox(askDel.dataset.askDeliver, 'deliver');
+    return;
+  }
   const close = e.target.closest('[data-close-box]');
   if (close) {
     closeBox(close.dataset.closeBox);
@@ -650,7 +801,12 @@ el.mineList.addEventListener('click', (e) => {
     return;
   }
   const goD = e.target.closest('[data-do-decline]');
-  if (goD) doDecline(goD.dataset.doDecline, goD);
+  if (goD) {
+    doDecline(goD.dataset.doDecline, goD);
+    return;
+  }
+  const goDel = e.target.closest('[data-do-deliver]');
+  if (goDel) doDeliver(goDel.dataset.doDeliver, goDel);
 });
 
 el.navMine.addEventListener('click', () => {

@@ -192,7 +192,9 @@ check("确认完不再需要他动", od.get("needs_me") is False, od)
 
 o = P1.find_order(O1)
 check("接单方看到进行中", (o or {}).get("state") == "in_progress", o)
-check("接单方这边不需要他确认", (o or {}).get("needs_me") is False, o)
+# 确认之后球在接单方这边: 该他交付了。needs_me 不是"永远给需求方",
+# 而是"这一步该谁动", 所以这里跟着状态从需求方转到接单方。
+check("确认后轮到接单方交付(needs_me=True)", (o or {}).get("needs_me") is True, o)
 
 st, d = R1.confirm(O1)
 check("重复确认 409", st == 409, (st, d))

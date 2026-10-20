@@ -315,6 +315,29 @@ select.input{appearance:none;background-image:linear-gradient(45deg,transparent 
 .obox strong{color:var(--ink);font-weight:600}
 .obox .label{display:block;margin-bottom:6px}
 .obox textarea.input{min-height:56px;resize:vertical;line-height:1.6}
+.obox .input-sm{padding:8px 10px;font-size:.82rem}
+
+/* 需求清单: 交付时逐项勾选 + 说明。两列在窄屏自动落成一行一项 */
+.dlist{margin-top:10px;border-top:1px dashed var(--rule-2)}
+.drow{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;align-items:center;
+  padding:9px 0;border-bottom:1px dashed var(--rule-2)}
+.drow:last-child{border-bottom:0}
+.dcheck{display:flex;align-items:flex-start;gap:7px;font-size:.84rem;line-height:1.5;color:var(--ink-2);cursor:pointer}
+.dcheck input{margin-top:3px;flex:0 0 auto;accent-color:var(--ink)}
+
+/* 已交付的内容。待验收时这是需求方唯一的判断依据, 给足行高和边界 */
+.dshow{margin-top:10px;padding:10px 12px;border:1px solid var(--rule);border-radius:var(--r);
+  background:var(--paper-2, #FAF9F7)}
+.dtext{margin:6px 0 0;font-size:.86rem;line-height:1.65;color:var(--ink-2);white-space:pre-wrap;word-break:break-word}
+.ditems{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:4px}
+.ditems li{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;font-size:.8rem;line-height:1.5}
+.ditems li.don{color:var(--ink-2)}
+.ditems li.dun{color:var(--seal-2)}
+.ditems .dnote{color:var(--ink-3);font-size:.78rem}
+
+@media(max-width:560px){
+  .drow{grid-template-columns:1fr;gap:6px}
+}
 
 @media(max-width:560px){
   .task .price{font-size:.98rem}

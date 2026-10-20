@@ -500,12 +500,14 @@ func (s *mysqlStore) SearchTasks(f TaskFilter) []*model.Task {
 		where = append(where, "deadline_at <= ?")
 		args = append(args, f.DeadlineBefore)
 	}
-	order := "created_at DESC"
+	// 排序必须带 id 兜底: 种子需求的 created_at 是同一个值,
+	// 只按时间排会让同分的几条在翻页时互相换位, 第二页又出现第一页的单。
+	order := "created_at DESC,id ASC"
 	switch f.Sort {
 	case "budget_desc":
-		order = "budget_cents DESC"
+		order = "budget_cents DESC,id ASC"
 	case "budget_asc":
-		order = "budget_cents ASC"
+		order = "budget_cents ASC,id ASC"
 	}
 	qry := "SELECT " + cols + " FROM task WHERE " + strings.Join(where, " AND ") + " ORDER BY " + order
 	if f.Limit > 0 {
@@ -705,6 +707,70 @@ func (s *mysqlStore) CancelPendingOrder(orderID, taskID, by, reason string, at i
 	return tx.Commit() == nil
 }
 
+// DeliverOrder 交付记录与订单状态在同一个事务里落库。
+//
+// 先用 SELECT ... FOR UPDATE 锁住订单行: 两个并发的"提交交付"在库上排队,
+// 后到的那个读到的是 delivered, 直接按"已交付"拒掉, 不会各数一次轮次后都 +1。
+func (s *mysqlStore) DeliverOrder(orderID, content, link string, items []model.DeliveryItem,
+	from []model.OrderStatus, to model.OrderStatus, maxRound int, at int64) (*model.Delivery, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	// 提交后这次 Rollback 是空操作, 但出错路径必须回滚, 所以不在成功分支里返回。
+	defer func() { _ = tx.Rollback() }()
+
+	var status string
+	if err := tx.QueryRow("SELECT status FROM `order` WHERE id=? FOR UPDATE", orderID).Scan(&status); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrOrderGone
+		}
+		return nil, err
+	}
+	okFrom := false
+	for _, st := range from {
+		if model.OrderStatus(status) == st {
+			okFrom = true
+			break
+		}
+	}
+	if !okFrom {
+		return nil, ErrNotDeliverable
+	}
+
+	var n int
+	if err := tx.QueryRow("SELECT COUNT(*) FROM delivery WHERE order_id=?", orderID).Scan(&n); err != nil {
+		return nil, err
+	}
+	round := n + 1
+	if round > maxRound {
+		return nil, ErrRevisionLimit
+	}
+
+	d := &model.Delivery{
+		ID:        s.NextID("D"),
+		OrderID:   orderID,
+		Round:     round,
+		Content:   content,
+		Link:      link,
+		Items:     items,
+		Status:    "submitted",
+		CreatedAt: at,
+	}
+	itemsJSON, _ := json.Marshal(items)
+	if _, err := tx.Exec("INSERT INTO delivery (id,order_id,round,content,link,items_json,status,created_at) VALUES (?,?,?,?,?,?,?,?)",
+		d.ID, d.OrderID, d.Round, d.Content, nullStr(d.Link), nullStr(string(itemsJSON)), d.Status, d.CreatedAt); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec("UPDATE `order` SET status=? WHERE id=?", string(to), orderID); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
 func (s *mysqlStore) ListOrders() []*model.Order {
 	rows, err := s.db.Query("SELECT " + orderCols + " FROM `order`")
 	if err != nil {
@@ -793,29 +859,31 @@ func (s *mysqlStore) ListTasksByOwner(ownerID string) []*model.Task {
 // --- Deliveries ---
 func (s *mysqlStore) PutDelivery(d *model.Delivery) {
 	items, _ := json.Marshal(d.Items)
-	_, _ = s.db.Exec(`INSERT INTO delivery (id,order_id,round,content,items_json,status,created_at)
-		VALUES (?,?,?,?,?,?,?)
-		ON DUPLICATE KEY UPDATE round=VALUES(round),content=VALUES(content),items_json=VALUES(items_json),status=VALUES(status)`,
-		d.ID, d.OrderID, d.Round, d.Content, nullStr(string(items)), d.Status, d.CreatedAt)
+	_, _ = s.db.Exec(`INSERT INTO delivery (id,order_id,round,content,link,items_json,status,created_at)
+		VALUES (?,?,?,?,?,?,?,?)
+		ON DUPLICATE KEY UPDATE round=VALUES(round),content=VALUES(content),link=VALUES(link),items_json=VALUES(items_json),status=VALUES(status)`,
+		d.ID, d.OrderID, d.Round, d.Content, nullStr(d.Link), nullStr(string(items)), d.Status, d.CreatedAt)
 }
 func (s *mysqlStore) GetDelivery(id string) (*model.Delivery, bool) {
 	d := &model.Delivery{}
 	var items []byte
-	err := s.db.QueryRow("SELECT id,order_id,round,content,items_json,status,created_at FROM delivery WHERE id=?", id).
-		Scan(&d.ID, &d.OrderID, &d.Round, &d.Content, &items, &d.Status, &d.CreatedAt)
+	var link sql.NullString
+	err := s.db.QueryRow("SELECT id,order_id,round,content,link,items_json,status,created_at FROM delivery WHERE id=?", id).
+		Scan(&d.ID, &d.OrderID, &d.Round, &d.Content, &link, &items, &d.Status, &d.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, false
 	}
 	if err != nil {
 		return nil, false
 	}
+	d.Link = link.String
 	if len(items) > 0 {
 		_ = json.Unmarshal(items, &d.Items)
 	}
 	return d, true
 }
 func (s *mysqlStore) ListDeliveriesByOrder(orderID string) []*model.Delivery {
-	rows, err := s.db.Query("SELECT id,order_id,round,content,items_json,status,created_at FROM delivery WHERE order_id=?", orderID)
+	rows, err := s.db.Query("SELECT id,order_id,round,content,link,items_json,status,created_at FROM delivery WHERE order_id=? ORDER BY round", orderID)
 	if err != nil {
 		return nil
 	}
@@ -824,9 +892,11 @@ func (s *mysqlStore) ListDeliveriesByOrder(orderID string) []*model.Delivery {
 	for rows.Next() {
 		d := &model.Delivery{}
 		var items []byte
-		if err := rows.Scan(&d.ID, &d.OrderID, &d.Round, &d.Content, &items, &d.Status, &d.CreatedAt); err != nil {
+		var link sql.NullString
+		if err := rows.Scan(&d.ID, &d.OrderID, &d.Round, &d.Content, &link, &items, &d.Status, &d.CreatedAt); err != nil {
 			return nil
 		}
+		d.Link = link.String
 		if len(items) > 0 {
 			_ = json.Unmarshal(items, &d.Items)
 		}

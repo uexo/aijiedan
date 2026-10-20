@@ -138,6 +138,10 @@ CREATE TABLE `delivery` (
 ALTER TABLE `delivery`
   ADD COLUMN `items_json`  JSON  NULL;
 
+-- v2 交付: 交付物入口链接(平台不托管文件, 靠网盘/仓库/文档链接传递)
+ALTER TABLE `delivery`
+  ADD COLUMN `link` VARCHAR(500) NULL;
+
 CREATE TABLE `compliance_state` (
   `item`   VARCHAR(16) NOT NULL,
   `on`     TINYINT(1)  NOT NULL,
