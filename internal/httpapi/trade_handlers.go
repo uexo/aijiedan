@@ -31,6 +31,39 @@ func (s *Server) myOrders(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// confirmOrder 需求方确认认领, 这一单正式开工。
+//
+// 200 而不是 201: 订单在认领那一刻就存在了, 这一步改的是状态, 没有新资源。
+func (s *Server) confirmOrder(w http.ResponseWriter, r *http.Request) {
+	cl, _ := Claims(r)
+	o, err := s.Trade.Confirm(r.PathValue("id"), cl.UserID)
+	if err != nil {
+		writeTradeErr(w, r, err)
+		return
+	}
+	WriteOK(w, r, s.Trade.View(o, cl.UserID))
+}
+
+// declineOrder 需求方把单子退回大厅。
+//
+// 原因可选: 逼人写理由的结果是满屏"不合适"三个字。
+// 但给了就得存下来 —— 接单方有权知道为什么没成。
+func (s *Server) declineOrder(w http.ResponseWriter, r *http.Request) {
+	cl, _ := Claims(r)
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	// 空 body 也允许: 前端不填原因时直接 POST 过来
+	_ = DecodeJSON(r, &body)
+
+	o, err := s.Trade.Decline(r.PathValue("id"), cl.UserID, body.Reason)
+	if err != nil {
+		writeTradeErr(w, r, err)
+		return
+	}
+	WriteOK(w, r, s.Trade.View(o, cl.UserID))
+}
+
 // writeTradeErr 把交易域的错误翻成信封。未知错误不吐内部细节, 只给 trace。
 func writeTradeErr(w http.ResponseWriter, r *http.Request, err error) {
 	var te *trade.Error

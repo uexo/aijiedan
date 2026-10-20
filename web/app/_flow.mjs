@@ -111,13 +111,15 @@ await page.waitForTimeout(700);
 const filtered = await page.locator('.task').count();
 step('搜「' + kw + '」有结果', filtered >= 1, `${filtered} 条`);
 
-/* 8.5 认领：先确认再动手 */
+/* 8.5 认领：先确认再动手。挑「需求方甲」发的单——
+   后面要用他的手机号登录去点头，随便挑一张会对不上人。 */
 await page.fill('#q', '');
 await page.waitForTimeout(700);
 const beforeClaim = await page.locator('.task').count();
-const claimTitle = (await page.locator('.task .tlink').first().textContent()) || '';
+const r001 = page.locator('.task', { hasText: '需求方甲' }).first();
+const claimTitle = ((await r001.locator('.tlink').textContent()) || '').trim();
 
-await page.locator('.task [data-claim]').first().click();
+await r001.locator('[data-claim]').click();
 const boxOpen = await page.locator('.claim-box:not([hidden])').count();
 step('点认领先亮后果，不直接扣单', boxOpen === 1, `${boxOpen} 个确认框`);
 await page.screenshot({ path: path.join(OUT, 'hall-claim-confirm.png'), fullPage: true });
@@ -143,6 +145,75 @@ await page.waitForSelector('#mine:not([hidden])', { timeout: 10000 });
 const mineAfterReload = (await page.locator('#mine-list .oitem strong').first().textContent()) || '';
 step('刷新后认领还在', mineAfterReload.trim() === claimTitle.trim(), mineAfterReload.trim());
 step('刷新后大厅仍没有这一单', !(await page.locator('.task .tlink').allTextContents()).includes(claimTitle.trim()), '');
+
+/* 8.7 需求方这一侧：登录 → 看见有人认领 → 点头
+   用种子需求方 R001 的手机号，他名下有两单，正好一单点头一单退回。 */
+const dctx = await browser.newContext({ viewport: { width: 1440, height: 980 } });
+const dp = await dctx.newPage();
+dp.on('pageerror', (e) => errors.push('demander: ' + String(e)));
+dp.on('console', (m) => {
+  if (m.type() === 'error') errors.push('demander: ' + m.text());
+});
+
+await dp.goto(BASE + '/static/app/login.html', { waitUntil: 'networkidle' });
+await dp.fill('#phone', '13800000001');
+await dp.click('#to-role');
+await dp.waitForSelector('[data-pane="2"]:not([hidden])');
+await dp.click('.pick[data-role="demand"]');
+await dp.click('#to-code');
+await dp.waitForSelector('[data-pane="3"]:not([hidden])');
+await dp.fill('#code', '000000');
+await Promise.all([dp.waitForURL(/hall\.html/, { timeout: 10000 }), dp.click('#submit')]);
+step('需求方登录后落在大厅', /hall\.html/.test(dp.url()), dp.url());
+
+await dp.waitForSelector('#mine:not([hidden])', { timeout: 10000 });
+const dTitle = ((await dp.textContent('#mine-title')) || '').trim();
+step('面板对需求方换成「等你确认」', dTitle === '等你确认', dTitle);
+const dBanner = ((await dp.textContent('#banner')) || '').trim();
+step('横幅说清有几单等他点头', /1 单等你点头/.test(dBanner), dBanner);
+const dItem = ((await dp.locator('#mine-list .oitem').first().textContent()) || '').trim();
+step('看到接单人的一句话定位', /把重复流程做成能跑的 Agent/.test(dItem), dItem.slice(0, 40));
+step('看到自己发的单标题', dItem.includes(claimTitle), claimTitle);
+await dp.screenshot({ path: path.join(OUT, 'demand-inbox.png'), fullPage: true });
+
+await dp.locator('[data-ask-confirm]').first().click();
+step('点头前先亮后果', (await dp.locator('[data-box^="confirm-"]:not([hidden])').count()) === 1);
+await dp.screenshot({ path: path.join(OUT, 'demand-confirm.png'), fullPage: true });
+await dp.locator('[data-box^="confirm-"]:not([hidden]) [data-do-confirm]').click();
+await dp.waitForTimeout(700);
+const dState = ((await dp.locator('#mine-list .oitem .state').first().textContent()) || '').trim();
+step('点头之后变进行中', /进行中/.test(dState), dState);
+await dp.screenshot({ path: path.join(OUT, 'demand-confirmed.png'), fullPage: true });
+
+/* 8.8 接单方刷新，能看到这一单已经开工 */
+await page.reload({ waitUntil: 'networkidle' });
+await page.waitForSelector('#mine:not([hidden])', { timeout: 10000 });
+const pState = ((await page.locator('#mine-list .oitem .state').first().textContent()) || '').trim();
+step('接单方也看到进行中', /进行中/.test(pState), pState);
+await page.screenshot({ path: path.join(OUT, 'provider-confirmed.png'), fullPage: true });
+
+/* 8.9 再接一单，被需求方退回大厅 */
+const r001next = page.locator('.task', { hasText: '需求方甲' }).first();
+const nextTitle = ((await r001next.locator('.tlink').textContent()) || '').trim();
+await r001next.locator('[data-claim]').click();
+await page.locator('.claim-box:not([hidden]) [data-do]').click();
+await page.waitForTimeout(800);
+step('接单方第二单进了「我接的单」', (await page.locator('#mine-list .oitem').count()) === 2, nextTitle);
+
+await dp.reload({ waitUntil: 'networkidle' });
+await dp.waitForSelector('#mine-list [data-ask-decline]', { timeout: 10000 });
+const pend = dp.locator('li.oitem', { has: dp.locator('[data-ask-decline]') }).first();
+await pend.locator('[data-ask-decline]').click();
+await pend.locator('textarea').fill('工期比我能等的更紧');
+await dp.screenshot({ path: path.join(OUT, 'demand-decline.png'), fullPage: true });
+await pend.locator('[data-do-decline]').click();
+await dp.waitForTimeout(900);
+
+const dToast = ((await dp.textContent('#toast').catch(() => '')) || '').trim();
+step('退回有回执', /退回/.test(dToast), dToast);
+step('退回的那一单变成已取消', (await dp.locator('#mine-list .oitem', { hasText: '已取消' }).count()) >= 1);
+const hallTitles = (await dp.locator('#list .tlink').allTextContents()).map((s) => s.trim());
+step('退回后单子重新出现在大厅', hallTitles.includes(nextTitle), nextTitle);
 
 /* 9. 手机尺寸（带上登录态，否则大厅会把人送回登录页） */
 const saved = await ctx.storageState();

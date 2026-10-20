@@ -306,6 +306,16 @@ select.input{appearance:none;background-image:linear-gradient(45deg,transparent 
 .oline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.78rem;color:var(--ink-3)}
 .oline .dot{width:3px;height:3px;border-radius:50%;background:var(--rule-2);flex:0 0 auto}
 
+/* 认领人的一句话定位: 需求方点头之前, 能拿来判断的其实就这一句 */
+.otag{margin-top:8px;padding-left:10px;border-left:2px solid var(--rule-2);
+  font-size:.84rem;line-height:1.6;color:var(--ink-2)}
+.oact{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}
+.obox{margin-top:12px;padding-top:12px;border-top:1px solid var(--rule)}
+.obox p{font-size:.84rem;line-height:1.62;color:var(--ink-2);max-width:44em;margin-bottom:10px}
+.obox strong{color:var(--ink);font-weight:600}
+.obox .label{display:block;margin-bottom:6px}
+.obox textarea.input{min-height:56px;resize:vertical;line-height:1.6}
+
 @media(max-width:560px){
   .task .price{font-size:.98rem}
   .task .detail dl{grid-template-columns:1fr;gap:2px}

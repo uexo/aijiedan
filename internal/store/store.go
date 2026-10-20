@@ -75,6 +75,18 @@ type Store interface {
 	ListMatchesByTask(taskID string) []*model.MatchRecord
 	PutOrder(o *model.Order)
 	GetOrder(id string) (*model.Order, bool)
+	// TransitionOrder 把订单从 from 改到 to, 条件是"此刻仍是 from"。
+	// 返回 false 表示状态已不是 from(别人先动过)或写失败。
+	//
+	// 为什么不让上层 GetOrder 判一下再 PutOrder: 需求方双击确认、
+	// 或者确认和退回同时点, 读-判-写之间会互相踩, 结果是订单状态被后到的请求覆盖。
+	TransitionOrder(orderID string, from, to model.OrderStatus) bool
+	// CancelPendingOrder 取消一个待确认订单, 同时把它占住的 task 退回 open。
+	//
+	// 两行必须在同一个事务里: 只退 task 不退订单, 同一单会出现两个活订单,
+	// 需求方能同时确认两份, 同一件事付两次钱; 只退订单不退 task,
+	// 单子从大厅消失且谁也接不到, 只能人工改库。
+	CancelPendingOrder(orderID, taskID, by, reason string, at int64) bool
 	ListOrders() []*model.Order
 	ListOrdersByUser(userID string) []*model.Order
 	ListOrdersByTask(taskID string) []*model.Order
@@ -209,13 +221,21 @@ func (s *MemStore) seed() {
 	}
 	for i := range providers {
 		providers[i].CreatedAt = now
-		s.users[providers[i].ID] = &providers[i]
+		// 走 PutUser 而不是直接塞 map: 短号(公开页地址)的补齐逻辑只在那里,
+		// 绕过去的人在大厅里没有短号, 公开档案页也就没有地址。
+		s.PutUser(&providers[i])
 	}
-	s.users["R001"] = &model.User{ID: "R001", Name: "需求方甲", Role: model.RoleRequester, KYCVerified: true, CreditScore: 85, CreatedAt: now}
-	// 大厅演示需要不止一个需求方: 同一张脸挂六个单, 看着像自导自演。
-	s.users["R002"] = &model.User{ID: "R002", Name: "茶饮品牌杨姐", Role: model.RoleRequester, KYCVerified: true, CreditScore: 78, CreatedAt: now}
-	s.users["R003"] = &model.User{ID: "R003", Name: "跨境小团队", Role: model.RoleRequester, KYCVerified: true, CreditScore: 83, CreatedAt: now}
-	s.users["A001"] = &model.User{ID: "A001", Name: "运营-admin", Role: model.RoleAdmin, KYCVerified: true, CreatedAt: now}
+	// 三个需求方各带一个演示手机号。没有手机号的话, 演示时没人能"登录成需求方",
+	// 认领就只能眼看着停在待确认——确认这一侧永远走不到。
+	// 大厅演示也需要不止一个需求方: 同一张脸挂六个单, 看着像自导自演。
+	for _, u := range []*model.User{
+		{ID: "R001", Name: "需求方甲", Phone: "13800000001", Role: model.RoleRequester, KYCVerified: true, CreditScore: 85, CreatedAt: now},
+		{ID: "R002", Name: "茶饮品牌杨姐", Phone: "13800000002", Role: model.RoleRequester, KYCVerified: true, CreditScore: 78, CreatedAt: now},
+		{ID: "R003", Name: "跨境小团队", Phone: "13800000003", Role: model.RoleRequester, KYCVerified: true, CreditScore: 83, CreatedAt: now},
+		{ID: "A001", Name: "运营-admin", Role: model.RoleAdmin, KYCVerified: true, CreatedAt: now},
+	} {
+		s.PutUser(u)
+	}
 
 	// P2-1: 为种子用户初始化钱包(演示资金)。R001 预置余额用于托管演示; 其余为 0。
 	for uid := range s.users {
@@ -569,6 +589,37 @@ func (s *MemStore) GetOrder(id string) (*model.Order, bool) {
 	defer s.mu.RUnlock()
 	o, ok := s.orders[id]
 	return o, ok
+}
+
+// TransitionOrder 检查与改写在同一个写锁内完成。
+func (s *MemStore) TransitionOrder(orderID string, from, to model.OrderStatus) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	o, ok := s.orders[orderID]
+	if !ok || o.Status != from {
+		return false
+	}
+	o.Status = to
+	return true
+}
+
+// CancelPendingOrder 订单与任务在同一把锁内一起改, 内存版的"事务"。
+func (s *MemStore) CancelPendingOrder(orderID, taskID, by, reason string, at int64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	o, ok := s.orders[orderID]
+	if !ok || o.Status != model.OrderPendingEscrow {
+		return false
+	}
+	o.Status = model.OrderCancelled
+	o.CancelledBy = by
+	o.CancelReason = reason
+	o.CancelledAt = at
+	if t, ok := s.tasks[taskID]; ok && t.Status == model.TaskMatched {
+		t.Status = model.TaskOpen
+		s.indexTask(t)
+	}
+	return true
 }
 func (s *MemStore) ListOrders() []*model.Order {
 	s.mu.RLock()

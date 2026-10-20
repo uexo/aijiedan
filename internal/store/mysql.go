@@ -51,9 +51,11 @@ func (s *mysqlStore) Seed() error {
 		s.PutUser(&providers[i])
 	}
 	for _, u := range []model.User{
-		{ID: "R001", Name: "需求方甲", Role: model.RoleRequester, KYCVerified: true, CreditScore: 85, CreatedAt: now},
-		{ID: "R002", Name: "茶饮品牌杨姐", Role: model.RoleRequester, KYCVerified: true, CreditScore: 78, CreatedAt: now},
-		{ID: "R003", Name: "跨境小团队", Role: model.RoleRequester, KYCVerified: true, CreditScore: 83, CreatedAt: now},
+		// 手机号是演示用的需求方入口。没有它, 演示时没人能登录成发布方,
+		// 认领就永远停在"待确认"——确认这一侧走不到。
+		{ID: "R001", Name: "需求方甲", Phone: "13800000001", Role: model.RoleRequester, KYCVerified: true, CreditScore: 85, CreatedAt: now},
+		{ID: "R002", Name: "茶饮品牌杨姐", Phone: "13800000002", Role: model.RoleRequester, KYCVerified: true, CreditScore: 78, CreatedAt: now},
+		{ID: "R003", Name: "跨境小团队", Phone: "13800000003", Role: model.RoleRequester, KYCVerified: true, CreditScore: 83, CreatedAt: now},
 		{ID: "A001", Name: "运营-admin", Role: model.RoleAdmin, KYCVerified: true, CreatedAt: now},
 	} {
 		s.PutUser(&u)
@@ -665,6 +667,42 @@ func (s *mysqlStore) GetOrder(id string) (*model.Order, bool) {
 		return nil, false
 	}
 	return o, true
+}
+
+// TransitionOrder 用带条件的 UPDATE 完成"判断 + 写入", 同类操作见 ClaimOpenTask。
+func (s *mysqlStore) TransitionOrder(orderID string, from, to model.OrderStatus) bool {
+	res, err := s.db.Exec("UPDATE `order` SET status=? WHERE id=? AND status=?",
+		string(to), orderID, string(from))
+	if err != nil {
+		return false
+	}
+	n, err := res.RowsAffected()
+	return err == nil && n == 1
+}
+
+// CancelPendingOrder 订单与任务在一个事务里改。任一语句失败整体回滚,
+// 不留"订单已取消但单子还占着"或"单子退回但订单还挂着"的中间态。
+func (s *mysqlStore) CancelPendingOrder(orderID, taskID, by, reason string, at int64) bool {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return false
+	}
+	res, err := tx.Exec("UPDATE `order` SET status=?,cancelled_by=?,cancel_reason=?,cancelled_at=? WHERE id=? AND status=?",
+		string(model.OrderCancelled), by, reason, at, orderID, string(model.OrderPendingEscrow))
+	if err != nil {
+		_ = tx.Rollback()
+		return false
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		_ = tx.Rollback()
+		return false
+	}
+	if _, err := tx.Exec("UPDATE task SET status=? WHERE id=? AND status=?",
+		string(model.TaskOpen), taskID, string(model.TaskMatched)); err != nil {
+		_ = tx.Rollback()
+		return false
+	}
+	return tx.Commit() == nil
 }
 
 func (s *mysqlStore) ListOrders() []*model.Order {

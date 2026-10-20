@@ -47,6 +47,9 @@ func (s *Server) Routes() http.Handler {
 	// 交易: 认领与我的单。认领是写操作, 必须登录。
 	mux.Handle("POST /api/v2/tasks/{id}/take", RequireAuth(http.HandlerFunc(s.claimTask)))
 	mux.Handle("GET /api/v2/me/orders", RequireAuth(http.HandlerFunc(s.myOrders)))
+	// 需求方这一侧: 认领要有人点头才算数, 不点头要能退回大厅。
+	mux.Handle("POST /api/v2/orders/{id}/confirm", RequireAuth(http.HandlerFunc(s.confirmOrder)))
+	mux.Handle("POST /api/v2/orders/{id}/decline", RequireAuth(http.HandlerFunc(s.declineOrder)))
 
 	// 公开页: 免登录, 是信用资产的对外出口
 	mux.HandleFunc("GET /api/v2/public/profiles/{slug}", s.publicProfile)

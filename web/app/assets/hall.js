@@ -23,12 +23,14 @@ const el = {
   emptyAct: document.getElementById('empty-act'),
   more: document.getElementById('more'),
   mine: document.getElementById('mine'),
+  mineTitle: document.getElementById('mine-title'),
   mineN: document.getElementById('mine-n'),
   mineNote: document.getElementById('mine-note'),
   mineList: document.getElementById('mine-list'),
   mineToggle: document.getElementById('mine-toggle'),
   navMine: document.getElementById('nav-mine'),
   navMineN: document.getElementById('nav-mine-n'),
+  navMineLabel: document.getElementById('nav-mine-label'),
 };
 
 const state = {
@@ -47,8 +49,10 @@ const state = {
 let me = null;
 let catMap = {};
 let canClaim = false; // 只有已建档的接单方看得到认领按钮
-let mineItems = [];
+let mineItems = []; // 接单方: 我接的单
+let inboxItems = []; // 需求方: 别人接了我的单
 let mineOpen = true;
+let myProfile = {}; // 档案完整度, 横幅要用; 确认之后横幅得跟着变
 
 /* ---------- 小工具 ---------- */
 
@@ -86,12 +90,15 @@ function card(t) {
   const badge = dl.urgent
     ? html`<span class="state state-todo">${dl.text}</span>`
     : html`<span class="state state-done">开放中</span>`;
+  // 需求方看大厅时会看到自己发的单。不标一下，他会以为自己也能接
+  const mineTask = !!(me && me.slug && t.requester_slug === me.slug);
 
   return html`
   <article class="card card-pad task" data-card="${t.id}">
     <div class="flex ac jb wrapw g8 mb8">
       <div class="flex ac g6 wrapw">
         <span class="tag tag-mono">${catLabel(t.category)}</span>
+        ${mineTask ? html`<span class="tag">你发的</span>` : ''}
         ${badge}
       </div>
       <div class="price"><small>预算</small>${money(t.budget_cents)}</div>
@@ -172,40 +179,107 @@ function render() {
   }
 }
 
-/* 我接的单。放顶部而不是单独开一页: 认领之后视线不用离开大厅,
-   下一单还能接着找。单子多了再拆页, 现在拆是空页里放一条。 */
+/* 这一块两种身份各看各的: 接单方看我接的单, 需求方看等我点头的单。
+   放顶部而不是单独开一页: 认领之后视线不用离开大厅, 下一单还能接着找。
+   单子多了再拆页, 现在拆是空页里放一条。 */
 function renderMine() {
-  const n = mineItems.length;
+  const isProvider = !me || me.role === 'provider';
+  const items = isProvider ? mineItems : inboxItems;
+  const pending = items.filter((o) => o.needs_me).length;
+  const n = items.length;
+
+  // 标题跟着"有没有事等你"变: 全在进行了还挂「等你确认」, 是在催一件已经做完的事
+  if (isProvider) {
+    el.mineTitle.textContent = '我接的单';
+    el.navMineLabel.textContent = '我接的单';
+    el.mineNote.textContent = '认领之后等需求方确认，确认后进入进行中。';
+  } else if (pending > 0) {
+    el.mineTitle.textContent = '等你确认';
+    el.navMineLabel.textContent = '等你确认';
+    el.mineNote.textContent = '有人认领了你的需求。看一眼他的一句话定位，确认之后这一单才开始算。';
+  } else {
+    el.mineTitle.textContent = '我发的单';
+    el.navMineLabel.textContent = '我的单';
+    el.mineNote.textContent = '暂时没有等你确认的单。有人认领你的需求时，会出现在这里。';
+  }
+
   el.mineN.textContent = String(n);
-  el.navMineN.textContent = String(n);
+  // 需求方的导航上显示"几单等你动", 不是"一共几单"——前者才是需要他处理的
+  el.navMineN.textContent = String(isProvider ? n : pending || n);
   el.mine.hidden = n === 0;
   el.navMine.hidden = n === 0;
   if (n === 0) return;
 
-  el.mineList.innerHTML = mineItems
-    .map(
-      (o) => html`
-    <li class="oitem">
-      <div class="flex ac jb wrapw g8">
-        <span class="${stateClass(o.state)}">${o.state_label || '待确认'}</span>
-        <span class="tiny muted">${ago(o.created_at)}认领</span>
-      </div>
-      <strong>${o.task_title || '需求 ' + o.task_id}</strong>
-      <div class="oline">
-        <span>${o.counterparty || '需求方'}</span>
-        <span class="dot"></span>
-        <span>${money(o.amount_cents)}</span>
-        <span class="dot"></span>
-        <span class="mono">${o.id}</span>
-      </div>
-    </li>`
-    )
+  // 该我动的排前面: 需求方登进来第一眼要看见的是"有事等你"
+  el.mineList.innerHTML = items
+    .slice()
+    .sort((a, b) => Number(b.needs_me) - Number(a.needs_me))
+    .map(orderItem)
     .join('');
 
   el.mineList.hidden = !mineOpen;
   el.mineNote.hidden = !mineOpen;
   el.mineToggle.textContent = mineOpen ? '收起' : '展开';
   el.mineToggle.setAttribute('aria-expanded', mineOpen ? 'true' : 'false');
+
+  // 横幅上的「有 N 单等你点头」和面板是同一件事, 不能一个变了另一个还挂着
+  if (myProfile) paintWho(myProfile);
+}
+
+function orderItem(o) {
+  const isProvider = o.role === 'provider';
+  const credit = Number(o.counterparty_credit) || 0;
+  // 时间轴只有"认领"这一刻: 后两个状态没有各自的变更时间, 硬配动词是在编。
+  const verb = o.state === 'to_confirm' ? (isProvider ? '认领' : '有人认领') : '';
+  return html`
+  <li class="oitem" data-order="${o.id}">
+    <div class="flex ac jb wrapw g8">
+      <span class="${stateClass(o.state)}">${o.state_label || '待确认'}</span>
+      <span class="tiny muted">${ago(o.created_at)}${verb}</span>
+    </div>
+    <strong>${o.task_title || '需求 ' + o.task_id}</strong>
+    <div class="oline">
+      <span>${o.counterparty || (isProvider ? '需求方' : '接单方')}</span>
+      ${credit > 0 ? html`<span class="dot"></span><span>信用 ${credit}</span>` : ''}
+      <span class="dot"></span>
+      <span>${money(o.amount_cents)}</span>
+      <span class="dot"></span>
+      <span class="mono">${o.id}</span>
+    </div>
+    ${o.counterparty_headline ? html`<p class="otag">${o.counterparty_headline}</p>` : ''}
+    ${o.cancel_reason ? html`<p class="tiny muted mt6">退回原因：${o.cancel_reason}</p>` : ''}
+    ${o.needs_me ? actionUI(o) : ''}
+  </li>`;
+}
+
+/* 确认开工、退回，都要点两下。认领点错还能去别处找单，
+   这两下点错就把一单推下去了或者推回去了，没有撤回。
+   退回还要留一句原因: 接单方有权知道为什么没成。 */
+function actionUI(o) {
+  const who = o.counterparty || '对方';
+  return html`
+  <div class="oact" data-act="${o.id}">
+    <button class="btn btn-ink btn-sm" type="button" data-ask-confirm="${o.id}">确认开工</button>
+    <button class="btn btn-quiet btn-sm" type="button" data-ask-decline="${o.id}">不合适，退回</button>
+  </div>
+
+  <div class="obox" hidden data-box="confirm-${o.id}">
+    <p><strong>确认让 ${who} 做这一单？</strong>确认后进入进行中，往后交付、验收都对着这一单走。</p>
+    <div class="flex ac g8 wrapw">
+      <button class="btn btn-ink btn-sm" type="button" data-do-confirm="${o.id}">确认开工</button>
+      <button class="btn btn-quiet btn-sm" type="button" data-close-box="${o.id}">再想想</button>
+    </div>
+  </div>
+
+  <div class="obox" hidden data-box="decline-${o.id}">
+    <p><strong>把这一单退回大厅？</strong>${who} 会看到这条原因，单子重新对别人开放。</p>
+    <label class="label" for="why-${o.id}">原因（可选，60 字内）</label>
+    <textarea class="input" id="why-${o.id}" rows="2" maxlength="60" placeholder="比如：这单的工期比我能等的更紧"></textarea>
+    <div class="flex ac g8 wrapw mt8">
+      <button class="btn btn-ink btn-sm" type="button" data-do-decline="${o.id}">确认退回</button>
+      <button class="btn btn-quiet btn-sm" type="button" data-close-box="${o.id}">取消</button>
+    </div>
+  </div>`;
 }
 
 function stateClass(s) {
@@ -214,16 +288,24 @@ function stateClass(s) {
   return 'state state-todo';
 }
 
-async function loadMine() {
+async function loadOrders() {
   try {
     const data = await api('GET', '/me/orders');
     const items = Array.isArray(data.items) ? data.items : [];
-    // 这一页是接单方视角。需求方的单子在"我发的需求"里看, 那边还没做。
+    // 一个接口两种身份: 服务端按 role 分好了, 这里各归各位
     mineItems = items.filter((o) => o.role === 'provider');
+    inboxItems = items.filter((o) => o.role === 'requester');
     renderMine();
   } catch (e) {
     // 拉不到不挡大厅: 认领本身还能用, 成功后会本地补一条
   }
+}
+
+// 单条替换, 不重拉整表: 确认/退回之后立刻能看到新状态, 又不会闪一下
+function replaceItem(o) {
+  const swap = (list) => list.map((x) => (x.id === o.id ? o : x));
+  mineItems = swap(mineItems);
+  inboxItems = swap(inboxItems);
 }
 
 function paintWho(p) {
@@ -231,9 +313,24 @@ function paintWho(p) {
   const pct = Number(p && p.completeness) || 0;
 
   if (me && me.role !== 'provider') {
-    el.who.innerHTML = html`${name} · 需求方`;
-    el.banner.innerHTML = html`<strong>你现在是需求方身份。</strong>大厅里是别人发出来的需求，你可以先看行情；发单入口还没开放。`;
+    const pending = inboxItems.filter((o) => o.needs_me).length;
+    el.who.innerHTML = html`${name} · 发布方`;
+    // 发布方点不了认领, 这句引导要跟着改, 不然是让人去做一件他做不了的事
+    el.lead.textContent = '这些是平台上开放的需求。你发的单也在里面，标着「你发的」。';
+    if (pending > 0) {
+      el.banner.innerHTML = html`<strong>有 ${pending} 单等你点头。</strong>看一眼接单人的一句话定位和信用分，确认之后这一单才开始算。 <button class="btn btn-line btn-sm" type="button" id="jump-mine">去确认</button>`;
+    } else {
+      el.banner.innerHTML = html`<strong>你现在是发布方。</strong>有人认领你的需求时会出现在上面这块。发单入口还没开放。`;
+    }
     el.banner.hidden = false;
+    const jump = document.getElementById('jump-mine');
+    if (jump) {
+      jump.addEventListener('click', () => {
+        mineOpen = true;
+        renderMine();
+        el.mine.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
     document.getElementById('nav-profile').hidden = true;
     return;
   }
@@ -464,6 +561,98 @@ el.mineToggle.addEventListener('click', () => {
   renderMine();
 });
 
+/* ---------- 需求方: 确认开工 / 退回大厅 ---------- */
+
+function openBox(id, which) {
+  // 一次只开一个盒子: 两个盒子都开着, 人容易点错
+  el.mineList.querySelectorAll('[data-box]').forEach((b) => (b.hidden = true));
+  el.mineList.querySelectorAll('[data-act]').forEach((a) => (a.hidden = true));
+  const box = el.mineList.querySelector('[data-box="' + which + '-' + id + '"]');
+  if (!box) return;
+  box.hidden = false;
+  const first = box.querySelector('button');
+  if (first) first.focus();
+}
+
+function closeBox(id) {
+  el.mineList.querySelectorAll('[data-box]').forEach((b) => (b.hidden = true));
+  const act = el.mineList.querySelector('[data-act="' + id + '"]');
+  if (act) act.hidden = false;
+}
+
+async function doConfirm(id, btn) {
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '确认中…';
+  try {
+    const o = await api('POST', '/orders/' + encodeURIComponent(id) + '/confirm');
+    replaceItem(o);
+    renderMine();
+    toast('已确认，这一单开始算', 'ok');
+  } catch (err) {
+    const code = err instanceof ApiError ? err.code : '';
+    if (code === 'ORDER_NOT_PENDING' || code === 'ORDER_NOT_FOUND') {
+      await loadOrders(); // 状态已经被别处改过, 让界面跟上真实情况
+      toast(err.message || '这一单已经不在等确认', 'warn');
+      return;
+    }
+    toast((err && err.message) || '没确认上，再试一次', 'err');
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
+async function doDecline(id, btn) {
+  const label = btn.textContent;
+  const why = document.getElementById('why-' + id);
+  btn.disabled = true;
+  btn.textContent = '退回中…';
+  try {
+    const o = await api('POST', '/orders/' + encodeURIComponent(id) + '/decline', {
+      reason: why ? why.value.trim() : '',
+    });
+    replaceItem(o);
+    renderMine();
+    toast('已退回大厅，别人可以接了', 'ok');
+    load(true); // 这一单重新开放, 大厅列表里应该又能看到
+  } catch (err) {
+    const code = err instanceof ApiError ? err.code : '';
+    if (code === 'ORDER_NOT_PENDING' || code === 'ORDER_NOT_FOUND') {
+      await loadOrders();
+      toast(err.message || '这一单已经不在等确认', 'warn');
+      return;
+    }
+    toast((err && err.message) || '没退回，再试一次', 'err');
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
+el.mineList.addEventListener('click', (e) => {
+  const askC = e.target.closest('[data-ask-confirm]');
+  if (askC) {
+    openBox(askC.dataset.askConfirm, 'confirm');
+    return;
+  }
+  const askD = e.target.closest('[data-ask-decline]');
+  if (askD) {
+    openBox(askD.dataset.askDecline, 'decline');
+    return;
+  }
+  const close = e.target.closest('[data-close-box]');
+  if (close) {
+    closeBox(close.dataset.closeBox);
+    return;
+  }
+  const goC = e.target.closest('[data-do-confirm]');
+  if (goC) {
+    doConfirm(goC.dataset.doConfirm, goC);
+    return;
+  }
+  const goD = e.target.closest('[data-do-decline]');
+  if (goD) doDecline(goD.dataset.doDecline, goD);
+});
+
 el.navMine.addEventListener('click', () => {
   mineOpen = true;
   renderMine();
@@ -484,10 +673,12 @@ document.getElementById('logout').addEventListener('click', async () => {
 async function boot() {
   loadCats();
 
+  let prof = {};
   try {
     const data = await api('GET', '/me');
     me = (data && data.user) || {};
-    const p = (data && data.profile) || {};
+    prof = (data && data.profile) || {};
+    myProfile = prof;
     // 接单方没建档: 大厅对他没意义, 先送去填档案。填完档案会自己回到这儿。
     if (me.role === 'provider' && !me.onboarded) {
       location.replace('profile.html?next=hall');
@@ -495,12 +686,14 @@ async function boot() {
     }
     // 认领按钮只给已建档的接单方: 需求方点不了, 没档案的人点了也会被服务端拒
     canClaim = me.role === 'provider' && !!me.onboarded;
-    paintWho(p);
   } catch (e) {
     return; // 未登录时 runtime 已经带去登录页
   }
 
-  if (canClaim) loadMine();
+  // 两种身份都要拉: 需求方靠这份单子知道有没有人认领，
+  // 横幅上的「有 N 单等你点头」用的就是它, 所以得排在 paintWho 前面。
+  await loadOrders();
+  paintWho(prof);
 
   if (new URLSearchParams(location.search).get('saved') === '1') {
     toast('档案已保存，这里是现在能接的需求', 'ok');

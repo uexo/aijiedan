@@ -380,7 +380,9 @@ P3 企业版从「最小骨架」推向可商用：组织作为统一结算主�
 | PUT | `/api/v2/me/profile` | 保存供给方档案 |
 | GET | `/api/v2/tasks` | 需求大厅列表；`?q=&category=&sort=newest\|budget_desc\|budget_asc&limit=&offset=`，只返回 open |
 | POST | `/api/v2/tasks/{id}/take` | 接单方认领；409 `TASK_TAKEN` 表示已被接走，403 `ROLE_NOT_PROVIDER` / `PROFILE_INCOMPLETE` 表示没资格 |
-| GET | `/api/v2/me/orders` | 我参与的单（接的 + 发的），带四态与对端信息 |
+| POST | `/api/v2/orders/{id}/confirm` | 需求方点头，订单 pending_escrow → active（四态：待确认 → 进行中） |
+| POST | `/api/v2/orders/{id}/decline` | 需求方退回，订单取消且任务重新开放；body `{reason}` 可选，超 60 字截断 |
+| GET | `/api/v2/me/orders` | 我参与的单（接的 + 发的），带四态、对端定位/信用分与 `needs_me` |
 | GET | `/api/v2/meta/categories` | 类目清单，前端筛选条的唯一来源 |
 | GET | `/api/v2/public/profiles/{slug}` | 公开档案，免登录 |
 
@@ -391,6 +393,17 @@ P3 企业版从「最小骨架」推向可商用：组织作为统一结算主�
 订单落库后还会 `GetOrder` 复核一次，写失败就把任务退回 open —— 宁可让人重试，也不能让单子凭空消失。
 
 判断顺序是「先资格、后状态」：权限错误优先于「已被接走」，否则需求方点到一单被接走的需求会以为自己手慢。
+
+### 确认与退回
+
+认领只是「有人举手」，开工要需求方点头。`confirm` 只改一行订单状态（`TransitionOrder`，带
+`AND status='pending_escrow'` 条件），两个窗口同时点只有一个 200，另一个 409。
+
+`decline` 要动两行：取消订单 + 把任务退回 open。这两行在同一个事务里
+（`Store.CancelPendingOrder`）——只退任务，同一单会出现两个活订单；只退订单，单子从大厅消失且谁也接不到。
+退回原因按字截断到 60 字，接单方在「我接的单」里能看到。
+
+v2 是轻交易：**确认开工不碰钱**，不预扣款、不进托管。将来接托管模式时，`trade.Confirm` 是唯一要动的地方。
 
 ### 会话
 
@@ -445,18 +458,36 @@ mysql -h192.168.3.18 -uroot -p zanbuddy < migrations/002_light_trade.sql
 |---|---|
 | 登录 | `/static/app/login.html` |
 | 供给方档案 | `/static/app/profile.html` |
-| 需求大厅 | `/static/app/hall.html`（列表 + 认领 + 我接的单） |
+| 需求大厅 | `/static/app/hall.html`（列表 + 认领 + 我接的单；需求方看到的是「等你确认 / 我发的单」） |
 
 零构建：原生 ES module，`assets/runtime.js` 提供 `api / html / validate / toast`，浏览器直接加载，改完刷新即可。
+
+### 演示账号
+
+验证码固定 `000000`（`ZANBUDDY_SMS_PROVIDER` 为空或 `log` 时为开发模式）。
+
+| 手机号 | 身份 | 用途 |
+|---|---|---|
+| 任意 11 位 | 登录时选 | 新用户，接单方走「填档案 → 大厅」 |
+| `13800000001` | 需求方甲（R001） | 发布方入口，名下两单，用来看「有人认领 / 等你确认」 |
+| `13800000002` | 茶饮品牌杨姐（R002） | 同上 |
+| `13800000003` | 跨境小团队（R003） | 同上 |
+
+需求方这一侧没有单独的页面：登录后落大厅，面板标题按「有没有事等你」在
+「等你确认」和「我发的单」之间切换——全在进行了还挂着「等你确认」，是在催一件已经做完的事。
 
 ### 验收
 
 ```bash
-python test/test_m0_v2.py     # 44 项：健康检查、发码、凭证、登录注册、CSRF、档案规则、公开页白名单
-python test/test_m0_hall.py   # 70 项：档案落库比对、角色口径、大厅筛选/排序/分页/脱敏、类目清单
-python test/test_m0_claim.py  # 40 项：谁能认领、认领后下架、重复认领、我的单、并发抢单只成一单
-node web/app/_flow.mjs        # 21 项：真浏览器登录→填档案→保存→大厅→认领→刷新仍在，截图到 web/app/_shots/
+python test/test_m0_v2.py      # 44 项：健康检查、发码、凭证、登录注册、CSRF、档案规则、公开页白名单
+python test/test_m0_hall.py    # 70 项：档案落库比对、角色口径、大厅筛选/排序/分页/脱敏、类目清单
+python test/test_m0_claim.py   # 40 项：谁能认领、认领后下架、重复认领、我的单、并发抢单只成一单
+python test/test_m0_confirm.py # 62 项：谁能点头、确认进入进行中、退回后重新开放、原因截断、并发确认只算一次
+node web/app/_flow.mjs         # 33 项：真浏览器 登录→填档案→大厅→认领→需求方登录点头→退回，截图到 web/app/_shots/
 ```
+
+`test_m0_confirm.py` 不写死任务号：它从大厅里找两张开放需求按需求方手机号登录，
+所以跟在 `test_m0_claim.py` 后面跑也不会因为单子被占而失败。
 
 ## 核心 API（前缀 `/api/v1`）
 
