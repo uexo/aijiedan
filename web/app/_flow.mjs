@@ -102,11 +102,47 @@ const detailOpen = await page.locator('.task .detail:not([hidden])').count();
 step('点标题能展开要求', detailOpen === 1, `${detailOpen} 个展开`);
 await page.screenshot({ path: path.join(OUT, 'hall-detail.png'), fullPage: true });
 
-/* 8. 搜索 */
-await page.fill('#q', 'rag');
+/* 8. 搜索。关键词取自当前第一张卡，不写死「rag」：
+   演示数据被认领掉几单之后，写死的关键词会让这一步假失败。 */
+const seed = (await page.locator('.task .tlink').first().textContent()) || '';
+const kw = seed.trim().slice(0, 3).trim();
+await page.fill('#q', kw);
 await page.waitForTimeout(700);
 const filtered = await page.locator('.task').count();
-step('搜 rag 有结果', filtered >= 1, `${filtered} 条`);
+step('搜「' + kw + '」有结果', filtered >= 1, `${filtered} 条`);
+
+/* 8.5 认领：先确认再动手 */
+await page.fill('#q', '');
+await page.waitForTimeout(700);
+const beforeClaim = await page.locator('.task').count();
+const claimTitle = (await page.locator('.task .tlink').first().textContent()) || '';
+
+await page.locator('.task [data-claim]').first().click();
+const boxOpen = await page.locator('.claim-box:not([hidden])').count();
+step('点认领先亮后果，不直接扣单', boxOpen === 1, `${boxOpen} 个确认框`);
+await page.screenshot({ path: path.join(OUT, 'hall-claim-confirm.png'), fullPage: true });
+
+await page.locator('.claim-box:not([hidden]) [data-do]').click();
+await page.waitForSelector('#mine:not([hidden])', { timeout: 10000 });
+const mineTitle = (await page.locator('#mine-list .oitem strong').first().textContent()) || '';
+step('我的单里就是刚认领的这一单', mineTitle.trim() === claimTitle.trim(), `${mineTitle.trim()} vs ${claimTitle.trim()}`);
+
+// 卡片淡出用 180ms，等它真的从 DOM 走掉再数，否则数到的是过渡中的旧节点
+await page.waitForTimeout(320);
+const afterClaim = await page.locator('.task').count();
+step('认领后卡片从大厅消失', afterClaim === beforeClaim - 1, `${beforeClaim} → ${afterClaim}`);
+
+const claimToast = (await page.textContent('#toast').catch(() => '')) || '';
+step('认领给了回执', /接了/.test(claimToast), claimToast.trim());
+step('导航出现我接的单计数', (await page.textContent('#nav-mine-n')) === '1', await page.textContent('#nav-mine-n'));
+await page.screenshot({ path: path.join(OUT, 'hall-claimed.png'), fullPage: true });
+
+/* 8.6 刷新：认领必须还在（证明落库，不是前端自己记着） */
+await page.reload({ waitUntil: 'networkidle' });
+await page.waitForSelector('#mine:not([hidden])', { timeout: 10000 });
+const mineAfterReload = (await page.locator('#mine-list .oitem strong').first().textContent()) || '';
+step('刷新后认领还在', mineAfterReload.trim() === claimTitle.trim(), mineAfterReload.trim());
+step('刷新后大厅仍没有这一单', !(await page.locator('.task .tlink').allTextContents()).includes(claimTitle.trim()), '');
 
 /* 9. 手机尺寸（带上登录态，否则大厅会把人送回登录页） */
 const saved = await ctx.storageState();

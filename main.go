@@ -24,6 +24,7 @@ import (
 	"zanbuddy/internal/reqai"
 	"zanbuddy/internal/service"
 	"zanbuddy/internal/store"
+	"zanbuddy/internal/trade"
 )
 
 func main() {
@@ -93,17 +94,19 @@ func main() {
 	reqaiEng := reqai.NewEngine() // C1 AI 需求翻译/分析(规则保底 + 可选 LLM 兜底, 复用同一开关)
 	svc := service.New(st, comp, pay, kycSvc, imSvc, cl, notifySvc, faqEng, reqaiEng)
 
-	// 预置一个示例需求单, 便于开箱演示「撮合 → 接单」链路。
-	seedTask(st)
+	// 预置示例需求单, 便于开箱演示「大厅 → 认领」链路。
+	// 已存在的不覆盖: 否则重启服务会把已认领的单重置回 open, 演示数据就成了假象。
+	seedTasks(st)
 
 	h := handler.New(svc)
 
 	// v2 接入层与身份域。v1 的 /api/v1 原样保留, 两条链路并行, 迁移窗口内互不影响。
 	// SMS 未接真实通道时走开发模式: 验证码固定 000000 并在响应里回显, 生产接通道后自动关闭。
 	idSvc := identity.New(st, os.Getenv("ZANBUDDY_SMS_PROVIDER") == "" || os.Getenv("ZANBUDDY_SMS_PROVIDER") == "log")
+	tradeSvc := trade.New(st)
 
 	mux := http.NewServeMux()
-	mux.Handle("/api/v2/", httpapi.NewServer(idSvc, st, "2.0.0").Routes())
+	mux.Handle("/api/v2/", httpapi.NewServer(idSvc, tradeSvc, st, "2.0.0").Routes())
 	mux.Handle("/api/", h)
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web")))) // 用户画像页等静态前端
 	mux.Handle("/", h) // 根路径落地页
@@ -136,23 +139,78 @@ func cors(next http.Handler) http.Handler {
 	})
 }
 
-func seedTask(st store.Store) {
-	t := &model.Task{
-		ID:          "T-DEMO-001",
-		RequesterID: "R001",
-		Title:       "用 Python 搭建 RAG 问答系统",
-		Category:    "nlp",
-		BudgetCents: 300000, // ¥3000.00
-		Spec:        "需要 python + rag + nlp 的检索增强生成问答, 支持文档上传与中文问答",
-		SpecObj: model.TaskSpec{
-			Deliverables:   "1 套可运行源码 + 部署文档",
-			RequiredFormat: "Python 项目(zip) + README",
-			DeadlineAt:     model.Now() + int64(7*24*3600*1000),
-			StyleRef:       "生产级可维护代码",
+// seedTasks 预置演示需求。够撑起一个像样的大厅: 六个类目、不同预算、不同截止日。
+//
+// 只在一个类目下堆六单会让筛选看着像摆设, 也会掩盖排序的问题。
+// 已有的不覆盖(先 GetTask 再写), 认领过的单重启后还在原状态。
+func seedTasks(st store.Store) {
+	day := int64(24 * 3600 * 1000)
+	now := model.Now()
+
+	demo := []*model.Task{
+		{
+			ID: "T-DEMO-001", RequesterID: "R001", Title: "用 Python 搭建 RAG 问答系统",
+			Category: "nlp", BudgetCents: 300000,
+			Spec: "需要 python + rag + nlp 的检索增强生成问答, 支持文档上传与中文问答",
+			SpecObj: model.TaskSpec{
+				Deliverables: "1 套可运行源码 + 部署文档", RequiredFormat: "Python 项目(zip) + README",
+				DeadlineAt: now + 7*day, StyleRef: "生产级可维护代码",
+			},
 		},
-		Status:    model.TaskOpen,
-		CreatedAt: model.Now(),
+		{
+			ID: "T-DEMO-002", RequesterID: "R002", Title: "小红书护肤品牌种草文案 10 篇",
+			Category: "copywriting", BudgetCents: 120000,
+			Spec: "面向 25-35 岁女性, 主打成分党, 每篇 400 字左右, 需要 3 个不同人设切入, 不要硬广腔",
+			SpecObj: model.TaskSpec{
+				Deliverables: "10 篇成稿 + 每篇 3 个标题备选", RequiredFormat: "飞书文档 / Word",
+				DeadlineAt: now + 4*day, StyleRef: "口语化、有具体使用场景, 不堆形容词",
+			},
+		},
+		{
+			ID: "T-DEMO-003", RequesterID: "R003", Title: "SaaS 落地页重做（含移动端）",
+			Category: "frontend", BudgetCents: 680000,
+			Spec: "现有落地页转化率低, 需要重做首屏到定价区, 移动端优先, 接现有的表单接口",
+			SpecObj: model.TaskSpec{
+				Deliverables: "可上线页面 + 组件源码 + 移动端适配", RequiredFormat: "HTML/CSS/JS 或 React",
+				DeadlineAt: now + 12*day, StyleRef: "克制的 B 端风格, 不要大色块渐变",
+			},
+		},
+		{
+			ID: "T-DEMO-004", RequesterID: "R001", Title: "客服对话数据清洗与意图标注",
+			Category: "data", BudgetCents: 240000,
+			Spec: "约 8 万条客服对话, 需要去重、脱敏、按 12 个意图分类, 输出可训练的标注集",
+			SpecObj: model.TaskSpec{
+				Deliverables: "清洗脚本 + 标注集 + 意图分布报告", RequiredFormat: "CSV + Python 脚本",
+				DeadlineAt: now + 9*day, StyleRef: "标注规则要写清楚, 换人能复用",
+			},
+		},
+		{
+			ID: "T-DEMO-005", RequesterID: "R002", Title: "产品宣传短视频剪辑 30 秒",
+			Category: "video", BudgetCents: 150000,
+			Spec: "素材已有, 需要剪出 30 秒竖版成片, 带字幕与节奏点, 适配抖音和小红书两个尺寸",
+			SpecObj: model.TaskSpec{
+				Deliverables: "成片 2 个尺寸 + 字幕文件", RequiredFormat: "MP4 (1080x1920 / 1080x1440)",
+				DeadlineAt: now + 5*day, StyleRef: "前 3 秒必须有钩子, 不铺垫",
+			},
+		},
+		{
+			ID: "T-DEMO-006", RequesterID: "R003", Title: "电商订单对账脚本 + 每日报表",
+			Category: "backend", BudgetCents: 360000,
+			Spec: "对接平台订单导出与支付流水, 每天自动核对差异并生成报表, 差异条目要能定位到订单号",
+			SpecObj: model.TaskSpec{
+				Deliverables: "对账脚本 + 定时任务 + 报表模板", RequiredFormat: "Python + cron / 云函数",
+				DeadlineAt: now + 10*day, StyleRef: "出错要能重跑, 不要人工补数",
+			},
+		},
 	}
-	t.Clarifications = model.ClarifySpec(t.SpecObj)
-	st.PutTask(t)
+
+	for _, t := range demo {
+		if _, exists := st.GetTask(t.ID); exists {
+			continue // 认领过的单不重置, 否则重启一次演示就回到解放前
+		}
+		t.Status = model.TaskOpen
+		t.CreatedAt = now
+		t.Clarifications = model.ClarifySpec(t.SpecObj)
+		st.PutTask(t)
+	}
 }

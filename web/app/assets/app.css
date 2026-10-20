@@ -288,6 +288,24 @@ select.input{appearance:none;background-image:linear-gradient(45deg,transparent 
   color:var(--ink-4);padding-top:3px}
 .task .detail dd{color:var(--ink-2);line-height:1.62;word-break:break-word;white-space:pre-wrap}
 .center{justify-content:center}
+
+/* ---------- 认领 / 我接的单 ---------- */
+.task-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;padding-top:14px;
+  border-top:1px solid var(--rule)}
+.claim-box{margin-top:14px;padding-top:14px;border-top:1px solid var(--rule)}
+.claim-box p{font-size:.84rem;line-height:1.62;color:var(--ink-2);max-width:44em;margin-bottom:10px}
+.claim-box strong{color:var(--ink);font-weight:600}
+/* 认领成功后卡片淡出。只做位移和透明度，不做 opacity:0 起始态，避免卡在透明帧 */
+.card-gone{opacity:0;transform:translateY(-3px);transition:opacity .18s ease,transform .18s ease}
+.state-doing{color:var(--seal-2);border-color:#E0C0BA;background:var(--seal-wash)}
+.mine-h{font-size:1rem;font-weight:650;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
+.olist{list-style:none;margin-top:12px;border-top:1px solid var(--rule)}
+.oitem{padding:12px 0;border-bottom:1px solid var(--rule)}
+.oitem:last-child{border-bottom:0;padding-bottom:0}
+.oitem strong{display:block;font-size:.95rem;font-weight:600;line-height:1.45;letter-spacing:-.01em;margin:7px 0 5px}
+.oline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.78rem;color:var(--ink-3)}
+.oline .dot{width:3px;height:3px;border-radius:50%;background:var(--rule-2);flex:0 0 auto}
+
 @media(max-width:560px){
   .task .price{font-size:.98rem}
   .task .detail dl{grid-template-columns:1fr;gap:2px}
@@ -297,6 +315,14 @@ select.input{appearance:none;background-image:linear-gradient(45deg,transparent 
 @media(max-width:640px){
   .hall-head{display:block}
   .hall-head .tiny{display:block;margin-top:6px}
+}
+/* 导航在手机上要收一收：加了「我接的单」之后，390 宽装不下三个按钮 */
+@media(max-width:560px){
+  .nav .wrap{padding:0 14px;gap:8px}
+  .brand{font-size:.95rem;gap:6px}
+  .brand small{display:none}
+  .nlinks{gap:6px}
+  .nlinks .btn{padding:5px 8px;font-size:.76rem}
 }
 
 /* ---------- 宁可不动，也别卡在透明帧 ---------- */

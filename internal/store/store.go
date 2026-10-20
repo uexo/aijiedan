@@ -60,6 +60,13 @@ type Store interface {
 	ListProviders() []*model.User
 	PutTask(t *model.Task)
 	GetTask(id string) (*model.Task, bool)
+	// ClaimOpenTask 把 open 改成 matched, 条件是"此刻仍是 open"。
+	// 返回 false 表示没抢到(已被别人接走或状态不是 open)。
+	//
+	// 为什么必须是存储层的一个原子操作, 而不是 GetTask 判一下再 PutTask:
+	// 两个接单方同时点认领, 读-判-写之间会双开, 结果是同一单生成两个订单,
+	// 需求方要同时拒一个。判断和写入必须落在同一个锁 / 同一条 UPDATE 里。
+	ClaimOpenTask(taskID string) bool
 	ListOpenTasks() []*model.Task
 	ListTasks() []*model.Task
 	SearchTasks(f TaskFilter) []*model.Task
@@ -204,7 +211,10 @@ func (s *MemStore) seed() {
 		providers[i].CreatedAt = now
 		s.users[providers[i].ID] = &providers[i]
 	}
-	s.users["R001"] = &model.User{ID: "R001", Name: "需求方甲", Role: model.RoleRequester, KYCVerified: true, CreatedAt: now}
+	s.users["R001"] = &model.User{ID: "R001", Name: "需求方甲", Role: model.RoleRequester, KYCVerified: true, CreditScore: 85, CreatedAt: now}
+	// 大厅演示需要不止一个需求方: 同一张脸挂六个单, 看着像自导自演。
+	s.users["R002"] = &model.User{ID: "R002", Name: "茶饮品牌杨姐", Role: model.RoleRequester, KYCVerified: true, CreditScore: 78, CreatedAt: now}
+	s.users["R003"] = &model.User{ID: "R003", Name: "跨境小团队", Role: model.RoleRequester, KYCVerified: true, CreditScore: 83, CreatedAt: now}
 	s.users["A001"] = &model.User{ID: "A001", Name: "运营-admin", Role: model.RoleAdmin, KYCVerified: true, CreatedAt: now}
 
 	// P2-1: 为种子用户初始化钱包(演示资金)。R001 预置余额用于托管演示; 其余为 0。
@@ -348,6 +358,19 @@ func (s *MemStore) ListOpenTasks() []*model.Task {
 		}
 	}
 	return out
+}
+
+// ClaimOpenTask 判断与写入在同一把写锁内完成, 这是内存实现能给出的等价原子性。
+func (s *MemStore) ClaimOpenTask(taskID string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t, ok := s.tasks[taskID]
+	if !ok || t.Status != model.TaskOpen {
+		return false
+	}
+	t.Status = model.TaskMatched
+	s.indexTask(t)
+	return true
 }
 
 // ListTasks 返回全部任务(不限状态), 供运营看板聚合。

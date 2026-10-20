@@ -51,7 +51,9 @@ func (s *mysqlStore) Seed() error {
 		s.PutUser(&providers[i])
 	}
 	for _, u := range []model.User{
-		{ID: "R001", Name: "需求方甲", Role: model.RoleRequester, KYCVerified: true, CreatedAt: now},
+		{ID: "R001", Name: "需求方甲", Role: model.RoleRequester, KYCVerified: true, CreditScore: 85, CreatedAt: now},
+		{ID: "R002", Name: "茶饮品牌杨姐", Role: model.RoleRequester, KYCVerified: true, CreditScore: 78, CreatedAt: now},
+		{ID: "R003", Name: "跨境小团队", Role: model.RoleRequester, KYCVerified: true, CreditScore: 83, CreatedAt: now},
 		{ID: "A001", Name: "运营-admin", Role: model.RoleAdmin, KYCVerified: true, CreatedAt: now},
 	} {
 		s.PutUser(&u)
@@ -344,8 +346,22 @@ func (s *mysqlStore) PutTask(t *model.Task) {
 		t.SpecObj.Deliverables, t.SpecObj.RequiredFormat, t.SpecObj.DeadlineAt, t.SpecObj.StyleRef, t.SpecObj.Samples,
 		clar, nullStr(string(items)), nullStr(t.Translation), t.TranslationMode, analysis, t.AnalysisMode, t.Status, t.CreatedAt)
 }
-func (s *mysqlStore) GetTask(id string) (*model.Task, bool) {
-	t := &model.Task{}
+// ClaimOpenTask 用一条带条件的 UPDATE 完成"判断 + 写入"。
+// 并发时 MySQL 行锁保证只有一个请求的 RowsAffected 是 1, 另一个自然拿到 0。
+// 不能用 SELECT ... FOR UPDATE 包一段事务: 多一次往返, 而且要在事务里再写订单, 耦合更重。
+func (s *mysqlStore) ClaimOpenTask(taskID string) bool {
+	res, err := s.db.Exec("UPDATE task SET status=? WHERE id=? AND status=? AND deleted_at IS NULL",
+		string(model.TaskMatched), taskID, string(model.TaskOpen))
+	if err != nil {
+		return false
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false
+	}
+	return n == 1
+}
+func (s *mysqlStore) GetTask(id string) (*model.Task, bool) {	t := &model.Task{}
 	var clar, items, analysis []byte
 	var translation, translationMode, analysisMode sql.NullString
 	err := s.db.QueryRow("SELECT "+taskCols+" FROM task WHERE id=? AND deleted_at IS NULL", id).

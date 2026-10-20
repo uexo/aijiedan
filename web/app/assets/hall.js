@@ -22,6 +22,13 @@ const el = {
   emptyP: document.getElementById('empty-p'),
   emptyAct: document.getElementById('empty-act'),
   more: document.getElementById('more'),
+  mine: document.getElementById('mine'),
+  mineN: document.getElementById('mine-n'),
+  mineNote: document.getElementById('mine-note'),
+  mineList: document.getElementById('mine-list'),
+  mineToggle: document.getElementById('mine-toggle'),
+  navMine: document.getElementById('nav-mine'),
+  navMineN: document.getElementById('nav-mine-n'),
 };
 
 const state = {
@@ -34,10 +41,14 @@ const state = {
   hasMore: false,
   loading: false,
   loaded: false,
+  justClaimed: false,
 };
 
 let me = null;
 let catMap = {};
+let canClaim = false; // 只有已建档的接单方看得到认领按钮
+let mineItems = [];
+let mineOpen = true;
 
 /* ---------- 小工具 ---------- */
 
@@ -77,7 +88,7 @@ function card(t) {
     : html`<span class="state state-done">开放中</span>`;
 
   return html`
-  <article class="card card-pad task">
+  <article class="card card-pad task" data-card="${t.id}">
     <div class="flex ac jb wrapw g8 mb8">
       <div class="flex ac g6 wrapw">
         <span class="tag tag-mono">${catLabel(t.category)}</span>
@@ -110,7 +121,26 @@ function card(t) {
       </dl>
       <p class="tiny muted mt12">这一单由 ${t.requester || '需求方'} 发布，验收标准以「交付物」和「交付格式」为准。</p>
     </div>
+
+    ${canClaim ? claimUI(t) : ''}
   </article>`;
+}
+
+/* 认领是两步：先亮出后果，再动手。
+   一步到位的按钮看着痛快，但"点错就被别人接了单"这种事没有撤销。 */
+function claimUI(t) {
+  return html`
+    <div class="task-foot" data-foot="${t.id}">
+      <button class="btn btn-ink btn-sm" type="button" data-claim="${t.id}">认领这一单</button>
+      <span class="tiny muted">认领后从大厅下架，等需求方确认</span>
+    </div>
+    <div class="claim-box" hidden data-confirm="${t.id}">
+      <p><strong>接这一单？</strong>认领之后这单从大厅下架，${t.requester || '需求方'} 会看到你的档案来确认。确认前不算开工。</p>
+      <div class="flex ac g8 wrapw">
+        <button class="btn btn-ink btn-sm" type="button" data-do="${t.id}">确认接单</button>
+        <button class="btn btn-quiet btn-sm" type="button" data-cancel="${t.id}">再看看</button>
+      </div>
+    </div>`;
 }
 
 function render() {
@@ -129,11 +159,70 @@ function render() {
       el.emptyT.textContent = '这个筛选下没有需求';
       el.emptyP.textContent = '换个关键词，或者把类目放开看看。';
       el.emptyAct.hidden = false;
+    } else if (state.justClaimed) {
+      // 刚把最后一单接走。这时候说"大厅是空的"会让人以为出错了
+      el.emptyT.textContent = '暂时没有别的开放需求';
+      el.emptyP.textContent = '刚接的单在「我接的单」里，需求方确认后就会往下走。';
+      el.emptyAct.hidden = true;
     } else {
       el.emptyT.textContent = '大厅现在是空的';
       el.emptyP.textContent = '第一个需求发布之后，这里就会出现。过一会儿刷新看看。';
       el.emptyAct.hidden = true;
     }
+  }
+}
+
+/* 我接的单。放顶部而不是单独开一页: 认领之后视线不用离开大厅,
+   下一单还能接着找。单子多了再拆页, 现在拆是空页里放一条。 */
+function renderMine() {
+  const n = mineItems.length;
+  el.mineN.textContent = String(n);
+  el.navMineN.textContent = String(n);
+  el.mine.hidden = n === 0;
+  el.navMine.hidden = n === 0;
+  if (n === 0) return;
+
+  el.mineList.innerHTML = mineItems
+    .map(
+      (o) => html`
+    <li class="oitem">
+      <div class="flex ac jb wrapw g8">
+        <span class="${stateClass(o.state)}">${o.state_label || '待确认'}</span>
+        <span class="tiny muted">${ago(o.created_at)}认领</span>
+      </div>
+      <strong>${o.task_title || '需求 ' + o.task_id}</strong>
+      <div class="oline">
+        <span>${o.counterparty || '需求方'}</span>
+        <span class="dot"></span>
+        <span>${money(o.amount_cents)}</span>
+        <span class="dot"></span>
+        <span class="mono">${o.id}</span>
+      </div>
+    </li>`
+    )
+    .join('');
+
+  el.mineList.hidden = !mineOpen;
+  el.mineNote.hidden = !mineOpen;
+  el.mineToggle.textContent = mineOpen ? '收起' : '展开';
+  el.mineToggle.setAttribute('aria-expanded', mineOpen ? 'true' : 'false');
+}
+
+function stateClass(s) {
+  if (s === 'done') return 'state state-done';
+  if (s === 'in_progress') return 'state state-doing';
+  return 'state state-todo';
+}
+
+async function loadMine() {
+  try {
+    const data = await api('GET', '/me/orders');
+    const items = Array.isArray(data.items) ? data.items : [];
+    // 这一页是接单方视角。需求方的单子在"我发的需求"里看, 那边还没做。
+    mineItems = items.filter((o) => o.role === 'provider');
+    renderMine();
+  } catch (e) {
+    // 拉不到不挡大厅: 认领本身还能用, 成功后会本地补一条
   }
 }
 
@@ -206,6 +295,7 @@ async function load(reset) {
     state.items = [];
     state.total = 0;
     state.offset = 0;
+    state.justClaimed = false;
     el.list.innerHTML = '';
     el.skeleton.hidden = false;
     el.empty.hidden = true;
@@ -293,6 +383,93 @@ el.list.addEventListener('click', (e) => {
 
 el.more.addEventListener('click', () => load(false));
 
+/* ---------- 认领 ---------- */
+
+function dropCard(id) {
+  state.items = state.items.filter((t) => t.id !== id);
+  state.total = Math.max(0, state.total - 1);
+  const node = el.list.querySelector('[data-card="' + id + '"]');
+  if (node) {
+    node.classList.add('card-gone');
+    setTimeout(() => node.remove(), 180);
+  }
+  el.count.textContent = hasFilter() ? '筛出 ' + state.total + ' 单' : state.total + ' 单开放';
+  if (state.total === 0) state.justClaimed = true;
+  if (state.items.length === 0) {
+    state.loaded = true;
+    render();
+  }
+}
+
+async function doClaim(id, btn) {
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '正在接单…';
+  try {
+    const order = await api('POST', '/tasks/' + encodeURIComponent(id) + '/take', {});
+    // 服务端回的就是已经落库的订单, 直接放进"我接的单", 不再多问一次
+    mineItems.unshift(order);
+    mineOpen = true;
+    renderMine();
+    dropCard(id);
+    toast('这一单你接了，等' + (order.counterparty || '需求方') + '确认', 'ok');
+  } catch (err) {
+    const code = err instanceof ApiError ? err.code : '';
+    if (code === 'TASK_TAKEN') {
+      dropCard(id); // 别人先接了, 这张卡本来就不该留在开放列表里
+      toast('这一单刚被接走了', 'warn');
+      return;
+    }
+    if (code === 'PROFILE_INCOMPLETE' || code === 'ROLE_NOT_PROVIDER') {
+      toast(err.message || '先补一下档案', 'warn');
+      setTimeout(() => location.assign('profile.html'), 1000);
+      return;
+    }
+    toast((err && err.message) || '没接上，再试一次', 'err');
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
+el.list.addEventListener('click', (e) => {
+  const claim = e.target.closest('[data-claim]');
+  if (claim) {
+    const id = claim.dataset.claim;
+    claim.closest('[data-foot="' + id + '"]').hidden = true;
+    const box = el.list.querySelector('[data-confirm="' + id + '"]');
+    if (box) {
+      box.hidden = false;
+      const first = box.querySelector('[data-do]');
+      if (first) first.focus();
+    }
+    return;
+  }
+
+  const cancel = e.target.closest('[data-cancel]');
+  if (cancel) {
+    const id = cancel.dataset.cancel;
+    const box = el.list.querySelector('[data-confirm="' + id + '"]');
+    if (box) box.hidden = true;
+    const foot = el.list.querySelector('[data-foot="' + id + '"]');
+    if (foot) foot.hidden = false;
+    return;
+  }
+
+  const go = e.target.closest('[data-do]');
+  if (go) doClaim(go.dataset.do, go);
+});
+
+el.mineToggle.addEventListener('click', () => {
+  mineOpen = !mineOpen;
+  renderMine();
+});
+
+el.navMine.addEventListener('click', () => {
+  mineOpen = true;
+  renderMine();
+  el.mine.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
 document.getElementById('logout').addEventListener('click', async () => {
   try {
     await api('POST', '/auth/logout');
@@ -316,10 +493,14 @@ async function boot() {
       location.replace('profile.html?next=hall');
       return;
     }
+    // 认领按钮只给已建档的接单方: 需求方点不了, 没档案的人点了也会被服务端拒
+    canClaim = me.role === 'provider' && !!me.onboarded;
     paintWho(p);
   } catch (e) {
     return; // 未登录时 runtime 已经带去登录页
   }
+
+  if (canClaim) loadMine();
 
   if (new URLSearchParams(location.search).get('saved') === '1') {
     toast('档案已保存，这里是现在能接的需求', 'ok');

@@ -379,8 +379,18 @@ P3 企业版从「最小骨架」推向可商用：组织作为统一结算主�
 | PATCH | `/api/v2/me` | 改昵称（1–24 字，白名单只开这一个字段） |
 | PUT | `/api/v2/me/profile` | 保存供给方档案 |
 | GET | `/api/v2/tasks` | 需求大厅列表；`?q=&category=&sort=newest\|budget_desc\|budget_asc&limit=&offset=`，只返回 open |
+| POST | `/api/v2/tasks/{id}/take` | 接单方认领；409 `TASK_TAKEN` 表示已被接走，403 `ROLE_NOT_PROVIDER` / `PROFILE_INCOMPLETE` 表示没资格 |
+| GET | `/api/v2/me/orders` | 我参与的单（接的 + 发的），带四态与对端信息 |
 | GET | `/api/v2/meta/categories` | 类目清单，前端筛选条的唯一来源 |
 | GET | `/api/v2/public/profiles/{slug}` | 公开档案，免登录 |
+
+### 认领的并发语义
+
+判断和写入落在同一个原子操作里（`Store.ClaimOpenTask`：内存模式一把写锁，MySQL 一条 `UPDATE ... WHERE status='open'`），
+两人同时点只有一个拿到 201，另一个拿 409。这不是前端把卡片变灰，是任务真的从 open 变成 matched。
+订单落库后还会 `GetOrder` 复核一次，写失败就把任务退回 open —— 宁可让人重试，也不能让单子凭空消失。
+
+判断顺序是「先资格、后状态」：权限错误优先于「已被接走」，否则需求方点到一单被接走的需求会以为自己手慢。
 
 ### 会话
 
@@ -435,7 +445,7 @@ mysql -h192.168.3.18 -uroot -p zanbuddy < migrations/002_light_trade.sql
 |---|---|
 | 登录 | `/static/app/login.html` |
 | 供给方档案 | `/static/app/profile.html` |
-| 需求大厅 | `/static/app/hall.html` |
+| 需求大厅 | `/static/app/hall.html`（列表 + 认领 + 我接的单） |
 
 零构建：原生 ES module，`assets/runtime.js` 提供 `api / html / validate / toast`，浏览器直接加载，改完刷新即可。
 
@@ -443,8 +453,9 @@ mysql -h192.168.3.18 -uroot -p zanbuddy < migrations/002_light_trade.sql
 
 ```bash
 python test/test_m0_v2.py     # 44 项：健康检查、发码、凭证、登录注册、CSRF、档案规则、公开页白名单
-python test/test_m0_hall.py   # 68 项：档案落库比对、角色口径、大厅筛选/排序/分页/脱敏、类目清单
-node web/app/_flow.mjs        # 14 项：真浏览器走一遍登录→填档案→保存→大厅，出截图到 web/app/_shots/
+python test/test_m0_hall.py   # 70 项：档案落库比对、角色口径、大厅筛选/排序/分页/脱敏、类目清单
+python test/test_m0_claim.py  # 40 项：谁能认领、认领后下架、重复认领、我的单、并发抢单只成一单
+node web/app/_flow.mjs        # 21 项：真浏览器登录→填档案→保存→大厅→认领→刷新仍在，截图到 web/app/_shots/
 ```
 
 ## 核心 API（前缀 `/api/v1`）

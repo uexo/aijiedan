@@ -230,6 +230,20 @@ const (
 	OrderPendingSettlement OrderStatus = "pending_settlement" // 合规未就绪, 等待结算
 )
 
+// LightState 对外四态。内部 8 个状态不重构, 靠 trade 域的映射层转换成这套说法。
+//
+// 为什么不直接把 enum 改成四个: 托管模式下 "待托管/待结算" 是真实存在且要拦人的中间态,
+// 砍掉它们等于把资金链路的判断塞进注释。四态只用于展示与用户话术。
+type LightState string
+
+const (
+	LightToConfirm  LightState = "to_confirm"  // 待确认
+	LightInProgress LightState = "in_progress" // 进行中
+	LightToReview   LightState = "to_review"   // 待验收
+	LightDone       LightState = "done"        // 已完成
+	LightCancelled  LightState = "cancelled"   // 已取消
+)
+
 // 结算模式
 const (
 	SettleLump      = "lump"      // 一次性结算(默认)
