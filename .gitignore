@@ -20,3 +20,7 @@ __pycache__/
 .DS_Store
 .idea/
 .vscode/
+
+# --- 截图产物（Playwright 生成，不入库） ---
+web/app/_shots/
+web/v3/_shots/

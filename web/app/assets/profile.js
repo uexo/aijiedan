@@ -17,6 +17,7 @@ const CATALOG = [
 ];
 
 const form = document.getElementById('f');
+const nameEl = document.getElementById('name');
 const headlineEl = document.getElementById('headline');
 const bioEl = document.getElementById('bio');
 const skillsEl = document.getElementById('skills');
@@ -35,6 +36,7 @@ const pvPct = document.getElementById('pv-pct');
 
 let catalog = CATALOG.slice();
 let loadFailed = false;
+let savedName = ''; // 库里原本的昵称，用来判断这次到底改没改
 const state = {
   name: '',
   headline: '',
@@ -87,6 +89,8 @@ function sync() {
         ? '还缺一块。补齐之后，别人判断你的速度会快一点。'
         : '定位和 3 个技能是底线，缺了很难被算进推荐。';
 
+  document.getElementById('c-name').textContent = state.name.length + ' / 24';
+  document.getElementById('c-name').classList.toggle('ok', state.name.trim().length > 0);
   document.getElementById('c-headline').textContent = state.headline.length + ' / 60';
   document.getElementById('c-bio').textContent = state.bio.length + ' / 200';
   document.getElementById('c-headline').classList.toggle('ok', state.headline.trim().length > 0);
@@ -105,8 +109,8 @@ function sync() {
   });
 
   // 预览
-  document.getElementById('pv-av').textContent = (state.name || '我').slice(0, 1);
-  document.getElementById('pv-name').textContent = state.name || '我';
+  document.getElementById('pv-av').textContent = (state.name.trim() || '—').slice(0, 1);
+  document.getElementById('pv-name').textContent = state.name.trim() || '—';
   document.getElementById('pv-headline').textContent = state.headline.trim() || '还没写定位';
   const pvBio = document.getElementById('pv-bio');
   pvBio.textContent = state.bio.trim();
@@ -259,6 +263,11 @@ function markErr(input, msg) {
 }
 
 /* ---------- 表单输入 ---------- */
+nameEl.addEventListener('input', () => {
+  state.name = nameEl.value;
+  sync();
+});
+
 headlineEl.addEventListener('input', () => {
   state.headline = headlineEl.value;
   sync();
@@ -292,6 +301,10 @@ async function load() {
     const p = (data && (data.profile || data.provider_profile)) || {};
 
     state.name = user.name || user.nickname || '';
+    // 系统自动生成的名字（用户U-2026…）不算填过：倒进输入框让人自己改
+    savedName = /^用户U-/i.test(String(state.name)) ? '' : String(state.name).trim();
+    state.name = savedName;
+    nameEl.value = state.name;
     state.headline = p.headline || '';
     state.bio = p.bio || '';
     state.availability = Number(p.availability) === 0 ? 0 : 1;
@@ -341,6 +354,34 @@ function busy(btn, on, label) {
   }
 }
 
+// 保存后要跳走，所以不能只信 PUT 的 200：再读一次 /me，确认落库的形状和提交的一致。
+// 读回来不对就留在原地，别把人带到一个「档案是空的」的大厅里。
+function sameAsPayload(back, payload) {
+  const p = back || {};
+  const txt = (v) => String(v === null || v === undefined ? '' : v).trim();
+  const join = (arr) =>
+    (Array.isArray(arr) ? arr : [])
+      .map((x) => (typeof x === 'string' ? x : x && x.url))
+      .filter(Boolean)
+      .sort()
+      .join('|');
+
+  return (
+    txt(p.headline) === payload.headline &&
+    txt(p.bio) === payload.bio &&
+    join(p.skills) === payload.skills.slice().sort().join('|') &&
+    join(p.portfolio) === payload.portfolio.map((x) => x.url).sort().join('|') &&
+    Number(p.availability) === payload.availability
+  );
+}
+
+async function confirmSaved(payload, name) {
+  const data = await api('GET', '/me');
+  const back = (data && data.user && data.user.name) || '';
+  const okName = String(back).trim() === String(name || '').trim();
+  return sameAsPayload(data && data.profile, payload) && okName;
+}
+
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (loadFailed) {
@@ -349,10 +390,11 @@ form.addEventListener('submit', async (e) => {
   }
 
   const result = validate(form, {
+    name: { required: true, max: 24, message: '写个别人叫得出口的名字（24 字以内）' },
     headline: { required: true, max: 60, message: '写一句能让人记住的定位（60 字以内）' },
   });
   if (!result.valid) {
-    toast('定位还没写', 'warn');
+    toast(result.errors.name ? '昵称还没填' : '定位还没写', 'warn');
     return;
   }
   // bio 的 200 字由 maxlength 兜住，这里再挡一次粘贴超长
@@ -386,17 +428,43 @@ form.addEventListener('submit', async (e) => {
     availability: state.availability ? 1 : 0,
   };
 
+  const hint = document.getElementById('save-hint');
+  const wantName = state.name.trim();
   busy(saveBtn, true, '保存中…');
   try {
+    // 昵称单独一个接口（PATCH /me 只开这一个字段）。先写它：
+    // 万一档案写失败，至少名字改对了，不会有半截数据。
+    if (wantName !== savedName) {
+      await api('PATCH', '/me', { name: wantName });
+    }
     await api('PUT', '/me/profile', payload);
+
+    // 二次确认：这一次读库，确认刚写的东西真在库里
+    let ok = false;
+    try {
+      ok = await confirmSaved(payload, wantName);
+    } catch (e) {
+      ok = false;
+    }
+    if (!ok) {
+      toast('没存上，先别离开这页', 'err');
+      hint.textContent = '保存没落库。检查一下再存一次，别直接关页面。';
+      busy(saveBtn, false);
+      return;
+    }
+
     toast('档案已保存', 'ok');
-    document.getElementById('save-hint').textContent = '已保存，下一次匹配就会用上。';
+    hint.textContent = '已保存，正在进入需求大厅…';
+    saveBtn.textContent = '正在进入大厅…';
+    // 留半秒让人看见「已保存」，再跳；按钮保持禁用，防止连点重复提交
+    setTimeout(() => {
+      location.assign('hall.html?saved=1');
+    }, 500);
   } catch (err) {
     toast(err.message || '保存失败', 'err');
     if (err.field === 'headline') {
       markErr(headlineEl, err.message || '定位不符合要求');
     }
-  } finally {
     busy(saveBtn, false);
   }
 });

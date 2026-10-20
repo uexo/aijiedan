@@ -187,6 +187,14 @@ function nextTarget() {
   return /^\/(?!\/)[^\\\s]*$/.test(raw) ? raw : '';
 }
 
+// 服务端给的落点（如 /static/app/hall.html）优先：它知道这人建过档没有。
+// 只认同目录的页面文件名，别的形状一律忽略。
+function serverNext(data) {
+  const raw = String((data && data.next) || '');
+  const m = /^\/static\/app\/([a-z0-9-]+\.html)$/i.exec(raw);
+  return m ? m[1] : '';
+}
+
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (step !== 3) return;
@@ -202,8 +210,10 @@ form.addEventListener('submit', async (e) => {
       role: role,
     });
     const returned = (data && (data.role || data.role_pref)) || (data && data.user && data.user.role) || '';
-    const target = nextTarget() || (isSupply(returned || role) ? 'profile.html' : 'me.html');
-    location.replace(target);
+    // 接单方建过档就直接进大厅找单；没建过档先去档案页，填完会自己落到大厅
+    const supply = isSupply(returned || role);
+    const fallback = supply && !(data && data.onboarded) ? 'profile.html' : 'hall.html';
+    location.replace(nextTarget() || serverNext(data) || fallback);
   } catch (err) {
     showErr(err);
     busy(submit, false);

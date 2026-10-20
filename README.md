@@ -376,8 +376,10 @@ P3 企业版从「最小骨架」推向可商用：组织作为统一结算主�
 | POST | `/api/v2/auth/login` | 手机号+验证码，不存在即注册 |
 | POST | `/api/v2/auth/logout` | 清会话 |
 | GET | `/api/v2/me` | 当前用户 + 档案 |
-| PATCH | `/api/v2/me` | 改昵称 |
+| PATCH | `/api/v2/me` | 改昵称（1–24 字，白名单只开这一个字段） |
 | PUT | `/api/v2/me/profile` | 保存供给方档案 |
+| GET | `/api/v2/tasks` | 需求大厅列表；`?q=&category=&sort=newest\|budget_desc\|budget_asc&limit=&offset=`，只返回 open |
+| GET | `/api/v2/meta/categories` | 类目清单，前端筛选条的唯一来源 |
 | GET | `/api/v2/public/profiles/{slug}` | 公开档案，免登录 |
 
 ### 会话
@@ -397,9 +399,25 @@ curl -s -c /tmp/ck.txt -X POST localhost:8080/api/v2/auth/login \
 curl -s -b /tmp/ck.txt localhost:8080/api/v2/me
 ```
 
+### 接单方的第一段路：登录 → 填档案 → 大厅
+
+想接单的人进来只有两条路，页面必须自己判断走哪条：
+
+1. 登录时选「接单方」，服务端按 `onboarded` 给落点：没建档去 `profile.html`，已建档去 `hall.html`。
+   前端按钮传的是 `supply` / `demand`，库里存 `provider` / `requester`，`normalizeRole` 负责对齐——
+   不转这一下，选了接单方的人会被注册成需求方，然后卡在登录页和大厅之间。
+2. 档案页提交不是"存完刷新一下"：`PATCH /me`（昵称）→ `PUT /me/profile`（定位/技能/作品/接单状态）→
+   再 `GET /me` 读一次库，逐字段比对提交值。比对通过才跳 `hall.html?saved=1`；
+   不通过就留在原地报错，不把人带到一个"档案是空的"的大厅里。
+3. 大厅首屏是公开接口，未登录也能看到需求列表（落地页 → 大厅 → 登录这条拉新路径不能被登录墙挡住）。
+   卡片给判断所需的六件事：类目、预算、标题、说明摘要、需求方与信用、发布时间/截止。点标题展开交付物与交付格式。
+
 ### 迁移 002
 
-在已有库（已执行 `migrations/schema.sql`）上追加 8 张表与 4 张表加列：
+`python db_reset.py` 会自动按顺序应用 `migrations/*.sql`（`schema.sql` 打底，其余按文件名接在后面，
+不能靠目录遍历顺序——`002_` 的字典序在 `schema.sql` 前面，先跑 ALTER 会报 1146）。
+
+在已有库上手动追加时：
 
 ```bash
 python migrations/check_002.py                                    # 先静态自检
@@ -417,6 +435,7 @@ mysql -h192.168.3.18 -uroot -p zanbuddy < migrations/002_light_trade.sql
 |---|---|
 | 登录 | `/static/app/login.html` |
 | 供给方档案 | `/static/app/profile.html` |
+| 需求大厅 | `/static/app/hall.html` |
 
 零构建：原生 ES module，`assets/runtime.js` 提供 `api / html / validate / toast`，浏览器直接加载，改完刷新即可。
 
@@ -424,6 +443,8 @@ mysql -h192.168.3.18 -uroot -p zanbuddy < migrations/002_light_trade.sql
 
 ```bash
 python test/test_m0_v2.py     # 44 项：健康检查、发码、凭证、登录注册、CSRF、档案规则、公开页白名单
+python test/test_m0_hall.py   # 68 项：档案落库比对、角色口径、大厅筛选/排序/分页/脱敏、类目清单
+node web/app/_flow.mjs        # 14 项：真浏览器走一遍登录→填档案→保存→大厅，出截图到 web/app/_shots/
 ```
 
 ## 核心 API（前缀 `/api/v1`）

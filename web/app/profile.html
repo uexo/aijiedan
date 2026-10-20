@@ -13,6 +13,7 @@
   <div class="wrap">
     <a class="brand" href="profile.html"><span class="mk">赞</span> zanbuddy <small>联赞</small></a>
     <div class="nlinks">
+      <a class="btn btn-quiet btn-sm" href="hall.html">需求大厅</a>
       <button class="btn btn-line btn-sm" type="button" id="logout">退出</button>
     </div>
   </div>
@@ -47,6 +48,16 @@
   <div class="split">
 
     <form id="f" class="stack" novalidate>
+
+      <section class="card card-pad">
+        <div class="flex ac jb wrapw g8 mb8">
+          <label class="label" for="name">昵称<span class="req">*</span></label>
+          <span class="count" id="c-name">0 / 24</span>
+        </div>
+        <input id="name" name="name" class="input" maxlength="24" autocomplete="nickname"
+          placeholder="别人怎么称呼你">
+        <div class="hint mt8">推荐卡和需求大厅上显示的就是这个名字。花名也行，别填手机号。</div>
+      </section>
 
       <section class="card card-pad">
         <div class="flex ac jb wrapw g8 mb8">
@@ -106,8 +117,8 @@
       </section>
 
       <div class="flex ac jb wrapw g10">
-        <span class="tiny muted" id="save-hint">保存后才会进入推荐池。</span>
-        <button class="btn btn-ink btn-lg" type="submit" id="save">保存档案</button>
+        <span class="tiny muted" id="save-hint">保存后会落到需求大厅，从那儿找能接的单。</span>
+        <button class="btn btn-ink btn-lg" type="submit" id="save">保存并进入大厅</button>
       </div>
 
     </form>

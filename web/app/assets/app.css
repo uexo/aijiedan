@@ -262,6 +262,43 @@ p{color:var(--ink-2)}
 .noscript{position:fixed;left:0;right:0;top:0;z-index:300;background:var(--seal);color:#fff;
   padding:10px 16px;font-size:.85rem;text-align:center}
 
+/* ---------- 需求大厅 ---------- */
+.hall-bar{display:grid;grid-template-columns:minmax(0,1fr) 200px;gap:14px;align-items:end}
+.hall-bar .field{margin-bottom:0}
+@media(max-width:640px){.hall-bar{grid-template-columns:1fr}}
+select.input{appearance:none;background-image:linear-gradient(45deg,transparent 49%,var(--ink-3) 50%),
+  linear-gradient(-45deg,transparent 49%,var(--ink-3) 50%);
+  background-size:6px 6px,6px 6px;background-position:calc(100% - 18px) 55%,calc(100% - 12px) 55%;
+  background-repeat:no-repeat;padding-right:34px}
+.task-list{display:grid;gap:12px}
+.task h3{font-size:1.06rem;margin-top:2px}
+.task .tlink{display:block;text-align:left;font-weight:600;letter-spacing:-.015em;line-height:1.45;padding:0}
+.task .tlink:hover{color:var(--seal-2)}
+.task .snip{margin-top:6px;font-size:.86rem;line-height:1.62;color:var(--ink-2);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.task .price{font-family:var(--mono);font-size:1.05rem;font-weight:600;letter-spacing:-.01em;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.task .price small{font-family:var(--sans);font-size:.66rem;font-weight:500;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-4);margin-right:6px}
+.task .meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.78rem;color:var(--ink-3)}
+.task .meta .dot{width:3px;height:3px;border-radius:50%;background:var(--rule-2);flex:0 0 auto}
+.task .detail{margin-top:14px;padding-top:14px;border-top:1px solid var(--rule)}
+.task .detail dl{display:grid;grid-template-columns:86px minmax(0,1fr);gap:9px 14px;font-size:.85rem}
+.task .detail dt{font-family:var(--mono);font-size:.68rem;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--ink-4);padding-top:3px}
+.task .detail dd{color:var(--ink-2);line-height:1.62;word-break:break-word;white-space:pre-wrap}
+.center{justify-content:center}
+@media(max-width:560px){
+  .task .price{font-size:.98rem}
+  .task .detail dl{grid-template-columns:1fr;gap:2px}
+  .task .detail dd{margin-bottom:8px}
+}
+/* 窄屏把「你是谁 / 完整度」挪到标题下面单独一行，别跟 h1 挤在一起 */
+@media(max-width:640px){
+  .hall-head{display:block}
+  .hall-head .tiny{display:block;margin-top:6px}
+}
+
 /* ---------- 宁可不动，也别卡在透明帧 ---------- */
 @media(prefers-reduced-motion:no-preference){
   .rise{animation:rise .35s cubic-bezier(.2,.7,.3,1) both}

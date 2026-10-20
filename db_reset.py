@@ -4,7 +4,7 @@ Zanbuddy MySQL 重置脚本（不依赖本机 MySQL 客户端）。
 
 目标库：192.168.3.18:3306 上的 Docker MySQL 8.0.46（库名 zanbuddy）。
 用法：
-    python db_reset.py            # DROP+CREATE 并重新应用 migrations/schema.sql
+    python db_reset.py            # DROP+CREATE 并按顺序应用 migrations/*.sql
     python db_reset.py --demo     # 同上，并预置合规四门为「dev/demo 就绪态」全开
     python db_reset.py --check    # 仅检查连通性与服务端版本，不重置
 
@@ -32,6 +32,31 @@ USER = os.getenv("ZANBUDDY_DB_USER", "root")
 PASSWORD = os.getenv("ZANBUDDY_DB_PASSWORD", "")
 DB = os.getenv("ZANBUDDY_DB_NAME", "zanbuddy")
 SCHEMA = os.path.join(os.path.dirname(__file__), "migrations", "schema.sql")
+MIGRATIONS_DIR = os.path.join(os.path.dirname(__file__), "migrations")
+
+
+def migration_files():
+    """按顺序返回要应用的 SQL: schema.sql 打底, 其余迁移按文件名排序接在后面。
+
+    顺序不能靠目录遍历的自然顺序——'002_light_trade.sql' 字典序在 'schema.sql' 前面,
+    先跑 ALTER 会报 1146 表不存在。这里显式把 schema.sql 排第一。
+    """
+    rest = sorted(
+        f for f in os.listdir(MIGRATIONS_DIR)
+        if f.endswith(".sql") and f != "schema.sql"
+    )
+    return ["schema.sql"] + rest
+
+
+def apply_sql(cur, path):
+    with open(path, "r", encoding="utf-8") as f:
+        sql = f.read()
+    # 先剥离 -- 行注释（带单/双引号保护，避免误伤 COMMENT '...' 中的内容），
+    # 再按 ';' 拆分。注意 SQL 注释里可能含分号，必须先去注释再拆。
+    sql = _strip_comments(sql)
+    for st in [s.strip() for s in sql.split(";") if s.strip()]:
+        cur.execute(st)
+
 
 
 def connect(db=None):
@@ -118,15 +143,11 @@ def reset(demo=False):
 
     conn = connect(DB)
     cur = conn.cursor()
-    with open(SCHEMA, "r", encoding="utf-8") as f:
-        sql = f.read()
-    # 先剥离 -- 行注释（带单/双引号保护，避免误伤 COMMENT '...' 中的内容），
-    # 再按 ';' 拆分。注意 schema.sql 的注释里可能含分号，必须先去注释再拆。
-    sql = _strip_comments(sql)
-    stmts = [s.strip() for s in sql.split(";") if s.strip()]
-    for st in stmts:
-        cur.execute(st)
+    files = migration_files()
+    for name in files:
+        apply_sql(cur, os.path.join(MIGRATIONS_DIR, name))
     conn.close()
+    print("迁移已应用: " + " → ".join(files))
 
     # 校验
     conn = connect(DB)

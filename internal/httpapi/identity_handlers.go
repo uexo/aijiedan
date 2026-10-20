@@ -64,12 +64,14 @@ func (s *Server) authLogin(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// nextPath 登录后的默认落点。供给方还没建档就先去档案页, 否则工作台看不到东西可做。
+// nextPath 登录后的默认落点。
+// 接单方没建档先去档案页(不填档案召回池里就没有他), 建完档直接落到需求大厅;
+// 需求方也先给大厅: 他现在能看的只有这一页, 给个 404 不如给个能逛的列表。
 func nextPath(u *model.User) string {
 	if u.Role == model.RoleProvider && !u.Onboarded {
 		return "/static/app/profile.html"
 	}
-	return "/static/app/me.html"
+	return "/static/app/hall.html"
 }
 
 func (s *Server) authLogout(w http.ResponseWriter, r *http.Request) {

@@ -147,22 +147,31 @@ func (s *Service) LoginByCode(phone, code, role string) (*LoginResult, error) {
 
 func (s *Service) newUser(phone, role string) *model.User {
 	id := s.st.NextID("U")
-	r := model.RoleRequester
-	if role == string(model.RoleProvider) {
-		r = model.RoleProvider
-	}
 	u := &model.User{
 		ID:          id,
 		Account:     phone,
 		Phone:       phone,
 		Name:        "用户" + id,
-		Role:        r,
+		Role:        normalizeRole(role),
 		Slug:        s.newSlug(),
 		CreditScore: 50,
 		CreatedAt:   model.Now(),
 	}
 	s.st.PutUser(u)
 	return u
+}
+
+// normalizeRole 对齐两套角色口径。登录按钮上写的是 supply / demand,
+// 库里存的是 provider / requester。不转这一下, 选了「接单方」的人会被注册成需求方,
+// 表现就是"登录完进不了大厅、还要先填档案却没人让他填"。
+func normalizeRole(raw string) model.Role {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "provider", "supply", "taker", "接单", "接单方":
+		return model.RoleProvider
+	case "requester", "demand", "buyer", "需求", "需求方":
+		return model.RoleRequester
+	}
+	return model.RoleRequester
 }
 
 // slugAlphabet 去掉 l / o / 0 / 1: 短号会被人手抄、口头念, 形近字符是真实成本。

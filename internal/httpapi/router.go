@@ -38,6 +38,10 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("PATCH /api/v2/me", RequireAuth(http.HandlerFunc(s.patchMe)))
 	mux.Handle("PUT /api/v2/me/profile", RequireAuth(http.HandlerFunc(s.putProfile)))
 
+	// 需求大厅: 公开可读。落地页 → 大厅 → 登录, 前台不该建在登录墙后面。
+	mux.HandleFunc("GET /api/v2/tasks", s.listTasks)
+	mux.HandleFunc("GET /api/v2/meta/categories", s.listCategories)
+
 	// 公开页: 免登录, 是信用资产的对外出口
 	mux.HandleFunc("GET /api/v2/public/profiles/{slug}", s.publicProfile)
 

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>需求大厅 · zanbuddy 联赞</title>
+<meta name="description" content="平台上正在招募的需求都在这儿。看到对口的，先点开看要求。">
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="wrap">
+    <a class="brand" href="hall.html"><span class="mk">赞</span> zanbuddy <small>联赞</small></a>
+    <div class="nlinks">
+      <a class="btn btn-quiet btn-sm" href="profile.html" id="nav-profile">我的档案</a>
+      <button class="btn btn-line btn-sm" type="button" id="logout">退出</button>
+    </div>
+  </div>
+</nav>
+
+<main class="wrap page">
+
+  <div class="flex ac jb wrapw g12 mb6 hall-head">
+    <h1>需求大厅</h1>
+    <span class="tiny muted" id="who">正在确认身份…</span>
+  </div>
+  <p class="muted mb20" id="lead">这些是现在就开放、能直接认领的需求。看到对口的，先点开看要求再决定。</p>
+
+  <div id="banner" class="note mb16" hidden></div>
+
+  <section class="card card-pad mb16">
+    <div class="hall-bar">
+      <div class="field">
+        <label class="label" for="q">搜需求</label>
+        <input id="q" class="input" type="search" placeholder="Python、小红书文案、落地页…" autocomplete="off" maxlength="60">
+      </div>
+      <div class="field">
+        <label class="label" for="sort">排序</label>
+        <select id="sort" class="input">
+          <option value="newest">最新发布</option>
+          <option value="budget_desc">预算从高到低</option>
+          <option value="budget_asc">预算从低到高</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="flex ac jb wrapw g8 mt12 mb8">
+      <span class="label">类目</span>
+      <button class="btn btn-quiet btn-sm" type="button" id="reset" hidden>清空筛选</button>
+    </div>
+    <div class="chips" id="cats" role="group" aria-label="类目筛选"></div>
+  </section>
+
+  <div class="flex ac jb wrapw g8 mb12">
+    <span class="tiny muted" id="count">正在数…</span>
+    <span class="tiny muted" id="tip"></span>
+  </div>
+
+  <div id="err" class="errbox mb16" hidden></div>
+
+  <div id="skeleton">
+    <div class="card card-pad mb12">
+      <div class="skel skel-line w40"></div>
+      <div class="skel skel-line w80"></div>
+      <div class="skel skel-line w60"></div>
+    </div>
+    <div class="card card-pad mb12">
+      <div class="skel skel-line w60"></div>
+      <div class="skel skel-line w80"></div>
+      <div class="skel skel-line w40"></div>
+    </div>
+  </div>
+
+  <div id="list" class="task-list"></div>
+
+  <div class="empty" id="empty" hidden>
+    <div class="mark">单</div>
+    <h4 id="empty-t">大厅现在是空的</h4>
+    <p id="empty-p">第一个需求发布之后，这里会出现。刷新一下就能看到。</p>
+    <button class="btn btn-line btn-sm" type="button" id="empty-act" hidden>清空筛选</button>
+  </div>
+
+  <div class="flex center mt16">
+    <button class="btn btn-line" type="button" id="more" hidden>再加载 20 条</button>
+  </div>
+
+</main>
+
+<noscript><div class="noscript">需要开启 JavaScript 才能浏览需求大厅。</div></noscript>
+<script type="module" src="assets/hall.js"></script>
+</body>
+</html>
