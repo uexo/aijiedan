@@ -239,6 +239,39 @@ const dShown = ((await dp.locator('#mine-list .oitem .dshow').first().textConten
 step('需求方读到同一份交付', /RAG 问答系统已跑通/.test(dShown), dShown.slice(0, 60));
 await dp.screenshot({ path: path.join(OUT, 'demand-review.png'), fullPage: true });
 
+/* 8.8 验收：先打回一次，接单方按说明重交，需求方再验收通过 */
+await dp.locator('#mine-list [data-ask-revise]').first().click();
+const rvBox = dp.locator('[data-box^="revise-"]:not([hidden])').first();
+await rvBox.locator('textarea').fill('R3 的启动脚本只在 Linux 上验证过，Windows 用户起不来，补一份说明。');
+await dp.screenshot({ path: path.join(OUT, 'demand-revise.png'), fullPage: true });
+await rvBox.locator('[data-do-revise]').click();
+await dp.waitForTimeout(900);
+step('打回后这一单回到进行中', (await dp.locator('#mine-list .oitem', { hasText: '进行中' }).count()) >= 1);
+
+await page.reload({ waitUntil: 'networkidle' });
+await page.waitForSelector('#mine-list .oitem', { timeout: 10000 });
+const backNote = ((await page.locator('#mine-list .dnote-back').first().textContent().catch(() => '')) || '').trim();
+step('接单方看到打回说明', /Windows/.test(backNote), backNote.slice(0, 40));
+
+await page.locator('#mine-list [data-ask-deliver]').first().click();
+const dbox2 = page.locator('[data-box^="deliver-"]:not([hidden])').first();
+await dbox2.locator('textarea').fill('第二版：补了 Windows 启动脚本与说明。');
+await dbox2.locator('[data-do-deliver]').click();
+await page.waitForTimeout(900);
+step('重交后回到待验收', (await page.locator('#mine-list .oitem', { hasText: '待验收' }).count()) >= 1);
+await page.screenshot({ path: path.join(OUT, 'provider-redelivered.png'), fullPage: true });
+
+await dp.reload({ waitUntil: 'networkidle' });
+await dp.waitForSelector('#mine-list [data-ask-accept]', { timeout: 10000 });
+await dp.locator('#mine-list [data-ask-accept]').first().click();
+const acBox = dp.locator('[data-box^="accept-"]:not([hidden])').first();
+await dp.screenshot({ path: path.join(OUT, 'demand-accept.png'), fullPage: true });
+await acBox.locator('[data-do-accept]').click();
+await dp.waitForTimeout(900);
+step('验收后这一单已完成', (await dp.locator('#mine-list .oitem', { hasText: '已完成' }).count()) >= 1);
+step('完成后需求方这一格不再要动作', (await dp.locator('#mine-list [data-ask-accept]').count()) === 0);
+await dp.screenshot({ path: path.join(OUT, 'demand-done.png'), fullPage: true });
+
 /* 8.9 再接一单，被需求方退回大厅 */
 const r001next = page.locator('.task', { hasText: '需求方甲' }).first();
 const nextTitle = ((await r001next.locator('.tlink').textContent()) || '').trim();

@@ -24,6 +24,10 @@ var (
 	ErrNotDeliverable = errors.New("store: order not deliverable")
 	// ErrRevisionLimit 改稿轮次已用尽。
 	ErrRevisionLimit = errors.New("store: revision limit reached")
+	// ErrNotReviewable 订单此刻不在待验收状态。
+	ErrNotReviewable = errors.New("store: order not reviewable")
+	// ErrNoDelivery 订单标着已交付, 却没有对应的交付记录(数据不一致)。
+	ErrNoDelivery = errors.New("store: no delivery record")
 )
 
 // fallbackSlug 给没有短号的用户补一个确定性短号。
@@ -109,6 +113,15 @@ type Store interface {
 	// 返回的 *model.Delivery 由实现生成 ID 与轮次, 上层不再猜。
 	DeliverOrder(orderID, content, link string, items []model.DeliveryItem,
 		from []model.OrderStatus, to model.OrderStatus, maxRound int, at int64) (*model.Delivery, error)
+	// ReviewOrder 需求方验收: accept=true 订单完成、需求单关闭; accept=false 打回重做。
+	//
+	// 验收结论记在最后一轮交付上, 与订单状态在同一个原子点:
+	// 只改订单不改交付, 打回原因就丢了, 接单方下一轮只能猜;
+	// 只改交付不改订单, 单子永远停在待验收, 需求方点多少次都没反应。
+	//
+	// 打回轮次上限也在实现里判: 最后一轮已经用满 max_revisions 时再打回,
+	// 接单方就交不出下一轮, 等于把单子打死。
+	ReviewOrder(orderID string, accept bool, note string, at int64) error
 	ListOrders() []*model.Order
 	ListOrdersByUser(userID string) []*model.Order
 	ListOrdersByTask(taskID string) []*model.Order
@@ -177,17 +190,17 @@ type Store interface {
 
 // MemStore 内存实现(零依赖)。
 type MemStore struct {
-	mu         sync.RWMutex
-	users      map[string]*model.User
-	profiles   map[string]*model.ProviderProfile
-	tasks      map[string]*model.Task
-	taskIndex  map[string]map[string]bool // 倒排索引: 拉丁词 -> 任务ID集合(加速关键词检索)
-	matches    map[string]*model.MatchRecord
-	orders     map[string]*model.Order
-	deliveries map[string]*model.Delivery
-	reviews    map[string]*model.Review
-	wallets    map[string]*model.Wallet
-	ledgers    map[string]*model.Ledger
+	mu            sync.RWMutex
+	users         map[string]*model.User
+	profiles      map[string]*model.ProviderProfile
+	tasks         map[string]*model.Task
+	taskIndex     map[string]map[string]bool // 倒排索引: 拉丁词 -> 任务ID集合(加速关键词检索)
+	matches       map[string]*model.MatchRecord
+	orders        map[string]*model.Order
+	deliveries    map[string]*model.Delivery
+	reviews       map[string]*model.Review
+	wallets       map[string]*model.Wallet
+	ledgers       map[string]*model.Ledger
 	withdrawals   map[string]*model.Withdrawal
 	messages      map[string][]*model.ChatMessage
 	conversations map[string]*model.Conversation
@@ -205,16 +218,16 @@ type MemStore struct {
 
 func NewMem() *MemStore {
 	s := &MemStore{
-		users:      map[string]*model.User{},
-		profiles:   map[string]*model.ProviderProfile{},
-		tasks:      map[string]*model.Task{},
-		taskIndex:  map[string]map[string]bool{},
-		matches:    map[string]*model.MatchRecord{},
-		orders:     map[string]*model.Order{},
-		deliveries: map[string]*model.Delivery{},
-		reviews:    map[string]*model.Review{},
-		wallets:    map[string]*model.Wallet{},
-		ledgers:    map[string]*model.Ledger{},
+		users:         map[string]*model.User{},
+		profiles:      map[string]*model.ProviderProfile{},
+		tasks:         map[string]*model.Task{},
+		taskIndex:     map[string]map[string]bool{},
+		matches:       map[string]*model.MatchRecord{},
+		orders:        map[string]*model.Order{},
+		deliveries:    map[string]*model.Delivery{},
+		reviews:       map[string]*model.Review{},
+		wallets:       map[string]*model.Wallet{},
+		ledgers:       map[string]*model.Ledger{},
 		withdrawals:   map[string]*model.Withdrawal{},
 		messages:      map[string][]*model.ChatMessage{},
 		conversations: map[string]*model.Conversation{},
@@ -712,6 +725,59 @@ func (s *MemStore) DeliverOrder(orderID, content, link string, items []model.Del
 	s.deliveries[d.ID] = d
 	o.Status = to
 	return d, nil
+}
+
+// ReviewOrder 内存实现: 一把写锁内完成"判状态 + 写交付结论 + 推订单状态"。
+func (s *MemStore) ReviewOrder(orderID string, accept bool, note string, at int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	o, ok := s.orders[orderID]
+	if !ok {
+		return ErrOrderGone
+	}
+	if o.Status != model.OrderDelivered {
+		return ErrNotReviewable
+	}
+
+	var last *model.Delivery
+	rounds := 0
+	for _, d := range s.deliveries {
+		if d.OrderID != orderID {
+			continue
+		}
+		rounds++
+		if last == nil || d.Round > last.Round {
+			last = d
+		}
+	}
+	if last == nil {
+		return ErrNoDelivery
+	}
+
+	if accept {
+		last.Status = "accepted"
+		last.ReviewedAt = at
+		o.Status = model.OrderCompleted
+		o.AcceptedAt = at
+		if t, ok := s.tasks[o.TaskID]; ok {
+			t.Status = model.TaskClosed
+		}
+		return nil
+	}
+
+	limit := o.MaxRevisions
+	if limit <= 0 {
+		limit = model.DefaultMaxRevisions
+	}
+	if rounds >= limit {
+		return ErrRevisionLimit
+	}
+	last.Status = "rejected"
+	last.ReviewNote = note
+	last.ReviewedAt = at
+	o.Status = model.OrderDelivering
+	return nil
 }
 func (s *MemStore) ListOrders() []*model.Order {
 	s.mu.RLock()

@@ -113,6 +113,40 @@ func (s *Server) listDeliveries(w http.ResponseWriter, r *http.Request) {
 	WriteOK(w, r, map[string]interface{}{"items": items, "total": len(items)})
 }
 
+// acceptOrder 需求方验收通过。
+//
+// 200 而不是 201: 订单早就存在, 这一步只改状态, 没有新资源。
+func (s *Server) acceptOrder(w http.ResponseWriter, r *http.Request) {
+	cl, _ := Claims(r)
+	o, err := s.Trade.Accept(r.PathValue("id"), cl.UserID)
+	if err != nil {
+		writeTradeErr(w, r, err)
+		return
+	}
+	WriteOK(w, r, s.Trade.View(o, cl.UserID))
+}
+
+// reviseOrder 需求方打回, 让接单方改一版。
+//
+// 原因必填: 没有原因的打回等于"我不满意", 接单方下一轮只能瞎猜。
+func (s *Server) reviseOrder(w http.ResponseWriter, r *http.Request) {
+	cl, _ := Claims(r)
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	if !DecodeJSON(r, &body) {
+		WriteErr(w, r, http.StatusBadRequest, "BAD_JSON", "请求格式不对")
+		return
+	}
+
+	o, err := s.Trade.Revise(r.PathValue("id"), cl.UserID, body.Reason)
+	if err != nil {
+		writeTradeErr(w, r, err)
+		return
+	}
+	WriteOK(w, r, s.Trade.View(o, cl.UserID))
+}
+
 // writeTradeErr 把交易域的错误翻成信封。未知错误不吐内部细节, 只给 trace。
 func writeTradeErr(w http.ResponseWriter, r *http.Request, err error) {
 	var te *trade.Error

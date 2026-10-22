@@ -138,6 +138,11 @@ CREATE TABLE `delivery` (
 ALTER TABLE `delivery`
   ADD COLUMN `items_json`  JSON  NULL;
 
+-- v2 验收: 打回说明落在被打回的那一轮交付上(须在 CREATE TABLE delivery 之后)
+ALTER TABLE `delivery`
+  ADD COLUMN `review_note`  TEXT   NULL,
+  ADD COLUMN `reviewed_at`  BIGINT NOT NULL DEFAULT 0;
+
 -- v2 交付: 交付物入口链接(平台不托管文件, 靠网盘/仓库/文档链接传递)
 ALTER TABLE `delivery`
   ADD COLUMN `link` VARCHAR(500) NULL;

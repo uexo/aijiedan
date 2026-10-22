@@ -334,6 +334,9 @@ select.input{appearance:none;background-image:linear-gradient(45deg,transparent 
 .ditems li.don{color:var(--ink-2)}
 .ditems li.dun{color:var(--seal-2)}
 .ditems .dnote{color:var(--ink-3);font-size:.78rem}
+/* 被打回的那一轮要一眼看出是"有问题要改", 不能和普通交付长得一样 */
+.dnote-back{margin:7px 0 0;padding:7px 9px;border-left:2px solid var(--seal-2);border-radius:0 var(--r) var(--r) 0;
+  background:var(--seal-wash);font-size:.82rem;line-height:1.6;color:var(--ink-2);white-space:pre-wrap;word-break:break-word}
 
 @media(max-width:560px){
   .drow{grid-template-columns:1fr;gap:6px}

@@ -295,7 +295,7 @@ func (s *mysqlStore) ListProviders() []*model.User {
 		u.KYCVerified = kyc == 1
 		u.TaxBound = tax == 1
 		u.AIAutoReply = aiReply == 1
-	u.Onboarded = onboarded == 1
+		u.Onboarded = onboarded == 1
 		if len(skills) > 0 {
 			_ = json.Unmarshal(skills, &u.Skills)
 		}
@@ -306,7 +306,7 @@ func (s *mysqlStore) ListProviders() []*model.User {
 
 // ListUsers 返回全部用户(含需求方/接单方/运营), 供运营看板聚合。
 func (s *mysqlStore) ListUsers() []*model.User {
-	rows, err := s.db.Query("SELECT "+userCols+" FROM `user` WHERE deleted_at IS NULL")
+	rows, err := s.db.Query("SELECT " + userCols + " FROM `user` WHERE deleted_at IS NULL")
 	if err != nil {
 		return nil
 	}
@@ -327,7 +327,7 @@ func (s *mysqlStore) ListUsers() []*model.User {
 		u.KYCVerified = kyc == 1
 		u.TaxBound = tax == 1
 		u.AIAutoReply = aiReply == 1
-	u.Onboarded = onboarded == 1
+		u.Onboarded = onboarded == 1
 		if len(skills) > 0 {
 			_ = json.Unmarshal(skills, &u.Skills)
 		}
@@ -348,6 +348,7 @@ func (s *mysqlStore) PutTask(t *model.Task) {
 		t.SpecObj.Deliverables, t.SpecObj.RequiredFormat, t.SpecObj.DeadlineAt, t.SpecObj.StyleRef, t.SpecObj.Samples,
 		clar, nullStr(string(items)), nullStr(t.Translation), t.TranslationMode, analysis, t.AnalysisMode, t.Status, t.CreatedAt)
 }
+
 // ClaimOpenTask 用一条带条件的 UPDATE 完成"判断 + 写入"。
 // 并发时 MySQL 行锁保证只有一个请求的 RowsAffected 是 1, 另一个自然拿到 0。
 // 不能用 SELECT ... FOR UPDATE 包一段事务: 多一次往返, 而且要在事务里再写订单, 耦合更重。
@@ -363,7 +364,8 @@ func (s *mysqlStore) ClaimOpenTask(taskID string) bool {
 	}
 	return n == 1
 }
-func (s *mysqlStore) GetTask(id string) (*model.Task, bool) {	t := &model.Task{}
+func (s *mysqlStore) GetTask(id string) (*model.Task, bool) {
+	t := &model.Task{}
 	var clar, items, analysis []byte
 	var translation, translationMode, analysisMode sql.NullString
 	err := s.db.QueryRow("SELECT "+taskCols+" FROM task WHERE id=? AND deleted_at IS NULL", id).
@@ -586,7 +588,7 @@ func (s *mysqlStore) ListMatchesByTask(taskID string) []*model.MatchRecord {
 func (s *mysqlStore) PutOrder(o *model.Order) {
 	mil, _ := json.Marshal(o.Milestones)
 	acc, _ := json.Marshal(o.Acceptance)
-	_, _ = s.db.Exec(`INSERT INTO ` + "`order`" + ` (id,task_id,requester_id,org_id,provider_id,match_id,amount_cents,status,escrow_id,settled,max_revisions,milestones,settlement_mode,refund_cents,refund_pct,cancelled_by,cancel_reason,cancelled_at,dispute_reason,disputed_by,disputed_at,resolved_by,resolved_at,resolved_note,acceptance_json,severe_mismatch,accepted_at,created_at,provider_quote_cents)
+	_, _ = s.db.Exec(`INSERT INTO `+"`order`"+` (id,task_id,requester_id,org_id,provider_id,match_id,amount_cents,status,escrow_id,settled,max_revisions,milestones,settlement_mode,refund_cents,refund_pct,cancelled_by,cancel_reason,cancelled_at,dispute_reason,disputed_by,disputed_at,resolved_by,resolved_at,resolved_note,acceptance_json,severe_mismatch,accepted_at,created_at,provider_quote_cents)
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON DUPLICATE KEY UPDATE task_id=VALUES(task_id),requester_id=VALUES(requester_id),org_id=VALUES(org_id),provider_id=VALUES(provider_id),match_id=VALUES(match_id),amount_cents=VALUES(amount_cents),status=VALUES(status),escrow_id=VALUES(escrow_id),settled=VALUES(settled),max_revisions=VALUES(max_revisions),milestones=VALUES(milestones),settlement_mode=VALUES(settlement_mode),refund_cents=VALUES(refund_cents),refund_pct=VALUES(refund_pct),cancelled_by=VALUES(cancelled_by),cancel_reason=VALUES(cancel_reason),cancelled_at=VALUES(cancelled_at),dispute_reason=VALUES(dispute_reason),disputed_by=VALUES(disputed_by),disputed_at=VALUES(disputed_at),resolved_by=VALUES(resolved_by),resolved_at=VALUES(resolved_at),resolved_note=VALUES(resolved_note),acceptance_json=VALUES(acceptance_json),severe_mismatch=VALUES(severe_mismatch),accepted_at=VALUES(accepted_at),provider_quote_cents=VALUES(provider_quote_cents)`,
 		o.ID, o.TaskID, o.RequesterID, o.OrgID, o.ProviderID, o.MatchID, o.AmountCents, o.Status, o.EscrowID, boolToInt(o.Settled),
@@ -594,6 +596,7 @@ func (s *mysqlStore) PutOrder(o *model.Order) {
 		nullStr(o.CancelledBy), nullStr(o.CancelReason), o.CancelledAt, nullStr(o.DisputeReason), nullStr(o.DisputedBy), o.DisputedAt,
 		nullStr(o.ResolvedBy), o.ResolvedAt, nullStr(o.ResolvedNote), nullStr(string(acc)), boolToInt(o.SevereMismatch), o.AcceptedAt, o.CreatedAt, o.ProviderQuoteCents)
 }
+
 // orderCols SELECT 列(顺序须与 scanOrder 一致)
 const orderCols = "id,task_id,requester_id,org_id,provider_id,match_id,amount_cents,status,escrow_id,settled,max_revisions,milestones,settlement_mode,refund_cents,refund_pct,cancelled_by,cancel_reason,cancelled_at,dispute_reason,disputed_by,disputed_at,resolved_by,resolved_at,resolved_note,acceptance_json,severe_mismatch,accepted_at,created_at,provider_quote_cents"
 
@@ -771,6 +774,73 @@ func (s *mysqlStore) DeliverOrder(orderID, content, link string, items []model.D
 	return d, nil
 }
 
+// ReviewOrder 验收/打回。事务内锁订单行, 再写最后一轮交付的结论。
+//
+// 先锁订单再读交付: 与 DeliverOrder 保持同一加锁顺序, 两边不会互相等死。
+func (s *mysqlStore) ReviewOrder(orderID string, accept bool, note string, at int64) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var status, taskID string
+	var maxRev int
+	if err := tx.QueryRow("SELECT status,task_id,max_revisions FROM `order` WHERE id=? FOR UPDATE", orderID).
+		Scan(&status, &taskID, &maxRev); err != nil {
+		if err == sql.ErrNoRows {
+			return ErrOrderGone
+		}
+		return err
+	}
+	if model.OrderStatus(status) != model.OrderDelivered {
+		return ErrNotReviewable
+	}
+
+	var lastID string
+	var lastRound int
+	if err := tx.QueryRow("SELECT id,round FROM delivery WHERE order_id=? ORDER BY round DESC LIMIT 1", orderID).
+		Scan(&lastID, &lastRound); err != nil {
+		if err == sql.ErrNoRows {
+			return ErrNoDelivery
+		}
+		return err
+	}
+
+	if accept {
+		if _, err := tx.Exec("UPDATE delivery SET status='accepted',reviewed_at=? WHERE id=?", at, lastID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec("UPDATE `order` SET status=?,accepted_at=? WHERE id=?",
+			string(model.OrderCompleted), at, orderID); err != nil {
+			return err
+		}
+		// 需求单随之关闭: 大厅只看 open, 但"这条需求到底做完了没"要靠这个状态回答。
+		if taskID != "" {
+			if _, err := tx.Exec("UPDATE task SET status=? WHERE id=?", string(model.TaskClosed), taskID); err != nil {
+				return err
+			}
+		}
+		return tx.Commit()
+	}
+
+	limit := maxRev
+	if limit <= 0 {
+		limit = model.DefaultMaxRevisions
+	}
+	if lastRound >= limit {
+		return ErrRevisionLimit
+	}
+	if _, err := tx.Exec("UPDATE delivery SET status='rejected',review_note=?,reviewed_at=? WHERE id=?",
+		note, at, lastID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("UPDATE `order` SET status=? WHERE id=?", string(model.OrderDelivering), orderID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func (s *mysqlStore) ListOrders() []*model.Order {
 	rows, err := s.db.Query("SELECT " + orderCols + " FROM `order`")
 	if err != nil {
@@ -859,17 +929,17 @@ func (s *mysqlStore) ListTasksByOwner(ownerID string) []*model.Task {
 // --- Deliveries ---
 func (s *mysqlStore) PutDelivery(d *model.Delivery) {
 	items, _ := json.Marshal(d.Items)
-	_, _ = s.db.Exec(`INSERT INTO delivery (id,order_id,round,content,link,items_json,status,created_at)
-		VALUES (?,?,?,?,?,?,?,?)
-		ON DUPLICATE KEY UPDATE round=VALUES(round),content=VALUES(content),link=VALUES(link),items_json=VALUES(items_json),status=VALUES(status)`,
-		d.ID, d.OrderID, d.Round, d.Content, nullStr(d.Link), nullStr(string(items)), d.Status, d.CreatedAt)
+	_, _ = s.db.Exec(`INSERT INTO delivery (id,order_id,round,content,link,items_json,status,review_note,reviewed_at,created_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?)
+		ON DUPLICATE KEY UPDATE round=VALUES(round),content=VALUES(content),link=VALUES(link),items_json=VALUES(items_json),status=VALUES(status),review_note=VALUES(review_note),reviewed_at=VALUES(reviewed_at)`,
+		d.ID, d.OrderID, d.Round, d.Content, nullStr(d.Link), nullStr(string(items)), d.Status, nullStr(d.ReviewNote), d.ReviewedAt, d.CreatedAt)
 }
 func (s *mysqlStore) GetDelivery(id string) (*model.Delivery, bool) {
 	d := &model.Delivery{}
 	var items []byte
-	var link sql.NullString
-	err := s.db.QueryRow("SELECT id,order_id,round,content,link,items_json,status,created_at FROM delivery WHERE id=?", id).
-		Scan(&d.ID, &d.OrderID, &d.Round, &d.Content, &link, &items, &d.Status, &d.CreatedAt)
+	var link, reviewNote sql.NullString
+	err := s.db.QueryRow("SELECT id,order_id,round,content,link,items_json,status,review_note,reviewed_at,created_at FROM delivery WHERE id=?", id).
+		Scan(&d.ID, &d.OrderID, &d.Round, &d.Content, &link, &items, &d.Status, &reviewNote, &d.ReviewedAt, &d.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, false
 	}
@@ -877,13 +947,14 @@ func (s *mysqlStore) GetDelivery(id string) (*model.Delivery, bool) {
 		return nil, false
 	}
 	d.Link = link.String
+	d.ReviewNote = reviewNote.String
 	if len(items) > 0 {
 		_ = json.Unmarshal(items, &d.Items)
 	}
 	return d, true
 }
 func (s *mysqlStore) ListDeliveriesByOrder(orderID string) []*model.Delivery {
-	rows, err := s.db.Query("SELECT id,order_id,round,content,link,items_json,status,created_at FROM delivery WHERE order_id=? ORDER BY round", orderID)
+	rows, err := s.db.Query("SELECT id,order_id,round,content,link,items_json,status,review_note,reviewed_at,created_at FROM delivery WHERE order_id=? ORDER BY round", orderID)
 	if err != nil {
 		return nil
 	}
@@ -892,11 +963,12 @@ func (s *mysqlStore) ListDeliveriesByOrder(orderID string) []*model.Delivery {
 	for rows.Next() {
 		d := &model.Delivery{}
 		var items []byte
-		var link sql.NullString
-		if err := rows.Scan(&d.ID, &d.OrderID, &d.Round, &d.Content, &link, &items, &d.Status, &d.CreatedAt); err != nil {
+		var link, reviewNote sql.NullString
+		if err := rows.Scan(&d.ID, &d.OrderID, &d.Round, &d.Content, &link, &items, &d.Status, &reviewNote, &d.ReviewedAt, &d.CreatedAt); err != nil {
 			return nil
 		}
 		d.Link = link.String
+		d.ReviewNote = reviewNote.String
 		if len(items) > 0 {
 			_ = json.Unmarshal(items, &d.Items)
 		}

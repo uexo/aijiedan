@@ -20,19 +20,19 @@ const (
 // User 平台用户。M0 简化为内存结构，生产替换为 MySQL 行。
 type User struct {
 	ID           string   `json:"id"`
-	Account      string   `json:"account,omitempty"`  // 登录账号(唯一, 注册用户才有)
-	PasswordHash string   `json:"-"`                  // 密码哈希(PBKDF2), 永不外泄
+	Account      string   `json:"account,omitempty"`   // 登录账号(唯一, 注册用户才有)
+	PasswordHash string   `json:"-"`                   // 密码哈希(PBKDF2), 永不外泄
 	RealName     string   `json:"real_name,omitempty"` // 真实姓名(实名)
 	Phone        string   `json:"phone,omitempty"`     // 手机号
 	Name         string   `json:"name"`
 	Role         Role     `json:"role"`
-	KYCVerified  bool     `json:"kyc_verified"` // 实名认证(用户级)
-	Skills       []string `json:"skills"`       // 接单方技能标签
-	CreditScore  int      `json:"credit_score"` // 可携带信用分 0-100
-	TaxBound     bool     `json:"tax_bound"`    // 是否已绑定税源地(接单方结算合规, 个体入驻)
-	AIAutoReply  bool     `json:"ai_auto_reply"` // 是否开启 IM 离线自动回复(AI 客服, 明确标记 AI, 不冒充真人)
+	KYCVerified  bool     `json:"kyc_verified"`   // 实名认证(用户级)
+	Skills       []string `json:"skills"`         // 接单方技能标签
+	CreditScore  int      `json:"credit_score"`   // 可携带信用分 0-100
+	TaxBound     bool     `json:"tax_bound"`      // 是否已绑定税源地(接单方结算合规, 个体入驻)
+	AIAutoReply  bool     `json:"ai_auto_reply"`  // 是否开启 IM 离线自动回复(AI 客服, 明确标记 AI, 不冒充真人)
 	Slug         string   `json:"slug,omitempty"` // 公开短号(4-8 位), /p/{slug} 用; 内部 ID 不对外暴露
-	Onboarded    bool     `json:"onboarded"`     // 是否走完供给方档案引导(未完成不进召回池)
+	Onboarded    bool     `json:"onboarded"`      // 是否走完供给方档案引导(未完成不进召回池)
 	CreatedAt    int64    `json:"created_at"`
 }
 
@@ -60,43 +60,43 @@ type ProviderProfile struct {
 type TaskStatus string
 
 const (
-	TaskOpen   TaskStatus = "open"
+	TaskOpen    TaskStatus = "open"
 	TaskMatched TaskStatus = "matched"
-	TaskClosed TaskStatus = "closed"
+	TaskClosed  TaskStatus = "closed"
 )
 
 // Task 需求单(AI开发任务)
 type Task struct {
-	ID          string      `json:"id"`
-	RequesterID string      `json:"requester_id"`
-	Title       string      `json:"title"`
-	Category    string      `json:"category"` // 类目, 用于匹配召回
-	BudgetCents int64       `json:"budget_cents"`
-	Spec        string      `json:"spec"`     // 需求描述(自由文本摘要, 用于匹配召回)
-	SpecObj     TaskSpec    `json:"spec_obj"` // 结构化规格(由 AI澄清/规则兜底补齐)
+	ID             string   `json:"id"`
+	RequesterID    string   `json:"requester_id"`
+	Title          string   `json:"title"`
+	Category       string   `json:"category"` // 类目, 用于匹配召回
+	BudgetCents    int64    `json:"budget_cents"`
+	Spec           string   `json:"spec"`           // 需求描述(自由文本摘要, 用于匹配召回)
+	SpecObj        TaskSpec `json:"spec_obj"`       // 结构化规格(由 AI澄清/规则兜底补齐)
 	Clarifications []string `json:"clarifications"` // 规则澄清问题清单(缺必填字段时生成)
 	// C1 AI 需求翻译/分析(C1): 需求方侧「AI 需求翻译」产出供接单方直接读懂的清晰需求书;
 	// 接单方侧「AI 需求分析」产出核心目标/交付物/验收要点/易误解点/需确认项, 防止理解偏差。
 	// 两者均按需生成并缓存落库; TranslationMode/AnalysisMode 标记 rule(规则保底) 或 llm(LLM 润色)。
-	Translation     string `json:"translation"`      // AI 需求翻译正文(供接单方阅读, 无歧义需求书)
-	TranslationMode string `json:"translation_mode"` // rule | llm(空=未生成)
-	AnalysisJSON    string `json:"analysis_json"`    // AI 需求分析(内部 JSON, 由 reqai.Analysis 序列化)
-	AnalysisMode    string `json:"analysis_mode"`    // rule | llm(空=未生成)
-	Status      TaskStatus  `json:"status"`
-	OrgID       string      `json:"org_id,omitempty"` // 组织级发包归属(空=个人)
-	CreatedAt   int64       `json:"created_at"`
+	Translation     string     `json:"translation"`      // AI 需求翻译正文(供接单方阅读, 无歧义需求书)
+	TranslationMode string     `json:"translation_mode"` // rule | llm(空=未生成)
+	AnalysisJSON    string     `json:"analysis_json"`    // AI 需求分析(内部 JSON, 由 reqai.Analysis 序列化)
+	AnalysisMode    string     `json:"analysis_mode"`    // rule | llm(空=未生成)
+	Status          TaskStatus `json:"status"`
+	OrgID           string     `json:"org_id,omitempty"` // 组织级发包归属(空=个人)
+	CreatedAt       int64      `json:"created_at"`
 }
 
 // TaskSpec 结构化需求规格。M0 先用规则澄清兜底补齐, LLM 多轮澄清留待 P1-2。
 // 必填(影响 spec_complete 与可报价): Deliverables / RequiredFormat / DeadlineAt。
 // 建议(提升匹配精度): StyleRef / Samples。
 type TaskSpec struct {
-	Deliverables   string             `json:"deliverables"`    // 交付物形态与数量, 如 "10 张竖版海报"
-	RequiredFormat string             `json:"required_format"` // 交付格式与规范, 如 "PNG 1080×1080"
-	DeadlineAt     int64              `json:"deadline_at"`     // 期望交付截止(ms 时间戳), 0 表示未填
-	StyleRef       string             `json:"style_ref"`       // 风格/参考描述, 如 "极简风 / 附链接"
-	Samples        string             `json:"samples"`         // 参考样例/附件说明
-	Items          []RequirementItem  `json:"items,omitempty"` // 结构化需求清单(可选, 与 Deliverables 文本并存; 用于验收逐项比对)
+	Deliverables   string            `json:"deliverables"`    // 交付物形态与数量, 如 "10 张竖版海报"
+	RequiredFormat string            `json:"required_format"` // 交付格式与规范, 如 "PNG 1080×1080"
+	DeadlineAt     int64             `json:"deadline_at"`     // 期望交付截止(ms 时间戳), 0 表示未填
+	StyleRef       string            `json:"style_ref"`       // 风格/参考描述, 如 "极简风 / 附链接"
+	Samples        string            `json:"samples"`         // 参考样例/附件说明
+	Items          []RequirementItem `json:"items,omitempty"` // 结构化需求清单(可选, 与 Deliverables 文本并存; 用于验收逐项比对)
 }
 
 // RequirementItem 结构化需求清单项: 发单时由需求方逐条列出, 作为验收比对的"标尺"。
@@ -221,12 +221,12 @@ type OrderStatus string
 
 const (
 	OrderPendingEscrow     OrderStatus = "pending_escrow"     // 待托管(合规闸门未过则卡在此)
-	OrderActive            OrderStatus = "active"            // 托管成功, 进行中
-	OrderDelivering        OrderStatus = "delivering"        // 接单方交付中
-	OrderDelivered         OrderStatus = "delivered"         // 已交付, 待验收
-	OrderCompleted         OrderStatus = "completed"         // 验收完成
-	OrderDisputed          OrderStatus = "disputed"          // 纠纷中
-	OrderCancelled         OrderStatus = "cancelled"         // 已取消(按状态退款)
+	OrderActive            OrderStatus = "active"             // 托管成功, 进行中
+	OrderDelivering        OrderStatus = "delivering"         // 接单方交付中
+	OrderDelivered         OrderStatus = "delivered"          // 已交付, 待验收
+	OrderCompleted         OrderStatus = "completed"          // 验收完成
+	OrderDisputed          OrderStatus = "disputed"           // 纠纷中
+	OrderCancelled         OrderStatus = "cancelled"          // 已取消(按状态退款)
 	OrderPendingSettlement OrderStatus = "pending_settlement" // 合规未就绪, 等待结算
 )
 
@@ -282,8 +282,8 @@ type Order struct {
 	CreatedAt   int64       `json:"created_at"`
 
 	// P1-4 订单完整化扩展
-	MaxRevisions   int         `json:"max_revisions"`           // 改稿轮次上限(默认3)
-	Milestones     []Milestone `json:"milestones,omitempty"`    // 里程碑(仅 milestone 模式非空)
+	MaxRevisions   int         `json:"max_revisions"`          // 改稿轮次上限(默认3)
+	Milestones     []Milestone `json:"milestones,omitempty"`   // 里程碑(仅 milestone 模式非空)
 	SettlementMode string      `json:"settlement_mode"`        // lump / milestone
 	RefundCents    int64       `json:"refund_cents"`           // 退款金额(分)
 	RefundPct      int         `json:"refund_pct"`             // 退款比例(0-100)
@@ -293,7 +293,7 @@ type Order struct {
 	DisputeReason  string      `json:"dispute_reason,omitempty"` // 纠纷事由
 	DisputedBy     string      `json:"disputed_by,omitempty"`
 	DisputedAt     int64       `json:"disputed_at"`
-	ResolvedBy     string      `json:"resolved_by,omitempty"`   // 纠纷处理人(admin)
+	ResolvedBy     string      `json:"resolved_by,omitempty"` // 纠纷处理人(admin)
 	ResolvedAt     int64       `json:"resolved_at"`
 	ResolvedNote   string      `json:"resolved_note,omitempty"` // 纠纷处理结果说明
 	OrgID          string      `json:"org_id,omitempty"`        // 组织级发包归属(空=个人)
@@ -301,7 +301,7 @@ type Order struct {
 	// 验收逐项比对(需求方验收时填写, 留痕)
 	Acceptance     []AcceptanceItem `json:"acceptance,omitempty"`      // 各需求项验收结果
 	SevereMismatch bool             `json:"severe_mismatch,omitempty"` // 需求方判定需求与完成清单严重不符(前置条件: 才可发起纠纷)
-	AcceptedAt     int64            `json:"accepted_at,omitempty"`    // 验收时间
+	AcceptedAt     int64            `json:"accepted_at,omitempty"`     // 验收时间
 
 	// B2 自动报价: 接单方接单时填写的预期报价(分), 0 表示未填。供需求方比对其发布的预算, 作为协商依据。
 	ProviderQuoteCents int64 `json:"provider_quote_cents,omitempty"`
@@ -309,16 +309,20 @@ type Order struct {
 
 // Delivery 交付物(支持多轮改稿)
 type Delivery struct {
-	ID        string         `json:"id"`
-	OrderID   string         `json:"order_id"`
-	Round     int            `json:"round"`  // 第几轮交付
-	Content   string         `json:"content"` // 交付总说明(自由文本)
+	ID      string `json:"id"`
+	OrderID string `json:"order_id"`
+	Round   int    `json:"round"`   // 第几轮交付
+	Content string `json:"content"` // 交付总说明(自由文本)
 	// Link 交付物入口。平台不托管文件(二清与存储成本都不该压在撮合上),
 	// 所以交付物靠网盘/仓库/文档链接传递, 这一条是给需求方点开看的东西。
 	Link      string         `json:"link,omitempty"`
 	Items     []DeliveryItem `json:"items,omitempty"` // 本次交付逐需求项完成情况
-	Status    string         `json:"status"` // submitted / accepted / rejected
+	Status    string         `json:"status"`          // submitted / accepted / rejected
 	CreatedAt int64          `json:"created_at"`
+	// ReviewNote 需求方打回时的说明。这是接单方下一轮唯一知道"改什么"的依据,
+	// 所以它必须落在被打回的那一轮交付上, 而不是只存在订单里被下一轮覆盖。
+	ReviewNote string `json:"review_note,omitempty"`
+	ReviewedAt int64  `json:"reviewed_at,omitempty"`
 }
 
 // ComplianceItem 合规前置项
@@ -337,8 +341,8 @@ type Review struct {
 	ID           string `json:"id"`
 	OrderID      string `json:"order_id"`
 	TaskID       string `json:"task_id"`
-	ReviewerID   string `json:"reviewer_id"`  // 评价方(订单参与方)
-	RevieweeID   string `json:"reviewee_id"`  // 被评价方(订单另一方)
+	ReviewerID   string `json:"reviewer_id"`   // 评价方(订单参与方)
+	RevieweeID   string `json:"reviewee_id"`   // 被评价方(订单另一方)
 	ReviewerRole Role   `json:"reviewer_role"` // 评价方角色(用于展示)
 	Rating       int    `json:"rating"`        // 1-5
 	Comment      string `json:"comment"`
@@ -378,8 +382,8 @@ const (
 
 // AI 消息类型: 区分 AI 自动回复与人工采纳的 AI 建议
 const (
-	AITypeFAQ    = "faq"    // 规则意图匹配(默认, 零依赖)
-	AITypeLLM    = "llm"    // LLM 兜底(配置 ZANBUDDY_FAQ_LLM_API_KEY 时启用)
+	AITypeFAQ     = "faq"     // 规则意图匹配(默认, 零依赖)
+	AITypeLLM     = "llm"     // LLM 兜底(配置 ZANBUDDY_FAQ_LLM_API_KEY 时启用)
 	AITypeSuggest = "suggest" // AI 建议回复, 由真人审核后手动发送(辅助而非代发)
 )
 
@@ -399,13 +403,13 @@ type ChatMessage struct {
 // Conversation 会话(双方 + 可选订单关联, 含未读计数)
 type Conversation struct {
 	ID        string `json:"id"`
-	A         string `json:"a"`          // 一方 uid
-	B         string `json:"b"`          // 另一方 uid
-	OrderID   string `json:"order_id"`   // 关联订单(可选, 订单建立时写入)
-	LastBody  string `json:"last_body"`  // 最后一条消息预览
-	LastAt    int64  `json:"last_at"`    // 最后消息时间
-	AUnread   int    `json:"a_unread"`   // A 的未读数
-	BUnread   int    `json:"b_unread"`   // B 的未读数
+	A         string `json:"a"`         // 一方 uid
+	B         string `json:"b"`         // 另一方 uid
+	OrderID   string `json:"order_id"`  // 关联订单(可选, 订单建立时写入)
+	LastBody  string `json:"last_body"` // 最后一条消息预览
+	LastAt    int64  `json:"last_at"`   // 最后消息时间
+	AUnread   int    `json:"a_unread"`  // A 的未读数
+	BUnread   int    `json:"b_unread"`  // B 的未读数
 	UpdatedAt int64  `json:"updated_at"`
 }
 
@@ -447,13 +451,13 @@ const (
 // 落库持久化, 重启不丢; 未读聚合 + 已读标记。邮件/短信为骨架通道, 演示走平台内闭环。
 type Notification struct {
 	ID        string `json:"id"`
-	UID       string `json:"uid"`                  // 接收用户
-	Channel   string `json:"channel"`              // inapp/email/sms
+	UID       string `json:"uid"`     // 接收用户
+	Channel   string `json:"channel"` // inapp/email/sms
 	Title     string `json:"title"`
 	Body      string `json:"body"`
-	Status    string `json:"status"`              // unread/read
+	Status    string `json:"status"` // unread/read
 	CreatedAt int64  `json:"created_at"`
-	ReadAt    int64  `json:"read_at,omitempty"`    // 已读时间(未读为 0)
+	ReadAt    int64  `json:"read_at,omitempty"` // 已读时间(未读为 0)
 }
 
 // ---- P3 企业版治理(设计阶段最小骨架: 组织 / 成员 / 角色) ----
@@ -469,19 +473,19 @@ const (
 
 // Org 组织(企业租户)。OwnerID 为创建者 uid(组织主); 组织作为统一结算/开票主体走合规线 C。
 type Org struct {
-	ID        string `json:"id"`        // ORG-xxx
+	ID        string `json:"id"` // ORG-xxx
 	Name      string `json:"name"`
-	OwnerID   string `json:"owner_id"`  // 组织主 uid
-	Plan      string `json:"plan"`      // free / team / enterprise
-	Status    string `json:"status"`    // active / suspended
+	OwnerID   string `json:"owner_id"` // 组织主 uid
+	Plan      string `json:"plan"`     // free / team / enterprise
+	Status    string `json:"status"`   // active / suspended
 	CreatedAt int64  `json:"created_at"`
 }
 
 // OrgMember 组织成员与角色。
 type OrgMember struct {
-	OrgID   string `json:"org_id"`
-	UserID  string `json:"user_id"`
-	Role    string `json:"role"`
+	OrgID    string `json:"org_id"`
+	UserID   string `json:"user_id"`
+	Role     string `json:"role"`
 	JoinedAt int64  `json:"joined_at"`
 }
 
@@ -515,7 +519,7 @@ type Approval struct {
 	RefID       string `json:"ref_id,omitempty"` // 关联对象(如提现记录)
 	AmountCents int64  `json:"amount_cents"`
 	Status      string `json:"status"`
-	CreatedBy   string `json:"created_by"`          // 发起人 uid
+	CreatedBy   string `json:"created_by"` // 发起人 uid
 	ApprovedBy  string `json:"approved_by,omitempty"`
 	Note        string `json:"note,omitempty"`
 	CreatedAt   int64  `json:"created_at"`

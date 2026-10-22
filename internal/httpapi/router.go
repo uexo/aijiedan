@@ -53,6 +53,8 @@ func (s *Server) Routes() http.Handler {
 	// 接单方这一侧: 确认开工之后单子停在进行中, 交付是唯一能推着它走的一步。
 	mux.Handle("POST /api/v2/orders/{id}/deliveries", RequireAuth(http.HandlerFunc(s.deliverOrder)))
 	mux.Handle("GET /api/v2/orders/{id}/deliveries", RequireAuth(http.HandlerFunc(s.listDeliveries)))
+	mux.Handle("POST /api/v2/orders/{id}/accept", RequireAuth(http.HandlerFunc(s.acceptOrder)))
+	mux.Handle("POST /api/v2/orders/{id}/revisions", RequireAuth(http.HandlerFunc(s.reviseOrder)))
 
 	// 公开页: 免登录, 是信用资产的对外出口
 	mux.HandleFunc("GET /api/v2/public/profiles/{slug}", s.publicProfile)

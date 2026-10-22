@@ -57,6 +57,16 @@ var (
 	ErrRevisionUsed     = &Error{409, "REVISION_LIMIT", "改稿轮次用完了", "和需求方商量一下，或者走纠纷"}
 	ErrDeliverFailed    = &Error{500, "DELIVERY_FAILED", "没交上，请再试一次", ""}
 
+	// 验收这一侧。accept 与 revise 都由需求方发起, 所以资格错误直接用 ErrNotRequester。
+	ErrOrderNotReview   = &Error{409, "ORDER_NOT_TO_REVIEW", "这一单不在等验收", "刷新看看现在走到哪一步了"}
+	ErrNoDeliveryRecord = &Error{500, "DELIVERY_MISSING", "这一单还没有交付记录", "让接单方重新交付一次"}
+	// 打回打不动了, 是需求方在做决定, 说法要对着需求方:
+	// 接单方那个 REVISION_LIMIT 是在交付时看到的, 两种场景不该共用一句话。
+	ErrRevisionSpent   = &Error{409, "REVISION_LIMIT", "改稿轮次已经用完，不能再打回", "要么验收，要么走纠纷"}
+	ErrReviewNoteEmpty = &Error{400, "REVIEW_NOTE_EMPTY", "打回要写一句要改什么", "接单方只凭这句话改，写清楚哪几项不合格"}
+	ErrReviewNoteLong  = &Error{400, "REVIEW_NOTE_TOO_LONG", "打回说明太长了", "500 字以内，逐项说清哪几项不合格"}
+	ErrReviewFailed    = &Error{500, "REVIEW_FAILED", "没提交上，请再试一次", ""}
+
 	// 状态不对时的说法按情形分, 但对外只用一个错误码:
 	// 前端要处理的是"这一单现在不能交付", 具体卡在哪一句由 message 说清。
 	ErrNotStarted   = &Error{409, "ORDER_NOT_IN_PROGRESS", "这一单还没确认开工", "等需求方点头之后再交"}
@@ -71,6 +81,9 @@ const (
 	deliveryMaxRunes     = 1000
 	deliveryLinkMaxLen   = 500
 	deliveryNoteMaxRunes = 200
+	// 打回说明比退回原因长得多: 退回是"我不跟你合作", 一句话就够;
+	// 打回是"你这里不对", 要指明具体是哪几项、怎么不对。
+	reviewNoteMaxRunes = 500
 )
 
 // 退回原因最多留 60 字: 这是写给接单方看的一句话, 不是投诉信。
@@ -281,6 +294,81 @@ func (s *Service) Deliver(orderID, uid, content, link string, items []model.Deli
 	return o, d, nil
 }
 
+// Accept 需求方验收通过, 这一单算成交。
+//
+// 轻交易下它不碰钱: 没有托管账户要释放, 也不写钱包。将来开托管模式时,
+// 放款就是这一步里加的一行——所以千万别在页面或 handler 里另开一条"完成订单"的路。
+//
+// 验收会顺带关闭需求单: task 停在 matched 的话, "这条需求到底做完了没"
+// 永远没人能回答, 以后做「我发的需求」页只能靠订单反推。
+func (s *Service) Accept(orderID, uid string) (*model.Order, error) {
+	o, ok := s.st.GetOrder(orderID)
+	if !ok {
+		return nil, ErrOrderNotFound
+	}
+	// 资格先判: 不相干的人点到一单待验收的活, 该看到"这不是你的单"。
+	if o.RequesterID != uid {
+		return nil, ErrNotRequester
+	}
+	if o.Status != model.OrderDelivered {
+		return nil, ErrOrderNotReview
+	}
+	if err := s.st.ReviewOrder(orderID, true, "", model.Now()); err != nil {
+		return nil, mapReviewErr(err)
+	}
+	if fresh, ok := s.st.GetOrder(orderID); ok {
+		o = fresh
+	}
+	return o, nil
+}
+
+// Revise 需求方打回, 让接单方改一版。
+//
+// 原因必填且不截断: 这是接单方下一轮唯一知道"改什么"的依据。
+// 交付说明超长会报错而不是截断, 同理——截掉的可能正是被点名的那一项。
+func (s *Service) Revise(orderID, uid, note string) (*model.Order, error) {
+	o, ok := s.st.GetOrder(orderID)
+	if !ok {
+		return nil, ErrOrderNotFound
+	}
+	if o.RequesterID != uid {
+		return nil, ErrNotRequester
+	}
+	if o.Status != model.OrderDelivered {
+		return nil, ErrOrderNotReview
+	}
+
+	note = strings.TrimSpace(note)
+	if note == "" {
+		return nil, ErrReviewNoteEmpty
+	}
+	if r := []rune(note); len(r) > reviewNoteMaxRunes {
+		return nil, ErrReviewNoteLong
+	}
+
+	if err := s.st.ReviewOrder(orderID, false, note, model.Now()); err != nil {
+		return nil, mapReviewErr(err)
+	}
+	if fresh, ok := s.st.GetOrder(orderID); ok {
+		o = fresh
+	}
+	return o, nil
+}
+
+func mapReviewErr(err error) error {
+	switch {
+	case errors.Is(err, store.ErrOrderGone):
+		return ErrOrderNotFound
+	case errors.Is(err, store.ErrNotReviewable):
+		return ErrOrderNotReview
+	case errors.Is(err, store.ErrRevisionLimit):
+		return ErrRevisionSpent
+	case errors.Is(err, store.ErrNoDelivery):
+		return ErrNoDeliveryRecord
+	}
+	return ErrReviewFailed
+}
+
 // normalizeItems 校验并按需求项的原始顺序整理交付清单。
 //
 // 三条规则, 都是为了"需求方验收时能一项一项对上":
@@ -359,17 +447,23 @@ type DeliveryView struct {
 	// 本轮有几项没做完。前端不必自己数, 也不该假设 items 一定有值。
 	UndoneCount int   `json:"undone_count"`
 	CreatedAt   int64 `json:"created_at"`
+	// 这一轮被验收成什么样。submitted=还在等验收, rejected=被打回(带说明),
+	// accepted=验收通过。历史轮次保留, 接单方能翻回去看上次被指了哪几项。
+	ReviewNote string `json:"review_note,omitempty"`
+	ReviewedAt int64  `json:"reviewed_at,omitempty"`
 }
 
 func toDeliveryView(d *model.Delivery) DeliveryView {
 	v := DeliveryView{
-		ID:        d.ID,
-		Round:     d.Round,
-		Content:   d.Content,
-		Link:      d.Link,
-		Items:     d.Items,
-		Status:    d.Status,
-		CreatedAt: d.CreatedAt,
+		ID:         d.ID,
+		Round:      d.Round,
+		Content:    d.Content,
+		Link:       d.Link,
+		Items:      d.Items,
+		Status:     d.Status,
+		CreatedAt:  d.CreatedAt,
+		ReviewNote: d.ReviewNote,
+		ReviewedAt: d.ReviewedAt,
 	}
 	for _, it := range d.Items {
 		if !it.Done {
@@ -427,10 +521,10 @@ type OrderView struct {
 	Requirements []model.RequirementItem `json:"requirements,omitempty"`
 	// 交付进度: 轮到第几轮 / 上限几轮 / 最近一轮交付。
 	// 一次性给全, 前端不用为"还能不能改"再问一个接口。
-	DeliveryRound int            `json:"delivery_round"`
-	MaxRevisions  int            `json:"max_revisions"`
-	DeliveredAt   int64          `json:"delivered_at,omitempty"`
-	LastDelivery  *DeliveryView  `json:"last_delivery,omitempty"`
+	DeliveryRound int           `json:"delivery_round"`
+	MaxRevisions  int           `json:"max_revisions"`
+	DeliveredAt   int64         `json:"delivered_at,omitempty"`
+	LastDelivery  *DeliveryView `json:"last_delivery,omitempty"`
 }
 
 // MyOrders 我参与的单(接的 + 发的), 按创建时间倒序。
@@ -470,11 +564,11 @@ func (s *Service) View(o *model.Order, viewerID string) OrderView {
 		otherID = o.ProviderID
 	}
 	// 每个四态只有一个"该动的人":
-	//   待确认 → 需求方点头; 进行中 → 接单方交付。
-	// 待验收这一格先留空: 验收按钮还没接上, 设成 true 会让需求方看到
-	// 一个点了也没用的按钮, 比不催更糟。验收上来时, 这里补一行就够。
+	//   待确认 → 需求方点头; 进行中 → 接单方交付; 待验收 → 需求方验收/打回。
+	// 已完成与已取消没人要动, 都是 false。
 	v.NeedsMe = (st == model.LightToConfirm && v.Role == string(model.RoleRequester)) ||
-		(st == model.LightInProgress && v.Role == string(model.RoleProvider))
+		(st == model.LightInProgress && v.Role == string(model.RoleProvider)) ||
+		(st == model.LightToReview && v.Role == string(model.RoleRequester))
 
 	if u, ok := s.st.GetUser(otherID); ok {
 		if strings.TrimSpace(u.Name) != "" {

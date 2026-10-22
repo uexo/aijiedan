@@ -194,13 +194,20 @@ function renderMine() {
     el.navMineLabel.textContent = '我接的单';
     el.mineNote.textContent = '认领之后等需求方确认；确认开工的单在「进行中」，交完等验收。';
   } else if (pending > 0) {
-    el.mineTitle.textContent = '等你确认';
-    el.navMineLabel.textContent = '等你确认';
-    el.mineNote.textContent = '有人认领了你的需求。看一眼他的一句话定位，确认之后这一单才开始算。';
+    // "等你确认"和"等你验收"是两种事: 一个是还没开工, 一个是已经交了东西。
+    // 混成一个标题, 需求方会以为又来了个认领。
+    const toConfirm = items.filter((o) => o.needs_me && o.state === 'to_confirm').length;
+    const toReview = items.filter((o) => o.needs_me && o.state === 'to_review').length;
+    el.mineTitle.textContent = toReview === 0 ? '等你确认' : toConfirm === 0 ? '等你验收' : '等你处理';
+    el.navMineLabel.textContent = '等你处理';
+    const notes = [];
+    if (toReview > 0) notes.push('待验收的单里逐项对一遍交付内容，再决定通过还是打回。');
+    if (toConfirm > 0) notes.push('待确认的单看一眼接单人的一句话定位，确认之后这一单才开始算。');
+    el.mineNote.textContent = notes.join(' ');
   } else {
     el.mineTitle.textContent = '我发的单';
     el.navMineLabel.textContent = '我的单';
-    el.mineNote.textContent = '暂时没有等你确认的单。有人认领你的需求时，会出现在这里。';
+    el.mineNote.textContent = '暂时没有等你处理的单。有人认领或交付你的需求时，会出现在这里。';
   }
 
   el.mineN.textContent = String(n);
@@ -267,6 +274,7 @@ function deliveryBox(o) {
       ${undone > 0 ? html`<span class="state state-todo">${undone} 项未完成</span>` : ''}
     </div>
     <p class="dtext">${d.content}</p>
+    ${d.review_note ? html`<p class="dnote-back"><strong>需求方打回：</strong>${d.review_note}</p>` : ''}
     ${linkOk ? html`<p class="tiny mt6"><a href="${d.link}" target="_blank" rel="noopener noreferrer">打开交付物 →</a></p>` : ''}
     ${(d.items || []).length
       ? html`<ul class="ditems">
@@ -283,10 +291,49 @@ function deliveryBox(o) {
 }
 
 /* 这一单该谁动。按身份和四态分派，而不是堆一串 if:
-   接单方在进行中只有一个动作(交付)，需求方在待确认只有一个动作(点头)。 */
+   接单方在进行中只有一个动作(交付)，需求方在待确认只有一个动作(点头)，
+   需求方在待验收有两个动作(通过/打回)——两个都摆出来，但要说清后果。 */
 function actionUI(o) {
   if (o.role === 'provider' && o.state === 'in_progress') return deliverUI(o);
-  return confirmUI(o);
+  if (o.role === 'requester' && o.state === 'to_review') return reviewUI(o);
+  if (o.role === 'requester' && o.state === 'to_confirm') return confirmUI(o);
+  // 兜底给空: 万一 needs_me 算漏了, 宁可这一格没按钮, 也别把"确认开工"
+  // 挂到已经完成或者不属于他的单上。
+  return '';
+}
+
+/* 验收。通过是把这一单结束掉，打回是让它回到进行中:
+   两个动作都不该一点就走，所以都放在二次确认里。
+   打回必须写原因——接单方下一轮只凭这句话改。 */
+function reviewUI(o) {
+  const who = o.counterparty || '接单方';
+  const round = Number(o.delivery_round) || 0;
+  const max = Number(o.max_revisions) || 0;
+  const left = max > 0 ? max - round : 0;
+  return html`
+  <div class="oact" data-act="${o.id}">
+    <button class="btn btn-ink btn-sm" type="button" data-ask-accept="${o.id}">验收通过</button>
+    <button class="btn btn-quiet btn-sm" type="button" data-ask-revise="${o.id}">打回修改</button>
+    <span class="tiny muted">${max > 0 ? '第 ' + round + '/' + max + ' 轮' + (left > 0 ? '，还能打回 ' + left + ' 次' : '，轮次已用完') : ''}</span>
+  </div>
+
+  <div class="obox" hidden data-box="accept-${o.id}">
+    <p><strong>验收通过，这一单就算成交？</strong>通过后订单结束，需求单关闭，不能再打回。</p>
+    <div class="flex ac g8 wrapw">
+      <button class="btn btn-ink btn-sm" type="button" data-do-accept="${o.id}">确认通过</button>
+      <button class="btn btn-quiet btn-sm" type="button" data-close-box="${o.id}">再看看</button>
+    </div>
+  </div>
+
+  <div class="obox" hidden data-box="revise-${o.id}">
+    <p><strong>打回给 ${who} 重做？</strong>这一单回到进行中，第 ${round > 0 ? round + 1 : 1} 轮交付要把这里说的问题改掉。</p>
+    <label class="label" for="rv-${o.id}">要改什么（必填，500 字内）</label>
+    <textarea class="input" id="rv-${o.id}" rows="3" maxlength="500" placeholder="比如：第 2 项只说做了，没给可复现的地址；第 3 项口径和数据源对不上"></textarea>
+    <div class="flex ac g8 wrapw mt8">
+      <button class="btn btn-ink btn-sm" type="button" data-do-revise="${o.id}">确认打回</button>
+      <button class="btn btn-quiet btn-sm" type="button" data-close-box="${o.id}">取消</button>
+    </div>
+  </div>`;
 }
 
 /* 交付这一格要按需求清单逐项交代。没有清单的需求就只填说明和链接，
@@ -388,14 +435,20 @@ function paintWho(p) {
   const pct = Number(p && p.completeness) || 0;
 
   if (me && me.role !== 'provider') {
-    const pending = inboxItems.filter((o) => o.needs_me).length;
+    // 待确认与待验收是两件事: 一个还没开工, 一个已经交了东西。
+    // 混成一句"等你点头"，需求方会以为收到的是新认领。
+    const toConfirm = inboxItems.filter((o) => o.needs_me && o.state === 'to_confirm').length;
+    const toReview = inboxItems.filter((o) => o.needs_me && o.state === 'to_review').length;
     el.who.innerHTML = html`${name} · 发布方`;
     // 发布方点不了认领, 这句引导要跟着改, 不然是让人去做一件他做不了的事
     el.lead.textContent = '这些是平台上开放的需求。你发的单也在里面，标着「你发的」。';
-    if (pending > 0) {
-      el.banner.innerHTML = html`<strong>有 ${pending} 单等你点头。</strong>看一眼接单人的一句话定位和信用分，确认之后这一单才开始算。 <button class="btn btn-line btn-sm" type="button" id="jump-mine">去确认</button>`;
+    if (toReview > 0 || toConfirm > 0) {
+      const parts = [];
+      if (toReview > 0) parts.push(`${toReview} 单等你验收`);
+      if (toConfirm > 0) parts.push(`${toConfirm} 单等你点头`);
+      el.banner.innerHTML = html`<strong>有 ${parts.join('、')}。</strong>验收看交付内容对不对得上需求；点头看接单人的定位和信用分。 <button class="btn btn-line btn-sm" type="button" id="jump-mine">去处理</button>`;
     } else {
-      el.banner.innerHTML = html`<strong>你现在是发布方。</strong>有人认领你的需求时会出现在上面这块。发单入口还没开放。`;
+      el.banner.innerHTML = html`<strong>你现在是发布方。</strong>有人认领或交付你的需求时会出现在上面这块。发单入口还没开放。`;
     }
     el.banner.hidden = false;
     const jump = document.getElementById('jump-mine');
@@ -774,10 +827,76 @@ async function doDecline(id, btn) {
   }
 }
 
+async function doAccept(id, btn) {
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '验收中…';
+  try {
+    const o = await api('POST', '/orders/' + encodeURIComponent(id) + '/accept');
+    replaceItem(o);
+    renderMine();
+    toast('已验收，这一单完成', 'ok');
+  } catch (err) {
+    const code = err instanceof ApiError ? err.code : '';
+    if (code === 'ORDER_NOT_TO_REVIEW' || code === 'ORDER_NOT_FOUND') {
+      await loadOrders(); // 状态被别处改过, 让界面跟上
+      toast(err.message || '这一单现在不在待验收', 'warn');
+      return;
+    }
+    toast((err && err.message) || '没提交上，再试一次', 'err');
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
+async function doRevise(id, btn) {
+  const label = btn.textContent;
+  const box = el.mineList.querySelector('[data-box="revise-' + id + '"]');
+  const noteEl = document.getElementById('rv-' + id);
+  const note = noteEl ? noteEl.value.trim() : '';
+
+  // 空原因在提交前拦掉: 说了等于没说的打回, 接单方下一轮只能瞎猜
+  if (!note) {
+    toast('写一句要改什么，接单方才知道怎么改', 'warn');
+    if (noteEl) noteEl.focus();
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '打回中…';
+  try {
+    const o = await api('POST', '/orders/' + encodeURIComponent(id) + '/revisions', { reason: note });
+    replaceItem(o);
+    renderMine();
+    toast('已打回，等' + (o.counterparty || '接单方') + '再交一版', 'ok');
+  } catch (err) {
+    const code = err instanceof ApiError ? err.code : '';
+    // 轮次用完是这一格特有的死路: 只能验收或走纠纷, 得让界面显示出来
+    if (code === 'REVISION_LIMIT' || code === 'ORDER_NOT_TO_REVIEW' || code === 'ORDER_NOT_FOUND') {
+      await loadOrders();
+      toast(err.message || '这一单现在不能打回', 'warn');
+      return;
+    }
+    toast((err && err.message) || '没打回上，再试一次', 'err');
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
 el.mineList.addEventListener('click', (e) => {
   const askC = e.target.closest('[data-ask-confirm]');
   if (askC) {
     openBox(askC.dataset.askConfirm, 'confirm');
+    return;
+  }
+  const askA = e.target.closest('[data-ask-accept]');
+  if (askA) {
+    openBox(askA.dataset.askAccept, 'accept');
+    return;
+  }
+  const askR = e.target.closest('[data-ask-revise]');
+  if (askR) {
+    openBox(askR.dataset.askRevise, 'revise');
     return;
   }
   const askD = e.target.closest('[data-ask-decline]');
@@ -806,7 +925,17 @@ el.mineList.addEventListener('click', (e) => {
     return;
   }
   const goDel = e.target.closest('[data-do-deliver]');
-  if (goDel) doDeliver(goDel.dataset.doDeliver, goDel);
+  if (goDel) {
+    doDeliver(goDel.dataset.doDeliver, goDel);
+    return;
+  }
+  const goA = e.target.closest('[data-do-accept]');
+  if (goA) {
+    doAccept(goA.dataset.doAccept, goA);
+    return;
+  }
+  const goR = e.target.closest('[data-do-revise]');
+  if (goR) doRevise(goR.dataset.doRevise, goR);
 });
 
 el.navMine.addEventListener('click', () => {

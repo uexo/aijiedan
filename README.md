@@ -384,6 +384,8 @@ P3 企业版从「最小骨架」推向可商用：组织作为统一结算主�
 | POST | `/api/v2/orders/{id}/decline` | 需求方退回，订单取消且任务重新开放；body `{reason}` 可选，超 60 字截断 |
 | POST | `/api/v2/orders/{id}/deliveries` | 接单方交付，订单 active → delivered（四态：进行中 → 待验收）；body `{content, link, items[]}`，201 返回订单视图 |
 | GET | `/api/v2/orders/{id}/deliveries` | 这一单的交付记录（含历史轮次），仅交易双方可读 |
+| POST | `/api/v2/orders/{id}/accept` | 需求方验收通过，订单 delivered → completed（四态：已完成），需求单同时关闭 |
+| POST | `/api/v2/orders/{id}/revisions` | 需求方打回，订单 delivered → delivering（四态：回到进行中）；body `{reason}` 必填，500 字内 |
 | GET | `/api/v2/me/orders` | 我参与的单（接的 + 发的），带四态、对端定位/信用分、`needs_me`、交付轮次与最近一轮交付 |
 | GET | `/api/v2/meta/categories` | 类目清单，前端筛选条的唯一来源 |
 | GET | `/api/v2/public/profiles/{slug}` | 公开档案，免登录 |
@@ -431,16 +433,42 @@ v2 是轻交易：**确认开工不碰钱**，不预扣款、不进托管。将�
 - **只有进行中能交**。未确认开工 409「还没确认开工」；已交付 409「已经交付过了」；已结束 409「已经结束了」。对外统一 `ORDER_NOT_IN_PROGRESS`，具体卡在哪由 message 说清。
 - **说明必填、有上限**：`content` 空白 400 `DELIVERY_EMPTY`，超 1000 字 400 `DELIVERY_TOO_LONG`（不静默截断——截掉的可能是最关键的验收说明）。`link` 只收 http/https，最长 500。
 - **有需求清单就必须逐项交代**：缺项 / 不存在的项 / 重复项 400 `DELIVERY_ITEM_INVALID`（message 指出是哪几项）；没做完的项不写原因 400 `DELIVERY_ITEM_NOTE`。
-- **轮次上限** `max_revisions`（默认 3）。这个上限要等「验收打回」接上才有意义，现在先守住不退化成无限提交。
+- **轮次上限** `max_revisions`（默认 3）。轮次用完后需求方不能再打回，只能验收或走纠纷——否则打回之后接单方交不出下一轮，等于把单子打死。
 
 交付记录与订单状态在同一个原子点落库（`Store.DeliverOrder`：内存模式一把锁，MySQL 一个事务 +
 `SELECT ... FOR UPDATE`）。轮次在实现内部算——两个并发的提交各自 Count 一次再 +1，会同时拿到第 2 轮。
 
-`needs_me` 跟着状态走：待确认 = 需求方，进行中 = 接单方，待验收先留空——验收按钮还没接上，
-给一个点了没用的按钮比不催更糟。待验收状态下双方都能读到最近一轮交付（`last_delivery`，含逐项结果与未完成数）。
+`needs_me` 跟着状态走：待确认 = 需求方，进行中 = 接单方，待验收 = 需求方。
+已完成与已取消没人要动。待验收状态下双方都能读到最近一轮交付（`last_delivery`，含逐项结果与未完成数）。
 
 前端：大厅「我接的单」里，进行中的单直接展开交付表单——说明 + 链接 + 按需求清单逐项勾选与备注；
 顶部横幅提醒"有 N 单该交付了"；交付后这一条变成待验收，双方都能看到同一份内容。
+
+### 验收与打回
+
+交付只是"有东西可看"。需求方看完必须能做两件事之一，否则单子会永远停在待验收：
+
+- `POST /orders/{id}/accept` → 订单 `completed`（四态 = 已完成），**同一个事务里把需求单置为 `closed`**。
+  需求单停在 `matched` 的话，"这条需求到底做完了没"永远没人能回答。
+- `POST /orders/{id}/revisions` → 订单回到 `delivering`（四态 = 进行中），接单方按打回说明再交一版。
+
+规则与交付那一侧对称：
+
+- **只有这一单的需求方能验收/打回**，接单方、别的接单方 403 `ROLE_NOT_REQUESTER`；资格先判、状态后判。
+- **只有待验收能动**：未交付、已打回、已完成一律 409 `ORDER_NOT_TO_REVIEW`。
+- **打回原因必填、不截断**：空白 400 `REVIEW_NOTE_EMPTY`，超 500 字 400 `REVIEW_NOTE_TOO_LONG`。
+  接单方下一轮只凭这句话改，截掉的可能正是被点名的那一项。
+- **轮次用完不能再打回**：最后一轮已经用满 `max_revisions` 时 409 `REVISION_LIMIT`，message 面向需求方
+  （"不能再打回，要么验收要么走纠纷"）——接单方交付时看到的 `REVISION_LIMIT` 是另一句话，两种场景不共用文案。
+
+验收结论写在**被打回/通过的那一轮交付**上（`delivery.status` = `submitted|accepted|rejected`，
+外加 `review_note` / `reviewed_at`），历史轮次保留：接单方能翻回去看上一版被指了哪几项。
+打回说明存在订单上会被下一轮覆盖，所以只能存在交付记录里。
+
+`Store.ReviewOrder` 是同一个原子点（内存一把锁，MySQL 事务 + 行锁）：只改订单不改交付，打回原因就丢了；
+只改交付不改订单，单子永远停在待验收，需求方点多少次都没反应。
+
+轻交易下**验收不碰钱**：没有托管账户要释放，也不写钱包。将来开托管模式，放款就是在 `trade.Accept` 里加一行。
 
 ### 会话
 
@@ -511,17 +539,19 @@ mysql -h192.168.3.18 -uroot -p zanbuddy < migrations/002_light_trade.sql
 | `13800000003` | 跨境小团队（R003） | 同上 |
 
 需求方这一侧没有单独的页面：登录后落大厅，面板标题按「有没有事等你」在
-「等你确认」和「我发的单」之间切换——全在进行了还挂着「等你确认」，是在催一件已经做完的事。
+「等你确认」「等你验收」「等你处理」和「我发的单」之间切换——全在进行了还挂着「等你确认」，
+是在催一件已经做完的事；把验收也写成「等你确认」，会让人以为又来了个认领。
 
 ### 验收
 
 ```bash
 python test/test_m0_v2.py      # 44 项：健康检查、发码、凭证、登录注册、CSRF、档案规则、公开页白名单
 python test/test_m0_hall.py    # 70 项：档案落库比对、角色口径、大厅筛选/排序/分页/脱敏、类目清单
-python test/test_m0_claim.py   # 40 项：谁能认领、认领后下架、重复认领、我的单、并发抢单只成一单
+python test/test_m0_claim.py   # 41 项：谁能认领、认领后下架、重复认领、我的单、并发抢单只成一单
 python test/test_m0_confirm.py # 62 项：谁能点头、确认进入进行中、退回后重新开放、原因截断、并发确认只算一次
 python test/test_m0_deliver.py # 69 项：谁能交付、未开工/重复交付、说明与链接校验、逐项清单、待验收双方可见
-node web/app/_flow.mjs         # 44 项：真浏览器 登录→填档案→大厅→认领→点头→按清单交付→需求方看交付，截图到 web/app/_shots/
+python test/test_m0_accept.py  # 82 项：谁能验收、打回原因必填不截断、轮次用完不能再打回、并发验收只算一次
+node web/app/_flow.mjs         # 49 项：真浏览器 登录→填档案→大厅→认领→点头→按清单交付→打回→重交→验收，截图到 web/app/_shots/
 ```
 
 `test_m0_confirm.py` 不写死任务号：它从大厅里找两张开放需求按需求方手机号登录，
@@ -529,6 +559,13 @@ node web/app/_flow.mjs         # 44 项：真浏览器 登录→填档案→大�
 
 `test_m0_deliver.py` 用种子里的 `T-DEMO-001`（带 3 项需求清单）与 `T-DEMO-002`（无清单）各走一遍：
 这两条单在 MySQL 模式下也验证了 `delivery.items_json` / `link` 的落库与读回。
+
+`test_m0_accept.py` 三张单分工：`T-DEMO-001` 走主链路（打回 → 重交 → 验收），
+`T-DEMO-002` 连交三轮验证轮次上限，`T-DEMO-003` 用两个会话并发验收验证只成一次。
+
+> **本机坑**：Python 3.13（托管版）在这台 Windows 上与本服务偶发连接中止（10053/10054），
+> curl 与浏览器都不复现。测试统一用系统 Python 3.11 跑；脚本里对 GET 会自动重试，
+> 写请求重放会撞"状态已变"，所以宁可抛异常也不给出假失败。
 
 ## 核心 API（前缀 `/api/v1`）
 
