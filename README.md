@@ -383,6 +383,7 @@ P3 企业版从「最小骨架」推向可商用：组织作为统一结算主�
 | GET | `/api/v2/me/tasks` | 我发的需求（不限状态），按创建时间倒序；没人接的单只在这里能被找回来 |
 | POST | `/api/v2/tasks/{id}/take` | 接单方认领；409 `TASK_TAKEN` 表示已被接走，403 `ROLE_NOT_PROVIDER` / `PROFILE_INCOMPLETE` 表示没资格 |
 | POST | `/api/v2/tasks/{id}/withdraw` | 发单方撤回；只对还挂在大厅（open）的单生效，409 `TASK_ALREADY_TAKEN` 表示已有人接（走订单侧退回），403 `NOT_TASK_OWNER` 表示不是他的单 |
+| GET | `/api/v2/tasks/{id}/matches` | 「谁能接」：最多 3 张候选卡，每张带最多 3 条带锚点的理由；仅发单方可读，单已不在 open 返 409 `TASK_NOT_OPEN` |
 | POST | `/api/v2/orders/{id}/confirm` | 需求方点头，订单 pending_escrow → active（四态：待确认 → 进行中） |
 | POST | `/api/v2/orders/{id}/decline` | 需求方退回，订单取消且任务重新开放；body `{reason}` 可选，超 60 字截断 |
 | POST | `/api/v2/orders/{id}/deliveries` | 接单方交付，订单 active → delivered（四态：进行中 → 待验收）；body `{content, link, items[]}`，201 返回订单视图 |
@@ -571,10 +572,11 @@ mysql -h192.168.3.18 -uroot -p zanbuddy < migrations/002_light_trade.sql
 ### 验收
 
 ```bash
-bash test/run_all_m0.sh        # 一次跑完下面八套：每条用例前重置库 + 干净重启服务
+bash test/run_all_m0.sh        # 一次跑完下面九套：每条用例前重置库 + 干净重启服务
 python test/test_m0_v2.py      # 44 项：健康检查、发码、凭证、登录注册、CSRF、档案规则、公开页白名单
 python test/test_m0_hall.py    # 70 项：档案落库比对、角色口径、大厅筛选/排序/分页/脱敏、类目清单
 python test/test_m0_publish.py # 92 项：谁能发单、四项必填与边界值、长字段拦截、澄清提示、我发的需求、自己发自己接不到
+python test/test_m0_matches.py # 67 项：谁能看「谁能接」、最多 3 卡、谁进候选池、理由锚点指得出真实凭据、干完一单理由变多
 python test/test_m0_claim.py   # 40 项：谁能认领、认领后下架、重复认领、我的单、并发抢单只成一单
 python test/test_m0_confirm.py # 62 项：谁能点头、确认进入进行中、退回后重新开放、原因截断、并发确认只算一次
 python test/test_m0_deliver.py # 69 项：谁能交付、未开工/重复交付、说明与链接校验、逐项清单、待验收双方可见
@@ -604,6 +606,14 @@ node web/app/_flow.mjs         # 66 项：真浏览器 登录→填档案→大�
 「撤完之后大厅里搜不到、`/me/tasks` 里还查得到、状态是 `withdrawn` 而不是 `closed`」，
 以及「别人撤我的单只拿到 403，不会被顺带告知这单已经有人接了」——
 后一条是越权探测的防线：错误顺序写反，等于把对手的进展告诉外人。
+
+`test_m0_matches.py` 也不依赖种子：五个接单方各占一种情况（对得上 / 只沾边 / 完全无关 /
+没建档 / 暂停接单），证明只有「有档案、没暂停、说得出为什么是他」的人进候选池。
+核心是**理由必须指得出凭据**：技能理由指向档案里真有的标签，订单理由的 `anchor.ref`
+就是那一单的订单号。让 P1 真跑完一单再回来看，理由会多一条、锚点指向这笔真实订单；
+但**分数不动**——历史因子只看互评均值（`AvgRating/5×20`），而互评在 M4 才产生。
+分数若在这时上涨，就说明有人拿「完成单数」冒充评分，卡上的理由却写不出「客户给了几星」。
+
 
 > **本机坑（已找到根因，2026-10-22）**：以前记成「Python 与本服务偶发连接中止（10053/10054），
 > 测试只能靠重试糊过去」。真正的根因在**服务端**：有些写端点的请求体没被读（认领只带 `{}`、

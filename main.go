@@ -19,6 +19,7 @@ import (
 	"zanbuddy/internal/identity"
 	"zanbuddy/internal/im"
 	"zanbuddy/internal/kyc"
+	"zanbuddy/internal/match"
 	"zanbuddy/internal/model"
 	"zanbuddy/internal/notify"
 	"zanbuddy/internal/payment"
@@ -106,9 +107,11 @@ func main() {
 	idSvc := identity.New(st, os.Getenv("ZANBUDDY_SMS_PROVIDER") == "" || os.Getenv("ZANBUDDY_SMS_PROVIDER") == "log")
 	tradeSvc := trade.New(st)
 	demandSvc := demand.New(st)
+	// 匹配域: Embedder 走 match.NewEmbedder(), 未配 LLM 时自动退回词袋保底。
+	matchSvc := match.NewService(st, match.NewEmbedder())
 
 	mux := http.NewServeMux()
-	mux.Handle("/api/v2/", httpapi.NewServer(idSvc, tradeSvc, demandSvc, st, "2.0.0").Routes())
+	mux.Handle("/api/v2/", httpapi.NewServer(idSvc, tradeSvc, demandSvc, matchSvc, st, "2.0.0").Routes())
 	mux.Handle("/api/", h)
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web")))) // 用户画像页等静态前端
 	mux.Handle("/", h)                                                                     // 根路径落地页

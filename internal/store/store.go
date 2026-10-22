@@ -99,6 +99,14 @@ type Store interface {
 	PutMatch(m *model.MatchRecord)
 	GetMatch(id string) (*model.MatchRecord, bool)
 	ListMatchesByTask(taskID string) []*model.MatchRecord
+	// ReplaceMatchReasons 用这批理由整体替换一次匹配的理由(先删后插, 同一原子点)。
+	//
+	// 为什么是"替换"而不是"追加": 推荐位每被刷新一次就重新算一次理由,
+	// 追加的话库里会积累同一 match 的 N 轮快照, 事后回溯"当时推荐理由是什么"
+	// 只能靠时间戳猜。替换之后 match_id 下的理由永远只有当前这一版,
+	// match_record.created_at 保留首次推荐时间, 用来回答"这单什么时候开始匹配的"。
+	ReplaceMatchReasons(matchID string, rs []*model.MatchReason)
+	ListMatchReasons(matchID string) []*model.MatchReason
 	PutOrder(o *model.Order)
 	GetOrder(id string) (*model.Order, bool)
 	// TransitionOrder 把订单从 from 改到 to, 条件是"此刻仍是 from"。
@@ -206,6 +214,7 @@ type MemStore struct {
 	tasks         map[string]*model.Task
 	taskIndex     map[string]map[string]bool // 倒排索引: 拉丁词 -> 任务ID集合(加速关键词检索)
 	matches       map[string]*model.MatchRecord
+	matchReasons  map[string][]*model.MatchReason // key: match_id
 	orders        map[string]*model.Order
 	deliveries    map[string]*model.Delivery
 	reviews       map[string]*model.Review
@@ -233,6 +242,7 @@ func NewMem() *MemStore {
 		tasks:         map[string]*model.Task{},
 		taskIndex:     map[string]map[string]bool{},
 		matches:       map[string]*model.MatchRecord{},
+		matchReasons:  map[string][]*model.MatchReason{},
 		orders:        map[string]*model.Order{},
 		deliveries:    map[string]*model.Delivery{},
 		reviews:       map[string]*model.Review{},
@@ -676,6 +686,31 @@ func (s *MemStore) ListMatchesByTask(taskID string) []*model.MatchRecord {
 		if m.TaskID == taskID {
 			out = append(out, m)
 		}
+	}
+	return out
+}
+
+// ReplaceMatchReasons 整体替换, 按 rank_no 排好返回。
+// 副本写入: 调用方随后可能继续用自己那份切片, 直接存引用会让它和库里的"同一份"被改乱。
+func (s *MemStore) ReplaceMatchReasons(matchID string, rs []*model.MatchReason) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cp := make([]*model.MatchReason, len(rs))
+	for i, r := range rs {
+		c := *r
+		cp[i] = &c
+	}
+	s.matchReasons[matchID] = cp
+}
+
+func (s *MemStore) ListMatchReasons(matchID string) []*model.MatchReason {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	src := s.matchReasons[matchID]
+	out := make([]*model.MatchReason, len(src))
+	for i, r := range src {
+		c := *r
+		out[i] = &c
 	}
 	return out
 }

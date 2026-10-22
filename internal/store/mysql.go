@@ -364,6 +364,7 @@ func (s *mysqlStore) ClaimOpenTask(taskID string) bool {
 	}
 	return n == 1
 }
+
 // WithdrawOpenTask 条件 UPDATE 一次搞定"是不是他的单 + 此刻还开不开放"。
 // 把 requester_id 写进 WHERE 而不只是校验一次, 是为了让越权与"手慢了"在
 // RowsAffected 上都表现为 0, 由上层再读一次库给出准确措辞; 写库本身绝不越权。
@@ -615,6 +616,51 @@ func (s *mysqlStore) ListMatchesByTask(taskID string) []*model.MatchRecord {
 			return nil
 		}
 		out = append(out, m)
+	}
+	return out
+}
+
+// ReplaceMatchReasons 在一个事务里删旧插新。
+//
+// 不在 Go 侧先查再拼: 两个人同时刷新推荐页时, 查-删-插之间会互相插队,
+// 最后 match_id 下留着两版理由混在一起, rank_no 还会重复。
+// DELETE + INSERT 放在同一个事务里, 外面只可能看到替换前或替换后。
+func (s *mysqlStore) ReplaceMatchReasons(matchID string, rs []*model.MatchReason) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.Exec("DELETE FROM match_reason WHERE match_id=?", matchID); err != nil {
+		return
+	}
+	for _, r := range rs {
+		if _, err := tx.Exec(`INSERT INTO match_reason
+			(id,match_id,rank_no,text,anchor_type,anchor_ref,anchor_label,factor,factor_score,created_at)
+			VALUES (?,?,?,?,?,?,?,?,?,?)`,
+			r.ID, r.MatchID, r.RankNo, r.Text, r.AnchorType, r.AnchorRef,
+			r.AnchorLabel, r.Factor, r.FactorScore, r.CreatedAt); err != nil {
+			return
+		}
+	}
+	_ = tx.Commit()
+}
+
+func (s *mysqlStore) ListMatchReasons(matchID string) []*model.MatchReason {
+	rows, err := s.db.Query(`SELECT id,match_id,rank_no,text,anchor_type,anchor_ref,anchor_label,factor,factor_score,created_at
+		FROM match_reason WHERE match_id=? ORDER BY rank_no`, matchID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []*model.MatchReason
+	for rows.Next() {
+		r := &model.MatchReason{}
+		if err := rows.Scan(&r.ID, &r.MatchID, &r.RankNo, &r.Text, &r.AnchorType, &r.AnchorRef,
+			&r.AnchorLabel, &r.Factor, &r.FactorScore, &r.CreatedAt); err != nil {
+			return nil
+		}
+		out = append(out, r)
 	}
 	return out
 }

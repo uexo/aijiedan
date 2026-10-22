@@ -220,6 +220,28 @@ type MatchRecord struct {
 	CreatedAt  int64       `json:"created_at"`
 }
 
+// MatchReason 一条推荐理由。
+//
+// 为什么理由要单独一张表, 而不是把文案拼进 match_record.reason:
+// 需求方点理由上的 ↗ 要看凭据(哪个订单、哪条背书、哪个技能标签), 拼成一行的字符串里
+// 没有位置放这个引用; 而且审计要求"给定一次历史匹配, 能复算当时每个因子的得分",
+// 这要求每条理由自己带 factor 与 factor_score, 否则事后只有一个总分可看。
+//
+// 一条 match 最多 3 条理由, 也可以只有 2 条甚至 1 条——产不出锚点的因子不编造,
+// 所以前端不能按"一定有 3 条"布局。
+type MatchReason struct {
+	ID          string `json:"id"`
+	MatchID     string `json:"match_id"`
+	RankNo      int    `json:"rank_no"`      // 1..3, 展示顺序
+	Text        string `json:"text"`         // 展示文案(人话)
+	AnchorType  string `json:"anchor_type"`  // skill / order / endorsement
+	AnchorRef   string `json:"anchor_ref"`   // 锚点实体 ID 或 URL
+	AnchorLabel string `json:"anchor_label"` // 抽屉里显示的来源说明
+	Factor      string `json:"factor"`       // skill / credit / history
+	FactorScore int    `json:"factor_score"` // 该因子的原始得分, 支持复算
+	CreatedAt   int64  `json:"created_at"`
+}
+
 // OrderStatus 订单状态机
 type OrderStatus string
 

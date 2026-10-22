@@ -5,22 +5,25 @@ import (
 
 	"zanbuddy/internal/demand"
 	"zanbuddy/internal/identity"
+	"zanbuddy/internal/match"
 	"zanbuddy/internal/store"
 	"zanbuddy/internal/trade"
 )
 
-// Server v2 接口。依赖只有身份域、交易域、需求域和存储(公开页要按 slug 查人)。
+// Server v2 接口。依赖只有身份域、交易域、需求域、匹配域和存储(公开页要按 slug 查人)。
 // 其他域接进来时也走这个结构, 每个域一个字段, 装配在 main 里完成。
 type Server struct {
 	Identity *identity.Service
 	Trade    *trade.Service
 	Demand   *demand.Service
+	Match    *match.Service
 	Store    store.Store
 	Version  string
 }
 
-func NewServer(idsvc *identity.Service, tradeSvc *trade.Service, demandSvc *demand.Service, st store.Store, version string) *Server {
-	return &Server{Identity: idsvc, Trade: tradeSvc, Demand: demandSvc, Store: st, Version: version}
+func NewServer(idsvc *identity.Service, tradeSvc *trade.Service, demandSvc *demand.Service,
+	matchSvc *match.Service, st store.Store, version string) *Server {
+	return &Server{Identity: idsvc, Trade: tradeSvc, Demand: demandSvc, Match: matchSvc, Store: st, Version: version}
 }
 
 // Routes 显式路由表。
@@ -51,6 +54,8 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /api/v2/me/tasks", RequireAuth(http.HandlerFunc(s.myTasks)))
 	// 发错了、不想发了要能收回来。只对没人接的单开放, 有人接了走订单侧退回。
 	mux.Handle("POST /api/v2/tasks/{id}/withdraw", RequireAuth(http.HandlerFunc(s.withdrawTask)))
+	// 匹配: 发单之后看"谁能接"。只给发单本人看, 别人看到的是这单有没有人抢。
+	mux.Handle("GET /api/v2/tasks/{id}/matches", RequireAuth(http.HandlerFunc(s.taskMatches)))
 
 	// 交易: 认领与我的单。认领是写操作, 必须登录。
 	mux.Handle("POST /api/v2/tasks/{id}/take", RequireAuth(http.HandlerFunc(s.claimTask)))

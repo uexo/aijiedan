@@ -347,3 +347,21 @@ CREATE TABLE `webhook_delivery` (
   KEY `idx_org` (`org_id`),
   KEY `idx_webhook` (`webhook_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 推荐理由(FR-03)。一条 match 最多 3 条理由, 产不出锚点的因子不生成,
+-- 所以 rank_no 不保证连续、也不保证有三行。
+-- 全列 NOT NULL 且带默认值: 规避 Scan 遇到 NULL 报 converting NULL to string。
+CREATE TABLE `match_reason` (
+  `id`           VARCHAR(32)  NOT NULL,
+  `match_id`     VARCHAR(32)  NOT NULL,
+  `rank_no`      TINYINT      NOT NULL DEFAULT 0,
+  `text`         VARCHAR(200) NOT NULL DEFAULT '',
+  `anchor_type`  VARCHAR(16)  NOT NULL DEFAULT '',
+  `anchor_ref`   VARCHAR(64)  NOT NULL DEFAULT '',
+  `anchor_label` VARCHAR(120) NOT NULL DEFAULT '',
+  `factor`       VARCHAR(16)  NOT NULL DEFAULT '',
+  `factor_score` INT          NOT NULL DEFAULT 0,
+  `created_at`   BIGINT       NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_match` (`match_id`, `rank_no`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
