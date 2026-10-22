@@ -49,6 +49,8 @@ func (s *Server) Routes() http.Handler {
 	// 发单: 要登录(得知道是谁发的), 但不需要档案——按 PRD 只对供给方强制。
 	mux.Handle("POST /api/v2/tasks", RequireAuth(http.HandlerFunc(s.publishTask)))
 	mux.Handle("GET /api/v2/me/tasks", RequireAuth(http.HandlerFunc(s.myTasks)))
+	// 发错了、不想发了要能收回来。只对没人接的单开放, 有人接了走订单侧退回。
+	mux.Handle("POST /api/v2/tasks/{id}/withdraw", RequireAuth(http.HandlerFunc(s.withdrawTask)))
 
 	// 交易: 认领与我的单。认领是写操作, 必须登录。
 	mux.Handle("POST /api/v2/tasks/{id}/take", RequireAuth(http.HandlerFunc(s.claimTask)))
@@ -65,7 +67,9 @@ func (s *Server) Routes() http.Handler {
 	// 公开页: 免登录, 是信用资产的对外出口
 	mux.HandleFunc("GET /api/v2/public/profiles/{slug}", s.publicProfile)
 
-	return WithTrace(WithAuth(RequireCSRF(mux)))
+	// 最外层是"写完响应前先把请求体读干净": 否则未读的 body 会让关连接变成 RST,
+	// 客户端拿到的不是业务结果而是"连接被重置"。见 drain.go 的说明。
+	return WithDrainBody(WithTrace(WithAuth(RequireCSRF(mux))))
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {

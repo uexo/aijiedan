@@ -3,25 +3,54 @@
 覆盖: 健康检查、发码、凭证校验、登录注册、CSRF 双提交、档案完整度、公开页字段白名单。
 只依赖标准库, 随项目长期保留。
 """
-import json
+import http.client
 import http.cookiejar
+import json
 import random
+import time
 import urllib.request
 import urllib.parse
 import urllib.error
 import sys
 
 BASE = "http://127.0.0.1:8082"
+# 直连, 不走系统代理: 本机代理会把回环请求也接过去, 偶发掐断连接
+NO_PROXY = urllib.request.ProxyHandler({})
+
+# 客户端连接层抖动, 见 call() 的说明
+CONN_ERRORS = (ConnectionResetError, ConnectionAbortedError, http.client.RemoteDisconnected)
+# 重放写请求会拿到这些"状态已经变了"的错误码: 它们不代表业务结论, 不能当响应返回
+REPLAY_CONFLICTS = {
+    "TASK_TAKEN", "TASK_NOT_OPEN", "TASK_ALREADY_TAKEN", "TASK_CHANGED",
+    "ORDER_NOT_PENDING", "ORDER_NOT_TO_REVIEW", "ORDER_NOT_IN_PROGRESS",
+    "REVISION_LIMIT", "DELIVERY_DUPLICATE", "CODE_ALREADY_USED", "SLUG_TAKEN",
+}
 # 每次跑用新号, 否则第二次进来是登录而不是注册, is_new 断言就失效
 PHONE = "139" + "".join(random.choice("0123456789") for _ in range(8))
 PASS = FAIL = 0
 FAILS = []
 
 jar = http.cookiejar.CookieJar()
-opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+opener = urllib.request.build_opener(NO_PROXY, urllib.request.HTTPCookieProcessor(jar))
 
 
 def call(method, path, body=None, csrf=False, auth=True):
+    # 连接层抖动与重试规则, 同各 Client.call 的说明
+    first = None
+    for attempt in range(3):
+        try:
+            st, d = _call(method, path, body, csrf)
+        except CONN_ERRORS as e:
+            first = first or e
+            time.sleep(0.15 * (attempt + 1))
+            continue
+        if first is not None and st >= 400 and ((d.get("error") or {}).get("code") in REPLAY_CONFLICTS):
+            raise first
+        return st, d
+    raise first
+
+
+def _call(method, path, body, csrf):
     url = BASE + path
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method=method)
@@ -33,7 +62,10 @@ def call(method, path, body=None, csrf=False, auth=True):
                 req.add_header("X-CSRF-Token", c.value)
     try:
         with opener.open(req, timeout=10) as r:
-            return r.status, json.loads(r.read().decode())
+            raw = r.read()
+            if not raw:
+                raise ConnectionResetError('empty body')
+            return r.status, json.loads(raw.decode())
     except urllib.error.HTTPError as e:
         return e.code, json.loads(e.read().decode())
 
@@ -130,7 +162,7 @@ check("已置 onboarded", u2.get("onboarded") is True, str(u2)[:150])
 
 print("[9] 公开页")
 slug = user.get("slug")
-anon = urllib.request.build_opener()  # 不带 cookie, 模拟陌生人
+anon = urllib.request.build_opener(NO_PROXY, )  # 不带 cookie, 模拟陌生人
 try:
     with anon.open(BASE + "/api/v2/public/profiles/" + urllib.parse.quote(slug), timeout=10) as r:
         st, d = r.status, json.loads(r.read().decode())

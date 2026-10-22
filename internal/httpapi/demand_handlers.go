@@ -40,24 +40,44 @@ func (s *Server) myTasks(w http.ResponseWriter, r *http.Request) {
 
 	items := make([]myTask, 0, len(tasks))
 	for _, t := range tasks {
-		items = append(items, myTask{
-			ID:           t.ID,
-			Title:        t.Title,
-			Category:     t.Category,
-			CategoryName: categoryLabel(t.Category),
-			BudgetCents:  t.BudgetCents,
-			Spec:         t.Spec,
-			DeadlineAt:   t.SpecObj.DeadlineAt,
-			ItemCount:    len(t.SpecObj.Items),
-			Status:       string(t.Status),
-			StateLabel:   taskStateLabel(t.Status),
-			CreatedAt:    t.CreatedAt,
-		})
+		items = append(items, toMyTask(t))
 	}
 	WriteOK(w, r, map[string]interface{}{
 		"items": items,
 		"total": len(items),
 	})
+}
+
+// withdrawTask 撤回一条还没人接的需求。
+//
+// 200 而不是 204: 前端要拿回这条需求的新状态去更新"我发的单"面板,
+// 顺带拿到 state_label——让它自己猜"撤回了"该显示成什么, 早晚会对不上。
+func (s *Server) withdrawTask(w http.ResponseWriter, r *http.Request) {
+	cl, _ := Claims(r)
+	t, err := s.Demand.Withdraw(cl.UserID, r.PathValue("id"))
+	if err != nil {
+		writeDemandErr(w, r, err)
+		return
+	}
+	WriteOK(w, r, toMyTask(t))
+}
+
+// toMyTask 需求单 → 列表项。发单返回和撤单返回共用一份映射:
+// 两处各写一遍, 加字段时必漏一个, 表现为"刚撤的单少了类目名"。
+func toMyTask(t *model.Task) myTask {
+	return myTask{
+		ID:           t.ID,
+		Title:        t.Title,
+		Category:     t.Category,
+		CategoryName: categoryLabel(t.Category),
+		BudgetCents:  t.BudgetCents,
+		Spec:         t.Spec,
+		DeadlineAt:   t.SpecObj.DeadlineAt,
+		ItemCount:    len(t.SpecObj.Items),
+		Status:       string(t.Status),
+		StateLabel:   taskStateLabel(t.Status),
+		CreatedAt:    t.CreatedAt,
+	}
 }
 
 // myTask 我发的需求, 列表项。不吐 requester_id / org_id / 翻译缓存这些
@@ -89,6 +109,10 @@ func taskStateLabel(st model.TaskStatus) string {
 		return "已有人接"
 	case model.TaskClosed:
 		return "已完成"
+	case model.TaskWithdrawn:
+		// 「已撤回」而不是「已关闭」: 关闭听起来像单子做完了,
+		// 撤回是没做成——在一列表里混着看, 这两个必须一眼分得开。
+		return "已撤回"
 	default:
 		return string(st)
 	}

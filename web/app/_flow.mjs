@@ -342,6 +342,45 @@ const openText = ((await openItem.first().textContent()) || '').trim();
 step('面板上标着还没人接', /开放中/.test(openText) && /还没人接/.test(openText), openText.slice(0, 50));
 await dp.screenshot({ path: path.join(OUT, 'hall-new.png'), fullPage: true });
 
+/* 8.97 撤回：发出去的单要能收回来。
+   单独发一条来撤，不动上面那条——上面那条后面还要被接单方接走。
+   撤回必须同时从「我发的单」和大厅消失：只消失一处，用户会以为撤了个假的。 */
+const wTitle = '这条发错了，待会儿要撤回';
+await dp.goto(BASE + '/static/app/publish.html', { waitUntil: 'networkidle' });
+await dp.waitForSelector('#category option[value="data"]', { state: 'attached', timeout: 8000 });
+await dp.fill('#title', wTitle);
+await dp.selectOption('#category', 'data');
+await dp.fill('#budget', '300');
+await dp.fill('#spec', '这一条专门用来验证撤回：发出去之后立刻从「我发的单」里撤回，它应该从大厅里也一起消失，别人再也接不到。');
+await dp.click('#submit');
+await dp.waitForSelector('#done:not([hidden])', { timeout: 10000 });
+const wId = ((await dp.textContent('#done-id')) || '').trim();
+await Promise.all([dp.waitForURL(/hall\.html/, { timeout: 10000 }), dp.click('#done-go')]);
+await dp.waitForSelector('#mine-list [data-open-task]', { timeout: 8000 });
+const wItem = dp.locator('#mine-list [data-open-task]', { hasText: wTitle });
+step('撤回前，它挂在「我发的单」里', (await wItem.count()) === 1, wId);
+
+await wItem.first().locator('[data-ask-withdraw]').click();
+await dp.waitForSelector(`[data-box="withdraw-${wId}"]:not([hidden])`, { timeout: 5000 });
+step('撤回要点两下，先出一个确认框', true);
+await dp.screenshot({ path: path.join(OUT, 'withdraw-confirm.png'), fullPage: true });
+
+await dp.click(`[data-box="withdraw-${wId}"] [data-do-withdraw]`);
+await dp.waitForFunction(
+  (t) => !Array.from(document.querySelectorAll('#mine-list [data-open-task]')).some((n) => n.textContent.includes(t)),
+  wTitle,
+  { timeout: 10000 },
+);
+step('撤回后从「我发的单」里消失', true);
+const wToast = ((await dp.textContent('#toast')) || '').trim();
+step('撤回有回执', /已撤回/.test(wToast), wToast);
+
+await dp.goto(BASE + '/static/app/hall.html', { waitUntil: 'networkidle' });
+await dp.waitForSelector('#list .task', { timeout: 10000 });
+step('撤回后大厅里也搜不到', (await dp.locator('#list .task', { hasText: wTitle }).count()) === 0);
+step('别的单没被牵连', (await dp.locator('#list .task', { hasText: pubTitle }).count()) === 1, pubTitle);
+await dp.screenshot({ path: path.join(OUT, 'withdraw-done.png'), fullPage: true });
+
 /* 接单方刷新大厅，接走这条刚发出来的单 */
 await page.reload({ waitUntil: 'networkidle' });
 await page.waitForSelector('#list .task', { timeout: 10000 });

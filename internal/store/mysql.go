@@ -364,6 +364,22 @@ func (s *mysqlStore) ClaimOpenTask(taskID string) bool {
 	}
 	return n == 1
 }
+// WithdrawOpenTask 条件 UPDATE 一次搞定"是不是他的单 + 此刻还开不开放"。
+// 把 requester_id 写进 WHERE 而不只是校验一次, 是为了让越权与"手慢了"在
+// RowsAffected 上都表现为 0, 由上层再读一次库给出准确措辞; 写库本身绝不越权。
+func (s *mysqlStore) WithdrawOpenTask(taskID, requesterID string) bool {
+	res, err := s.db.Exec("UPDATE task SET status=? WHERE id=? AND requester_id=? AND status=? AND deleted_at IS NULL",
+		string(model.TaskWithdrawn), taskID, requesterID, string(model.TaskOpen))
+	if err != nil {
+		return false
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false
+	}
+	return n == 1
+}
+
 func (s *mysqlStore) GetTask(id string) (*model.Task, bool) {
 	t := &model.Task{}
 	var clar, items, analysis []byte

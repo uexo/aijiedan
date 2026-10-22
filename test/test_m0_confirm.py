@@ -11,15 +11,28 @@
     python test/test_m0_confirm.py
     BASE=http://127.0.0.1:8080 python test/test_m0_confirm.py
 """
+import http.client
 import http.cookiejar
 import json
 import os
 import random
+import time
 import threading
 import urllib.error
 import urllib.request
 
 BASE = os.environ.get("BASE", "http://127.0.0.1:8082")
+# 直连, 不走系统代理: 本机代理会把回环请求也接过去, 偶发掐断连接
+NO_PROXY = urllib.request.ProxyHandler({})
+
+# 客户端连接层抖动, 见 call() 的说明
+CONN_ERRORS = (ConnectionResetError, ConnectionAbortedError, http.client.RemoteDisconnected)
+# 重放写请求会拿到这些"状态已经变了"的错误码: 它们不代表业务结论, 不能当响应返回
+REPLAY_CONFLICTS = {
+    "TASK_TAKEN", "TASK_NOT_OPEN", "TASK_ALREADY_TAKEN", "TASK_CHANGED",
+    "ORDER_NOT_PENDING", "ORDER_NOT_TO_REVIEW", "ORDER_NOT_IN_PROGRESS",
+    "REVISION_LIMIT", "DELIVERY_DUPLICATE", "CODE_ALREADY_USED", "SLUG_TAKEN",
+}
 
 # 种子需求方的手机号, 见 internal/store 的 Seed。短号 → 手机号
 OWNER_PHONE = {"r001": "13800000001", "r002": "13800000002", "r003": "13800000003"}
@@ -33,9 +46,28 @@ class Client:
 
     def __init__(self):
         self.jar = http.cookiejar.CookieJar()
-        self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.jar))
+        self.opener = urllib.request.build_opener(NO_PROXY, urllib.request.HTTPCookieProcessor(self.jar))
 
     def call(self, method, path, body=None, csrf=True):
+        # 这台 Windows 机器上 Python 的 socket 偶发被本地中止(10053/10054),
+        # 服务端日志干净、curl 与浏览器都不复现 —— 是客户端连接层抖动。
+        # 三次退避: 单次抖动率不高, 但一条用例几百个请求, 只重试一次仍会假失败。
+        # 写请求重放可能撞上"服务端其实已经做过了": 那些"状态已变"的 4xx 不是业务结论,
+        # 此时把最初的连接错误抛出去, 而不是把 409 当答案——否则测试会静默给出错误的通过。
+        first = None
+        for attempt in range(3):
+            try:
+                st, d = self._call(method, path, body, csrf)
+            except CONN_ERRORS as e:
+                first = first or e
+                time.sleep(0.15 * (attempt + 1))
+                continue
+            if first is not None and st >= 400 and ((d.get("error") or {}).get("code") in REPLAY_CONFLICTS):
+                raise first
+            return st, d
+        raise first
+
+    def _call(self, method, path, body, csrf):
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(BASE + path, data=data, method=method)
         if data:
@@ -46,7 +78,10 @@ class Client:
                     req.add_header("X-CSRF-Token", c.value)
         try:
             with self.opener.open(req, timeout=10) as r:
-                return r.status, json.loads(r.read().decode())
+                    raw = r.read()
+                    if not raw:
+                        raise ConnectionResetError('empty body')
+                    return r.status, json.loads(raw.decode())
         except urllib.error.HTTPError as e:
             return e.code, json.loads(e.read().decode())
 

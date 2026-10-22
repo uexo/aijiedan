@@ -63,6 +63,10 @@ const (
 	TaskOpen    TaskStatus = "open"
 	TaskMatched TaskStatus = "matched"
 	TaskClosed  TaskStatus = "closed"
+	// TaskWithdrawn 发单方自己撤回。与 TaskClosed 分开, 不是为了好看:
+	// 一个是"事情做完了", 一个是"事情没做成"。混成 closed, 撤单率就永远算不出来,
+	// 而撤单率正是判断"发出去的单有没有人要"最直接的指标。
+	TaskWithdrawn TaskStatus = "withdrawn"
 )
 
 // Task 需求单(AI开发任务)

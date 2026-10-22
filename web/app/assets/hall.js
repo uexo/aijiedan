@@ -243,7 +243,8 @@ function renderMine() {
 }
 
 /* 还没人接的需求。它和订单卡长得像但含义不同:
-   订单说的是"这件事在推进", 这条说的是"这件事还悬着, 没人应"。 */
+   订单说的是"这件事在推进", 这条说的是"这件事还悬着, 没人应"。
+   撤回只挂在这一格上: 有人接了之后就得走订单侧的退回, 两条链路各管各的状态。 */
 function taskItem(t) {
   const cat = t.category_name || catMap[t.category] || t.category || '未分类';
   return html`
@@ -260,6 +261,18 @@ function taskItem(t) {
       ${t.item_count > 0 ? html`<span class="dot"></span><span>清单 ${t.item_count} 项</span>` : ''}
       <span class="dot"></span>
       <span class="mono">${t.id}</span>
+    </div>
+
+    <div class="oact" data-act="${t.id}">
+      <button class="btn btn-quiet btn-sm" type="button" data-ask-withdraw="${t.id}">撤回这条</button>
+    </div>
+
+    <div class="obox" hidden data-box="withdraw-${t.id}">
+      <p><strong>把这条从大厅撤掉？</strong>撤掉之后别人就搜不到了，也不能再被认领。已经有人接的单撤不了，那种要走退回。</p>
+      <div class="flex ac g8 wrapw">
+        <button class="btn btn-ink btn-sm" type="button" data-do-withdraw="${t.id}">确认撤回</button>
+        <button class="btn btn-quiet btn-sm" type="button" data-close-box="${t.id}">还在发</button>
+      </div>
     </div>
   </li>`;
 }
@@ -930,7 +943,45 @@ async function doRevise(id, btn) {
   }
 }
 
+/* 撤回。成功之后这张卡直接从"我发的单"里消失, 而不是原地改成"已撤回":
+   这一格存在的意义是"还没人接、还等着人", 撤回的单不再等任何人,
+   留在列表里只会让"挂着 N 条"这个数字对不上。 */
+async function doWithdraw(id, btn) {
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '撤回中…';
+  try {
+    await api('POST', '/tasks/' + encodeURIComponent(id) + '/withdraw');
+    myOpenTasks = myOpenTasks.filter((t) => t.id !== id);
+    renderMine();
+    toast('已撤回，这条不会再出现在大厅', 'ok');
+    load(true); // 大厅列表里也得跟着没有
+  } catch (err) {
+    const code = err instanceof ApiError ? err.code : '';
+    if (code === 'TASK_ALREADY_TAKEN' || code === 'TASK_NOT_OPEN' || code === 'TASK_CHANGED') {
+      // 状态在别处变了(有人接了), 界面不能还显示"还没人接"
+      await loadOrders();
+      load(true);
+      toast(err.message || '这一单状态变了，刷新看看', 'warn');
+      return;
+    }
+    toast((err && err.message) || '没撤回，再试一次', 'err');
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
 el.mineList.addEventListener('click', (e) => {
+  const askW = e.target.closest('[data-ask-withdraw]');
+  if (askW) {
+    openBox(askW.dataset.askWithdraw, 'withdraw');
+    return;
+  }
+  const goW = e.target.closest('[data-do-withdraw]');
+  if (goW) {
+    doWithdraw(goW.dataset.doWithdraw, goW);
+    return;
+  }
   const askC = e.target.closest('[data-ask-confirm]');
   if (askC) {
     openBox(askC.dataset.askConfirm, 'confirm');

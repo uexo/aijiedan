@@ -382,6 +382,7 @@ P3 企业版从「最小骨架」推向可商用：组织作为统一结算主�
 | POST | `/api/v2/tasks` | 需求方发单，201 返回需求视图 + `clarifications`（还差什么）；登录即可发，不要求档案 |
 | GET | `/api/v2/me/tasks` | 我发的需求（不限状态），按创建时间倒序；没人接的单只在这里能被找回来 |
 | POST | `/api/v2/tasks/{id}/take` | 接单方认领；409 `TASK_TAKEN` 表示已被接走，403 `ROLE_NOT_PROVIDER` / `PROFILE_INCOMPLETE` 表示没资格 |
+| POST | `/api/v2/tasks/{id}/withdraw` | 发单方撤回；只对还挂在大厅（open）的单生效，409 `TASK_ALREADY_TAKEN` 表示已有人接（走订单侧退回），403 `NOT_TASK_OWNER` 表示不是他的单 |
 | POST | `/api/v2/orders/{id}/confirm` | 需求方点头，订单 pending_escrow → active（四态：待确认 → 进行中） |
 | POST | `/api/v2/orders/{id}/decline` | 需求方退回，订单取消且任务重新开放；body `{reason}` 可选，超 60 字截断 |
 | POST | `/api/v2/orders/{id}/deliveries` | 接单方交付，订单 active → delivered（四态：进行中 → 待验收）；body `{content, link, items[]}`，201 返回订单视图 |
@@ -570,15 +571,21 @@ mysql -h192.168.3.18 -uroot -p zanbuddy < migrations/002_light_trade.sql
 ### 验收
 
 ```bash
+bash test/run_all_m0.sh        # 一次跑完下面八套：每条用例前重置库 + 干净重启服务
 python test/test_m0_v2.py      # 44 项：健康检查、发码、凭证、登录注册、CSRF、档案规则、公开页白名单
 python test/test_m0_hall.py    # 70 项：档案落库比对、角色口径、大厅筛选/排序/分页/脱敏、类目清单
 python test/test_m0_publish.py # 92 项：谁能发单、四项必填与边界值、长字段拦截、澄清提示、我发的需求、自己发自己接不到
-python test/test_m0_claim.py   # 41 项：谁能认领、认领后下架、重复认领、我的单、并发抢单只成一单
+python test/test_m0_claim.py   # 40 项：谁能认领、认领后下架、重复认领、我的单、并发抢单只成一单
 python test/test_m0_confirm.py # 62 项：谁能点头、确认进入进行中、退回后重新开放、原因截断、并发确认只算一次
 python test/test_m0_deliver.py # 69 项：谁能交付、未开工/重复交付、说明与链接校验、逐项清单、待验收双方可见
 python test/test_m0_accept.py  # 82 项：谁能验收、打回原因必填不截断、轮次用完不能再打回、并发验收只算一次
-node web/app/_flow.mjs         # 60 项：真浏览器 登录→填档案→大厅→认领→点头→交付→打回→重交→验收→自己发单→别人接走，截图到 web/app/_shots/
+python test/test_m0_withdraw.py # 46 项：谁能撤、撤完下架但记录还在、有人接了撤不了、越权不泄露进展、并发只成一个
+node web/app/_flow.mjs         # 66 项：真浏览器 登录→填档案→大厅→认领→点头→交付→打回→重交→验收→自己发单→撤回→别人接走，截图到 web/app/_shots/
 ```
+
+**每条用例前必须重置数据库并重启服务**（`run_all_m0.sh` 已经这么做了）。
+种子需求 `T-DEMO-001..003` 是共享的，认领一张就少一张；连着跑不重置，
+后面的用例会在准备阶段拿不到种子，表现成「新功能把老用例弄挂了」，排查方向完全错。
 
 `test_m0_confirm.py` 不写死任务号：它从大厅里找两张开放需求按需求方手机号登录，
 所以跟在 `test_m0_claim.py` 后面跑也不会因为单子被占而失败。
@@ -593,9 +600,21 @@ node web/app/_flow.mjs         # 60 项：真浏览器 登录→填档案→大�
 最后一段专门验证「发单方自己接不到自己的单」——需求方角色接单拿 403 `ROLE_NOT_PROVIDER`，
 接单方身份发的单被自己接拿 409 `SELF_CLAIM`，这两种是不同的事，错误码也分开。
 
-> **本机坑**：Python 3.13（托管版）在这台 Windows 上与本服务偶发连接中止（10053/10054），
-> curl 与浏览器都不复现。测试统一用系统 Python 3.11 跑；脚本里对 GET 会自动重试，
-> 写请求重放会撞"状态已变"，所以宁可抛异常也不给出假失败。
+`test_m0_withdraw.py` 自己注册需求方与接单方，不碰种子：它要证明的是
+「撤完之后大厅里搜不到、`/me/tasks` 里还查得到、状态是 `withdrawn` 而不是 `closed`」，
+以及「别人撤我的单只拿到 403，不会被顺带告知这单已经有人接了」——
+后一条是越权探测的防线：错误顺序写反，等于把对手的进展告诉外人。
+
+> **本机坑（已找到根因，2026-10-22）**：以前记成「Python 与本服务偶发连接中止（10053/10054），
+> 测试只能靠重试糊过去」。真正的根因在**服务端**：有些写端点的请求体没被读（认领只带 `{}`、
+> 鉴权失败的请求在读 body 之前就被拒），客户端又默认 `Connection: close`，服务端回完响应立刻关连接，
+> 接收缓冲区里还有未读字节时操作系统发的是 RST 而不是 FIN，客户端于是看到「连接被重置」——
+> 业务其实已经成功。单人顺序请求就能复现（实测 25 轮里 9~12 轮）。
+> 修法见 `internal/httpapi/drain.go`：写出响应头之前把请求体读干净。修完同一条压测 0/25。
+>
+> 另外两个坑不是服务端的：①Python 在 Windows 上**不会**给 `127.0.0.1` 绕过系统代理
+> （`proxy_bypass` 返回 False），测试请求会被本机代理接走再掐断，所以测试客户端都显式挂了
+> 空 `ProxyHandler`；②`urllib` 不接受非 ASCII URL（`?q=抖音` 要 `quote()`）。
 
 ## 核心 API（前缀 `/api/v1`）
 

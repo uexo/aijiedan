@@ -83,6 +83,13 @@ type Store interface {
 	// 两个接单方同时点认领, 读-判-写之间会双开, 结果是同一单生成两个订单,
 	// 需求方要同时拒一个。判断和写入必须落在同一个锁 / 同一条 UPDATE 里。
 	ClaimOpenTask(taskID string) bool
+	// WithdrawOpenTask 把 open 改成 withdrawn, 条件是"此刻仍是 open 且是这个人发的"。
+	// 返回 false 表示条件不成立(被人接走了 / 不是他的单 / 已经撤过)。
+	//
+	// 和 ClaimOpenTask 是同一类问题的两面: 需求方点撤回的同一秒可能有人点认领。
+	// 上层先 GetTask 判一下再写, 中间这一瞬就能让"已经有人在做的单"从大厅消失,
+	// 而订单还活着——需求方在大厅找不到自己的单, 接单方却在等他验收。
+	WithdrawOpenTask(taskID, requesterID string) bool
 	ListOpenTasks() []*model.Task
 	ListTasks() []*model.Task
 	// ListTasksByRequester 我发的需求(不限状态), 按创建时间倒序。
@@ -427,6 +434,20 @@ func (s *MemStore) ClaimOpenTask(taskID string) bool {
 		return false
 	}
 	t.Status = model.TaskMatched
+	s.indexTask(t)
+	return true
+}
+
+// WithdrawOpenTask 撤单的原子版: 归属与状态在同一把写锁内一起校验。
+// 少了归属这一条, 任何人拿到单号都能把别人的单撤掉。
+func (s *MemStore) WithdrawOpenTask(taskID, requesterID string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t, ok := s.tasks[taskID]
+	if !ok || t.Status != model.TaskOpen || t.RequesterID != requesterID {
+		return false
+	}
+	t.Status = model.TaskWithdrawn
 	s.indexTask(t)
 	return true
 }
