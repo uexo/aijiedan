@@ -379,6 +379,8 @@ P3 企业版从「最小骨架」推向可商用：组织作为统一结算主�
 | PATCH | `/api/v2/me` | 改昵称（1–24 字，白名单只开这一个字段） |
 | PUT | `/api/v2/me/profile` | 保存供给方档案 |
 | GET | `/api/v2/tasks` | 需求大厅列表；`?q=&category=&sort=newest\|budget_desc\|budget_asc&limit=&offset=`，只返回 open |
+| POST | `/api/v2/tasks` | 需求方发单，201 返回需求视图 + `clarifications`（还差什么）；登录即可发，不要求档案 |
+| GET | `/api/v2/me/tasks` | 我发的需求（不限状态），按创建时间倒序；没人接的单只在这里能被找回来 |
 | POST | `/api/v2/tasks/{id}/take` | 接单方认领；409 `TASK_TAKEN` 表示已被接走，403 `ROLE_NOT_PROVIDER` / `PROFILE_INCOMPLETE` 表示没资格 |
 | POST | `/api/v2/orders/{id}/confirm` | 需求方点头，订单 pending_escrow → active（四态：待确认 → 进行中） |
 | POST | `/api/v2/orders/{id}/decline` | 需求方退回，订单取消且任务重新开放；body `{reason}` 可选，超 60 字截断 |
@@ -389,6 +391,28 @@ P3 企业版从「最小骨架」推向可商用：组织作为统一结算主�
 | GET | `/api/v2/me/orders` | 我参与的单（接的 + 发的），带四态、对端定位/信用分、`needs_me`、交付轮次与最近一轮交付 |
 | GET | `/api/v2/meta/categories` | 类目清单，前端筛选条的唯一来源 |
 | GET | `/api/v2/public/profiles/{slug}` | 公开档案，免登录 |
+
+### 发单
+
+`POST /api/v2/tasks` 建的是需求（`task` 表，状态 open），不是订单。登录就能发，**不要求填档案**——
+PRD 里档案只对供给方强制，需求方被档案页挡一次就会走人。
+
+门槛分两档，这个划分是刻意的：
+
+- **硬门槛（400 拦下）**：标题 4–60 字、类目在白名单里、说明 20–2000 字、预算 1 元–100 万元。
+  缺这四样，单子挂在大厅里对别人没有意义，发出去只是噪声。
+- **软提示（照发，返回 `clarifications`）**：交付物形态、交付格式、截止时间、风格参考。
+  缺了仍然可读可报价，用提示催补比拒稿有用——填到一半被拒，人就直接走了。
+
+上限不是审美问题，是列宽问题。`task.title` 是 `VARCHAR(128)`、`deliverables` 是 `VARCHAR(255)`、
+`required_format` 是 `VARCHAR(128)`，而 `store.PutTask` 吞掉写库错误：一旦超长，MySQL 严格模式报 1406，
+用户却收到 201——发出去的单在大厅里根本不存在。所以字段宽度在 `internal/demand` 里拦死，不指望数据库。
+发单后还会 `GetTask` 复核一次，写失败就报错，不静默成功。
+
+预算对外以分为单位。前端按元输入、乘 100 四舍五入（`0.1 * 100` 在浮点下是 `10.000000000000002`）。
+
+`GET /api/v2/me/tasks` 是「我发的需求」。它和 `/me/orders` 不是一回事：后者是**有人接了的单**，
+前者是**我挂出去的需求**——刚发出去还没人接的单不在任何订单里，不给这个接口，需求方发完单就找不到它了。
 
 ### 认领的并发语义
 
@@ -523,7 +547,8 @@ mysql -h192.168.3.18 -uroot -p zanbuddy < migrations/002_light_trade.sql
 |---|---|
 | 登录 | `/static/app/login.html` |
 | 供给方档案 | `/static/app/profile.html` |
-| 需求大厅 | `/static/app/hall.html`（列表 + 认领 + 我接的单；需求方看到的是「等你确认 / 我发的单」） |
+| 需求大厅 | `/static/app/hall.html`（列表 + 认领 + 我接的单；需求方看到的是「等你确认 / 等你验收 / 我发的单」） |
+| 发一条需求 | `/static/app/publish.html`（四项必填 + 三项建议 + 验收清单；两个角色都能发） |
 
 零构建：原生 ES module，`assets/runtime.js` 提供 `api / html / validate / toast`，浏览器直接加载，改完刷新即可。
 
@@ -547,11 +572,12 @@ mysql -h192.168.3.18 -uroot -p zanbuddy < migrations/002_light_trade.sql
 ```bash
 python test/test_m0_v2.py      # 44 项：健康检查、发码、凭证、登录注册、CSRF、档案规则、公开页白名单
 python test/test_m0_hall.py    # 70 项：档案落库比对、角色口径、大厅筛选/排序/分页/脱敏、类目清单
+python test/test_m0_publish.py # 92 项：谁能发单、四项必填与边界值、长字段拦截、澄清提示、我发的需求、自己发自己接不到
 python test/test_m0_claim.py   # 41 项：谁能认领、认领后下架、重复认领、我的单、并发抢单只成一单
 python test/test_m0_confirm.py # 62 项：谁能点头、确认进入进行中、退回后重新开放、原因截断、并发确认只算一次
 python test/test_m0_deliver.py # 69 项：谁能交付、未开工/重复交付、说明与链接校验、逐项清单、待验收双方可见
 python test/test_m0_accept.py  # 82 项：谁能验收、打回原因必填不截断、轮次用完不能再打回、并发验收只算一次
-node web/app/_flow.mjs         # 49 项：真浏览器 登录→填档案→大厅→认领→点头→按清单交付→打回→重交→验收，截图到 web/app/_shots/
+node web/app/_flow.mjs         # 60 项：真浏览器 登录→填档案→大厅→认领→点头→交付→打回→重交→验收→自己发单→别人接走，截图到 web/app/_shots/
 ```
 
 `test_m0_confirm.py` 不写死任务号：它从大厅里找两张开放需求按需求方手机号登录，
@@ -562,6 +588,10 @@ node web/app/_flow.mjs         # 49 项：真浏览器 登录→填档案→大�
 
 `test_m0_accept.py` 三张单分工：`T-DEMO-001` 走主链路（打回 → 重交 → 验收），
 `T-DEMO-002` 连交三轮验证轮次上限，`T-DEMO-003` 用两个会话并发验收验证只成一次。
+
+`test_m0_publish.py` 不依赖种子：它自己注册一个需求方、两个接单方，发一条单再让接单方接走。
+最后一段专门验证「发单方自己接不到自己的单」——需求方角色接单拿 403 `ROLE_NOT_PROVIDER`，
+接单方身份发的单被自己接拿 409 `SELF_CLAIM`，这两种是不同的事，错误码也分开。
 
 > **本机坑**：Python 3.13（托管版）在这台 Windows 上与本服务偶发连接中止（10053/10054），
 > curl 与浏览器都不复现。测试统一用系统 Python 3.11 跑；脚本里对 GET 会自动重试，

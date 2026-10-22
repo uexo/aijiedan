@@ -295,6 +295,68 @@ step('退回的那一单变成已取消', (await dp.locator('#mine-list .oitem',
 const hallTitles = (await dp.locator('#list .tlink').allTextContents()).map((s) => s.trim());
 step('退回后单子重新出现在大厅', hallTitles.includes(nextTitle), nextTitle);
 
+/* 8.95 需求方自己发一条需求，然后接单方把它接走。
+   这是「发单入口」的验收：种子里的单再多，用户自己发不出单，产品就是单腿的。 */
+const pubTitle = '给茶叶店做抖音选品分析脚本';
+await dp.goto(BASE + '/static/app/publish.html', { waitUntil: 'networkidle' });
+/* option 元素永远不会 visible，只能等它挂上 DOM */
+await dp.waitForSelector('#category option[value="data"]', { state: 'attached', timeout: 8000 });
+await dp.fill('#title', pubTitle);
+await dp.selectOption('#category', 'data');
+await dp.fill('#budget', '1200');
+await dp.fill('#spec', '店铺做茶叶，抖音小店每天导出订单表。想要一个脚本读表，算出哪几个 SKU 动销最快、哪些在压货，输出一张周报。跑在自己的 Windows 机器上，不联网也行。');
+await dp.fill('#deliverables', '1 个 Python 脚本 + 一份使用说明');
+await dp.fill('#format', 'py 文件 + md');
+await dp.fill('#style', '参考常见电商周报的样子，别花哨');
+
+const tomorrow = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+await dp.fill('#deadline', tomorrow);
+
+const itemInputs = dp.locator('#items .item-row input');
+await itemInputs.nth(0).fill('能读抖音导出的 xlsx');
+await itemInputs.nth(1).fill('算出动销排名');
+const itemCountText = ((await dp.textContent('#c-items')) || '').trim();
+step('清单默认三行，只填两行', /3 \/ 12/.test(itemCountText), itemCountText);
+await dp.screenshot({ path: path.join(OUT, 'publish-form.png'), fullPage: true });
+
+await dp.click('#submit');
+await dp.waitForSelector('#done:not([hidden])', { timeout: 10000 });
+const pubId = ((await dp.textContent('#done-id')) || '').trim();
+step('发单成功并给出单号', /^T/.test(pubId), pubId);
+const clarBox = dp.locator('#done-clar');
+/* 这一单只差提交时间之外的建议项都填了，应该没有澄清提示；
+   有提示反而是 bug——刚填满还被追问一遍，人会以为哪里没填对。 */
+step('建议项填齐后不再追问', (await clarBox.isVisible()) === false);
+await dp.screenshot({ path: path.join(OUT, 'publish-done.png'), fullPage: true });
+
+await Promise.all([dp.waitForURL(/hall\.html/, { timeout: 10000 }), dp.click('#done-go')]);
+await dp.waitForSelector('#list .task', { timeout: 10000 });
+const newCard = dp.locator('#list .task', { hasText: pubTitle });
+step('回到大厅能看到刚发的单', (await newCard.count()) === 1, pubTitle);
+step('刚发的单被描出来', (await dp.locator('#list .task.is-new').count()) >= 1);
+/* 大厅是按最新排序的, 自己的单迟早被别人的单挤下去。
+   「我发的单」里有这一条, 才是发单后还能找回它的地方。 */
+const openItem = dp.locator('#mine-list [data-open-task]', { hasText: pubTitle });
+step('还没人接的单进了「我发的单」面板', (await openItem.count()) === 1);
+const openText = ((await openItem.first().textContent()) || '').trim();
+step('面板上标着还没人接', /开放中/.test(openText) && /还没人接/.test(openText), openText.slice(0, 50));
+await dp.screenshot({ path: path.join(OUT, 'hall-new.png'), fullPage: true });
+
+/* 接单方刷新大厅，接走这条刚发出来的单 */
+await page.reload({ waitUntil: 'networkidle' });
+await page.waitForSelector('#list .task', { timeout: 10000 });
+const freshCard = page.locator('#list .task', { hasText: pubTitle }).first();
+step('接单方看到别人刚发的单', (await freshCard.count()) === 1, pubTitle);
+await freshCard.locator('[data-claim]').click();
+await page.locator('.claim-box:not([hidden]) [data-do]').click();
+await page.waitForTimeout(900);
+step('接单方接得到这条新单', (await page.locator('#mine-list .oitem').count()) === 3);
+
+await dp.reload({ waitUntil: 'networkidle' });
+await dp.waitForSelector('#mine-list .oitem', { timeout: 10000 });
+const selfPosted = ((await dp.locator('#mine-list .oitem', { hasText: pubTitle }).first().textContent()) || '').trim();
+step('需求方看到自己发的单有人接了', /待确认/.test(selfPosted), selfPosted.slice(0, 40));
+
 /* 9. 手机尺寸（带上登录态，否则大厅会把人送回登录页） */
 const saved = await ctx.storageState();
 const m = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, storageState: saved });
@@ -304,6 +366,12 @@ await mp.waitForSelector('.task', { timeout: 8000 }).catch(() => {});
 step('手机尺寸也渲染出卡片', (await mp.locator('.task').count()) >= 1);
 await mp.screenshot({ path: path.join(OUT, 'hall-mobile.png'), fullPage: true });
 step('手机尺寸无横向溢出', await mp.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
+
+/* 发单页字段最多，最容易在窄屏溢出。单独量一次。 */
+await mp.goto(BASE + '/static/app/publish.html', { waitUntil: 'networkidle' });
+await mp.waitForSelector('#items .item-row', { timeout: 8000 });
+await mp.screenshot({ path: path.join(OUT, 'publish-mobile.png'), fullPage: true });
+step('手机尺寸的发单页无横向溢出', await mp.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
 
 step('无 JS 报错', errors.length === 0, errors.slice(0, 3).join(' | '));
 

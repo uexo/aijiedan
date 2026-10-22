@@ -459,6 +459,25 @@ func (s *mysqlStore) ListTasks() []*model.Task {
 	return out
 }
 
+// ListTasksByRequester 我发的需求, 按创建时间倒序。
+// ORDER BY 带 id 兜底, 与内存实现保持一致: 同一毫秒发的两条不能来回跳。
+func (s *mysqlStore) ListTasksByRequester(userID string) []*model.Task {
+	rows, err := s.db.Query("SELECT "+taskCols+" FROM task WHERE requester_id=? AND deleted_at IS NULL ORDER BY created_at DESC, id DESC", userID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	out := make([]*model.Task, 0, 8)
+	for rows.Next() {
+		t := &model.Task{}
+		if err := scanTask(t, rows); err != nil {
+			return nil
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
 // SearchTasks MySQL 实现: 参数化动态 WHERE + 白名单排序。
 func (s *mysqlStore) SearchTasks(f TaskFilter) []*model.Task {
 	const cols = taskCols

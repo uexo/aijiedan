@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>发一条需求 · zanbuddy 联赞</title>
+<meta name="description" content="把事情说清楚，对的人才会接。标题、类目、预算、说明是必填的四项。">
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="wrap">
+    <a class="brand" href="hall.html"><span class="mk">赞</span> zanbuddy <small>联赞</small></a>
+    <div class="nlinks">
+      <a class="btn btn-quiet btn-sm" href="hall.html">需求大厅</a>
+      <a class="btn btn-quiet btn-sm" href="profile.html" id="nav-profile">我的档案</a>
+      <button class="btn btn-line btn-sm" type="button" id="logout">退出</button>
+    </div>
+  </div>
+</nav>
+
+<main class="wrap page">
+
+  <div class="flex ac jb wrapw g12 mb6">
+    <h1>发一条需求</h1>
+    <span class="tiny muted" id="who">正在确认身份…</span>
+  </div>
+  <p class="muted mb20">说清楚要什么，对口的人才接得准。带 <span class="req">*</span> 的四项必须填，其余可以发出去之后再补。</p>
+
+  <div id="err" class="errbox mb16" hidden></div>
+
+  <form id="f" class="stack" novalidate>
+
+    <section class="card card-pad">
+      <h2 class="sec-h mb4">要做什么</h2>
+      <p class="tiny muted mb12">这一块决定别人会不会点开。标题写事情，不写心情。</p>
+
+      <div class="flex ac jb wrapw g8 mb8">
+        <label class="label" for="title">标题<span class="req">*</span></label>
+        <span class="count" id="c-title">0 / 60</span>
+      </div>
+      <input id="title" class="input" maxlength="60" autocomplete="off"
+        placeholder="比如：给茶叶店做一个抖音选品分析脚本">
+      <div class="hint mt8" id="h-title">4 字以上，60 字以内。一句话说清要做什么。</div>
+
+      <div class="grid2 mt16">
+        <div>
+          <label class="label mb8" for="category">类目<span class="req">*</span></label>
+          <select id="category" class="input">
+            <option value="">正在加载类目…</option>
+          </select>
+        </div>
+        <div>
+          <div class="flex ac jb wrapw g8 mb8">
+            <label class="label" for="budget">预算（元）<span class="req">*</span></label>
+          </div>
+          <input id="budget" class="input" inputmode="decimal" autocomplete="off" placeholder="比如 800">
+          <div class="hint mt8">填整数或两位小数，最少 1 元。给不出区间就先给个数，接单方能看到你认真的程度。</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card card-pad">
+      <div class="flex ac jb wrapw g8 mb8">
+        <label class="label" for="spec">需求说明<span class="req">*</span></label>
+        <span class="count" id="c-spec">0 / 2000</span>
+      </div>
+      <textarea id="spec" class="textarea" rows="7" maxlength="2000"
+        placeholder="背景是什么、要解决什么、给谁用、现成有什么。写清这三件事，报价能准一半。"></textarea>
+      <div class="hint mt8">20 字以上。含糊的单没人敢接——不是不想接，是怕做完了你说不是这个意思。</div>
+    </section>
+
+    <section class="card card-pad">
+      <h2 class="sec-h mb4">交付与时间</h2>
+      <p class="tiny muted mb12">这三项可以不填，但填了能少一轮来回。</p>
+
+      <div class="flex ac jb wrapw g8 mb8">
+        <label class="label" for="deliverables">交付物形态</label>
+        <span class="count" id="c-deliverables">0 / 80</span>
+      </div>
+      <input id="deliverables" class="input" maxlength="80" autocomplete="off"
+        placeholder="比如：1 个 Python 脚本 + 一份说明文档">
+      <div class="hint mt8">数量与形态写具体。「一套方案」不算交付物。</div>
+
+      <div class="grid2 mt16">
+        <div>
+          <div class="flex ac jb wrapw g8 mb8">
+            <label class="label" for="format">交付格式</label>
+            <span class="count" id="c-format">0 / 40</span>
+          </div>
+          <input id="format" class="input" maxlength="40" autocomplete="off" placeholder="比如：py 文件 + md">
+        </div>
+        <div>
+          <label class="label mb8" for="deadline">期望完成日期</label>
+          <input id="deadline" class="input" type="date">
+          <div class="hint mt8">按那天的 23:59 算。</div>
+        </div>
+      </div>
+
+      <div class="mt16">
+        <div class="flex ac jb wrapw g8 mb8">
+          <label class="label" for="style">风格或参考</label>
+          <span class="count" id="c-style">0 / 80</span>
+        </div>
+        <input id="style" class="input" maxlength="80" autocomplete="off"
+          placeholder="比如：像某某家的界面 / 极简 / 附参考链接">
+        <div class="hint mt8">给个能对着看的东西，比形容词有用十倍。</div>
+      </div>
+    </section>
+
+    <section class="card card-pad">
+      <div class="flex ac jb wrapw g8 mb8">
+        <h2 class="sec-h">验收清单</h2>
+        <span class="count" id="c-items">0 / 12</span>
+      </div>
+      <p class="tiny muted mb12">列了清单，验收时就逐项对。不列也能发，但到时候只能凭印象说「差不多」。</p>
+      <div id="items" class="stack g8"></div>
+      <button class="btn btn-quiet btn-sm mt12" type="button" id="add-item">再加一项</button>
+    </section>
+
+    <div class="flex ac jb wrapw g12 submitbar">
+      <span class="tiny muted">发出去之后，单子会立刻出现在大厅里。</span>
+      <button class="btn btn-ink" type="submit" id="submit">发布需求</button>
+    </div>
+
+  </form>
+
+  <section class="card card-pad mt20" id="done" hidden>
+    <div class="flex ac g12 mb8">
+      <div class="mark-sm">成</div>
+      <div>
+        <h2 class="sec-h">发出去了</h2>
+        <p class="tiny muted mt4">单号 <span class="mono" id="done-id"></span>，大厅里已经能看到。</p>
+      </div>
+    </div>
+    <div id="done-clar" class="note mt12" hidden></div>
+    <div class="flex ac g8 wrapw mt16">
+      <a class="btn btn-ink btn-sm" href="hall.html" id="done-go">去大厅看这一单</a>
+      <button class="btn btn-quiet btn-sm" type="button" id="done-again">再发一条</button>
+    </div>
+  </section>
+
+</main>
+
+<noscript><div class="noscript">需要开启 JavaScript 才能发布需求。</div></noscript>
+<script type="module" src="assets/publish.js"></script>
+</body>
+</html>

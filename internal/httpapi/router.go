@@ -3,22 +3,24 @@ package httpapi
 import (
 	"net/http"
 
+	"zanbuddy/internal/demand"
 	"zanbuddy/internal/identity"
 	"zanbuddy/internal/store"
 	"zanbuddy/internal/trade"
 )
 
-// Server v2 接口。依赖只有身份域、交易域和存储(公开页要按 slug 查人)。
+// Server v2 接口。依赖只有身份域、交易域、需求域和存储(公开页要按 slug 查人)。
 // 其他域接进来时也走这个结构, 每个域一个字段, 装配在 main 里完成。
 type Server struct {
 	Identity *identity.Service
 	Trade    *trade.Service
+	Demand   *demand.Service
 	Store    store.Store
 	Version  string
 }
 
-func NewServer(idsvc *identity.Service, tradeSvc *trade.Service, st store.Store, version string) *Server {
-	return &Server{Identity: idsvc, Trade: tradeSvc, Store: st, Version: version}
+func NewServer(idsvc *identity.Service, tradeSvc *trade.Service, demandSvc *demand.Service, st store.Store, version string) *Server {
+	return &Server{Identity: idsvc, Trade: tradeSvc, Demand: demandSvc, Store: st, Version: version}
 }
 
 // Routes 显式路由表。
@@ -43,6 +45,10 @@ func (s *Server) Routes() http.Handler {
 	// 需求大厅: 公开可读。落地页 → 大厅 → 登录, 前台不该建在登录墙后面。
 	mux.HandleFunc("GET /api/v2/tasks", s.listTasks)
 	mux.HandleFunc("GET /api/v2/meta/categories", s.listCategories)
+
+	// 发单: 要登录(得知道是谁发的), 但不需要档案——按 PRD 只对供给方强制。
+	mux.Handle("POST /api/v2/tasks", RequireAuth(http.HandlerFunc(s.publishTask)))
+	mux.Handle("GET /api/v2/me/tasks", RequireAuth(http.HandlerFunc(s.myTasks)))
 
 	// 交易: 认领与我的单。认领是写操作, 必须登录。
 	mux.Handle("POST /api/v2/tasks/{id}/take", RequireAuth(http.HandlerFunc(s.claimTask)))

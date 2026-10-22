@@ -85,6 +85,9 @@ type Store interface {
 	ClaimOpenTask(taskID string) bool
 	ListOpenTasks() []*model.Task
 	ListTasks() []*model.Task
+	// ListTasksByRequester 我发的需求(不限状态), 按创建时间倒序。
+	// 与"我接的单"不同: 没人接的单不在任何订单里, 只能靠这条查出来。
+	ListTasksByRequester(userID string) []*model.Task
 	SearchTasks(f TaskFilter) []*model.Task
 	PutMatch(m *model.MatchRecord)
 	GetMatch(id string) (*model.MatchRecord, bool)
@@ -436,6 +439,27 @@ func (s *MemStore) ListTasks() []*model.Task {
 	for _, t := range s.tasks {
 		out = append(out, t)
 	}
+	return out
+}
+
+// ListTasksByRequester 我发的需求, 按创建时间倒序。
+// 排序带 id 兜底: 同一个人连着发两条, created_at 可能同毫秒,
+// 只按时间排会让这两条在列表里来回跳。
+func (s *MemStore) ListTasksByRequester(userID string) []*model.Task {
+	s.mu.RLock()
+	out := make([]*model.Task, 0, 8)
+	for _, t := range s.tasks {
+		if t.RequesterID == userID {
+			out = append(out, t)
+		}
+	}
+	s.mu.RUnlock()
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].CreatedAt != out[j].CreatedAt {
+			return out[i].CreatedAt > out[j].CreatedAt
+		}
+		return out[i].ID > out[j].ID
+	})
 	return out
 }
 

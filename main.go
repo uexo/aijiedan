@@ -12,6 +12,7 @@ import (
 
 	"zanbuddy/internal/clarify"
 	"zanbuddy/internal/compliance"
+	"zanbuddy/internal/demand"
 	"zanbuddy/internal/faq"
 	"zanbuddy/internal/handler"
 	"zanbuddy/internal/httpapi"
@@ -90,7 +91,7 @@ func main() {
 		smsProv = notify.NewStubSMSProvider()
 	}
 	notifySvc := notify.NewService(st, emailProv, smsProv)
-	faqEng := faq.NewEngine() // B3 AI 客服应答(规则优先 + 可选 LLM 兜底, 复用 B1 的 ZANBUDDY_LLM_API_KEY 开关)
+	faqEng := faq.NewEngine()     // B3 AI 客服应答(规则优先 + 可选 LLM 兜底, 复用 B1 的 ZANBUDDY_LLM_API_KEY 开关)
 	reqaiEng := reqai.NewEngine() // C1 AI 需求翻译/分析(规则保底 + 可选 LLM 兜底, 复用同一开关)
 	svc := service.New(st, comp, pay, kycSvc, imSvc, cl, notifySvc, faqEng, reqaiEng)
 
@@ -104,12 +105,13 @@ func main() {
 	// SMS 未接真实通道时走开发模式: 验证码固定 000000 并在响应里回显, 生产接通道后自动关闭。
 	idSvc := identity.New(st, os.Getenv("ZANBUDDY_SMS_PROVIDER") == "" || os.Getenv("ZANBUDDY_SMS_PROVIDER") == "log")
 	tradeSvc := trade.New(st)
+	demandSvc := demand.New(st)
 
 	mux := http.NewServeMux()
-	mux.Handle("/api/v2/", httpapi.NewServer(idSvc, tradeSvc, st, "2.0.0").Routes())
+	mux.Handle("/api/v2/", httpapi.NewServer(idSvc, tradeSvc, demandSvc, st, "2.0.0").Routes())
 	mux.Handle("/api/", h)
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web")))) // 用户画像页等静态前端
-	mux.Handle("/", h) // 根路径落地页
+	mux.Handle("/", h)                                                                     // 根路径落地页
 
 	if os.Getenv("ZANBUDDY_JWT_SECRET") == "" {
 		log.Println("警告: ZANBUDDY_JWT_SECRET 未设置, 正在用开发默认值签名会话; 生产必须设置")

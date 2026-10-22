@@ -51,6 +51,7 @@ let catMap = {};
 let canClaim = false; // 只有已建档的接单方看得到认领按钮
 let mineItems = []; // 接单方: 我接的单
 let inboxItems = []; // 需求方: 别人接了我的单
+let myOpenTasks = []; // 需求方: 我发的、还没人接的需求(不在订单里, 要单独查)
 let mineOpen = true;
 let myProfile = {}; // 档案完整度, 横幅要用; 确认之后横幅得跟着变
 
@@ -185,8 +186,11 @@ function render() {
 function renderMine() {
   const isProvider = !me || me.role === 'provider';
   const items = isProvider ? mineItems : inboxItems;
+  // 还没人接的需求不在任何订单里, 要单独列——否则自己刚发出去的单,
+  // 在大厅里滚两页就再也找不着了(它旁边还挂着几十条别人的单)。
+  const open = isProvider ? [] : myOpenTasks;
   const pending = items.filter((o) => o.needs_me).length;
-  const n = items.length;
+  const n = items.length + open.length;
 
   // 标题跟着"有没有事等你"变: 全在进行了还挂「等你确认」, 是在催一件已经做完的事
   if (isProvider) {
@@ -207,7 +211,9 @@ function renderMine() {
   } else {
     el.mineTitle.textContent = '我发的单';
     el.navMineLabel.textContent = '我的单';
-    el.mineNote.textContent = '暂时没有等你处理的单。有人认领或交付你的需求时，会出现在这里。';
+    el.mineNote.textContent = open.length
+      ? `挂着 ${open.length} 条还没人接。有人认领或交付时，会出现在这里。`
+      : '暂时没有等你处理的单。有人认领或交付你的需求时，会出现在这里。';
   }
 
   el.mineN.textContent = String(n);
@@ -217,12 +223,15 @@ function renderMine() {
   el.navMine.hidden = n === 0;
   if (n === 0) return;
 
-  // 该我动的排前面: 需求方登进来第一眼要看见的是"有事等你"
-  el.mineList.innerHTML = items
-    .slice()
-    .sort((a, b) => Number(b.needs_me) - Number(a.needs_me))
-    .map(orderItem)
-    .join('');
+  // 订单在前、待接的需求在后。
+  // 不是因为订单更重要, 而是因为订单里有"该你动手"的(needs_me),
+  // 待接的需求只是挂着等别人来——第一眼要看见的是能推动的事。
+  el.mineList.innerHTML =
+    items
+      .slice()
+      .sort((a, b) => Number(b.needs_me) - Number(a.needs_me))
+      .map(orderItem)
+      .join('') + open.map(taskItem).join('');
 
   el.mineList.hidden = !mineOpen;
   el.mineNote.hidden = !mineOpen;
@@ -231,6 +240,28 @@ function renderMine() {
 
   // 横幅上的「有 N 单等你点头」和面板是同一件事, 不能一个变了另一个还挂着
   if (myProfile) paintWho(myProfile);
+}
+
+/* 还没人接的需求。它和订单卡长得像但含义不同:
+   订单说的是"这件事在推进", 这条说的是"这件事还悬着, 没人应"。 */
+function taskItem(t) {
+  const cat = t.category_name || catMap[t.category] || t.category || '未分类';
+  return html`
+  <li class="oitem" data-open-task="${t.id}">
+    <div class="flex ac jb wrapw g8">
+      <span class="state state-todo">${t.state_label || '开放中'}</span>
+      <span class="tiny muted">${ago(t.created_at)}挂出 · 还没人接</span>
+    </div>
+    <strong>${t.title}</strong>
+    <div class="oline">
+      <span>${cat}</span>
+      <span class="dot"></span>
+      <span>${money(t.budget_cents)}</span>
+      ${t.item_count > 0 ? html`<span class="dot"></span><span>清单 ${t.item_count} 项</span>` : ''}
+      <span class="dot"></span>
+      <span class="mono">${t.id}</span>
+    </div>
+  </li>`;
 }
 
 function orderItem(o) {
@@ -417,10 +448,21 @@ async function loadOrders() {
     // 一个接口两种身份: 服务端按 role 分好了, 这里各归各位
     mineItems = items.filter((o) => o.role === 'provider');
     inboxItems = items.filter((o) => o.role === 'requester');
-    renderMine();
   } catch (e) {
     // 拉不到不挡大厅: 认领本身还能用, 成功后会本地补一条
   }
+
+  // 没人接的需求不在订单里, 得单独拉一次。两个请求都失败也不影响看大厅,
+  // 所以这里不把它塞进上面的 try——一个失败不该把另一个已经拿到的数据丢掉。
+  try {
+    const data = await api('GET', '/me/tasks');
+    const items = Array.isArray(data.items) ? data.items : [];
+    myOpenTasks = items.filter((t) => t.status === 'open');
+  } catch (e) {
+    myOpenTasks = [];
+  }
+
+  renderMine();
 }
 
 // 单条替换, 不重拉整表: 确认/退回之后立刻能看到新状态, 又不会闪一下
@@ -433,6 +475,11 @@ function replaceItem(o) {
 function paintWho(p) {
   const name = (me && (me.name || me.nickname)) || '你';
   const pct = Number(p && p.completeness) || 0;
+
+  // 发单入口对两种角色都开: 接单方也会有自己的需求要发(工具脚本、素材、外包),
+  // 只给"发布方"看会把一个双边市场切成两半, 而且角色是登录时选的, 用户会选错。
+  const pubBtn = document.getElementById('nav-publish');
+  if (pubBtn) pubBtn.hidden = false;
 
   if (me && me.role !== 'provider') {
     // 待确认与待验收是两件事: 一个还没开工, 一个已经交了东西。
@@ -448,7 +495,7 @@ function paintWho(p) {
       if (toConfirm > 0) parts.push(`${toConfirm} 单等你点头`);
       el.banner.innerHTML = html`<strong>有 ${parts.join('、')}。</strong>验收看交付内容对不对得上需求；点头看接单人的定位和信用分。 <button class="btn btn-line btn-sm" type="button" id="jump-mine">去处理</button>`;
     } else {
-      el.banner.innerHTML = html`<strong>你现在是发布方。</strong>有人认领或交付你的需求时会出现在上面这块。发单入口还没开放。`;
+      el.banner.innerHTML = html`<strong>你现在是发布方。</strong>有人认领或交付你的需求时会出现在上面这块。 <a href="publish.html">发一条新需求 →</a>`;
     }
     el.banner.hidden = false;
     const jump = document.getElementById('jump-mine');
@@ -980,11 +1027,34 @@ async function boot() {
   await loadOrders();
   paintWho(prof);
 
-  if (new URLSearchParams(location.search).get('saved') === '1') {
+  const params = new URLSearchParams(location.search);
+  if (params.get('saved') === '1') {
     toast('档案已保存，这里是现在能接的需求', 'ok');
   }
 
-  load(true);
+  const newId = params.get('new');
+  await load(true);
+  if (newId) markNew(newId);
+}
+
+/* 发完单回到大厅，把自己刚发的那条指出来。
+   大厅按最新排序, 它本来就在第一张; 但"排在第一"和"这是我刚发的"是两件事——
+   不点出来, 用户会疑心到底发成功了没有, 然后去翻「我的需求」再确认一遍。 */
+function markNew(id) {
+  const node = el.list.querySelector('[data-card="' + id + '"]');
+  // 参数用完就摘掉, 否则刷新页面会再提示一次"新需求已经发出"
+  const url = new URL(location.href);
+  url.searchParams.delete('new');
+  history.replaceState(null, '', url.pathname + (url.search || '') + url.hash);
+
+  if (!node) {
+    toast('新需求已经发出，大厅里能搜到', 'ok');
+    return;
+  }
+  node.classList.add('is-new');
+  node.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  toast('新需求已经发出，就是下面这一条', 'ok');
+  setTimeout(() => node.classList.remove('is-new'), 4000);
 }
 
 boot();

@@ -361,6 +361,23 @@ select.input{appearance:none;background-image:linear-gradient(45deg,transparent 
   .nlinks .btn{padding:5px 8px;font-size:.76rem}
 }
 
+/* ---------- 发单页 ---------- */
+.sec-h{font-size:1.02rem;font-weight:700;margin:0;line-height:1.4}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.submitbar{margin-top:4px;padding-top:16px;border-top:1px solid var(--rule)}
+/* 清单行：编号定宽（删行后重新编号不会让输入框左右跳），输入框吃掉剩余宽度，
+   否则长 placeholder 会把「删」按钮挤出卡片 */
+.item-row .item-no{flex:0 0 24px;width:24px}
+.item-row .input{flex:1 1 auto;min-width:0}
+.item-row .btn{flex:0 0 auto}
+.tb-list{margin:0;padding-left:18px;font-size:.82rem;line-height:1.75;color:var(--ink-2)}
+.tb-list li{margin:2px 0}
+.mark-sm{width:32px;height:32px;border-radius:var(--r);background:var(--ink);color:var(--card);
+  display:flex;align-items:center;justify-content:center;font-size:.82rem;font-weight:700;flex:0 0 auto}
+@media(max-width:640px){.grid2{grid-template-columns:1fr}}
+/* 发完单回到大厅，把刚发的那条描出来（2 秒后由脚本摘掉） */
+.task.is-new{border-color:var(--seal);box-shadow:0 0 0 2px var(--seal-wash)}
+
 /* ---------- 宁可不动，也别卡在透明帧 ---------- */
 @media(prefers-reduced-motion:no-preference){
   .rise{animation:rise .35s cubic-bezier(.2,.7,.3,1) both}
