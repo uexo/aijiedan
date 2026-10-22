@@ -1,5 +1,9 @@
 # Zanbuddy · M0 技术骨架
 
+> ⚠️ **本 README 的目录树停留在 v1（`internal/handler` + `internal/service`），已过期。**
+> 实际代码为 v1/v2 混合态共 21 个包，`/api/v2/*` 端点全在 `internal/httpapi`。
+> 环境、路径、代码结构、踩坑清单以 **`../项目事实基准.md`** 为准。
+
 AI 接单平台（连接需求方与 AI 开发者的任务众包平台）的 **M0 最小可跑骨架**。
 目标：在"不碰真实资金"的前提下，跑通 **发单 → 匹配 → 接单 → 托管 → 交付 → 验收 → 结算** 主链路，并把**合规校验与拦截逻辑**植入关键节点。
 
@@ -15,38 +19,62 @@ AI 接单平台（连接需求方与 AI 开发者的任务众包平台）的 **M
 
 ## 目录结构
 
+> 实际为 **v1/v2 混合态**：`internal/handler` + `internal/service` 是 v1 遗留，
+> 全部 `/api/v2/*` 端点位于 **`internal/httpapi`**。找 v2 路由请直接看 `httpapi/router.go`。
+
 ```
 zanbuddy/
-├── go.mod
-├── main.go                       # 入口: 装配各模块 + 种子任务 + 启动 :8080
+├── go.mod                        # module zanbuddy（依赖仅 mysql driver + x/crypto）
+├── main.go                       # 入口: 装配各模块 + 种子 + 启动 :8080（ZANBUDDY_PORT 可覆盖）
+├── zanbuddy.exe                  # 构建产物（测试脚本启动它，禁用 go run）
+├── db_reset.py                   # 重置库；--demo 预置合规四门全开
 ├── migrations/
-│   └── schema.sql                # MySQL DDL(预留, 与内存模型对齐)
-├── internal/
-│   ├── model/      models.go      # 领域模型 + 合规项定义(json 契约)
-│   ├── store/      store.go       # Store 接口 + 内存实现(MemStore, 零依赖)
-│   │               mysql.go       # MySQL 实现(遵循 Store 接口, 生产持久化)
-│   ├── compliance/ compliance.go  # 合规闸门: 动作→合规项映射 + 拦截 + 翻转移交
-│   ├── payment/    payment.go     # 资金托管 stub(冻结/分账/退款 + 佣金10%)
-│   ├── im/         im.go          # P2-2 IM: Service + Provider/Moderator 可切换(腾讯云 IM 骨架) + 消息持久化
-│   ├── notify/     notify.go      # P2-3 通知中心: Service + Provider 可切换(邮件/短信 Stub 骨架) + 站内信落库
-│   ├── service/    service.go     # 主链路: 发单/撮合/订单状态机(含P1-4 取消/退款/纠纷/里程碑)/交付/验收/结算
-│   ├── clarify/    clarify.go     # P1-2: AI 澄清(自然语言→多轮对话→结构化 spec, 零依赖 stub + 可选 LLM)
-│   ├── middleware/ auth.go        # 自实现 HS256 JWT 鉴权
-│   └── handler/    handler.go     # REST API + 合规拦截(409) + SSE
-│       ├── console.html           # 旧演示控制台(内嵌; 路由 /console 已重定向至 /static/admin.html)
-│       └── mobile.html            # P1-3 移动端 H5 核心页(/m: 大厅/发单/订单/我的·钱包)
-├── web/                          # 静态前端(由 Go 内置 http.FileServer 托管于 /static/)
-│   ├── design-system.css          # 统一设计系统(Glassmorphism 浅色 · 由 ui-ux-pro-max 衍生)
-│   ├── landing.html               # 公开落地页(根路径 / 重定向至此)
-│   ├── auth.html                  # 登录/注册(角色感知 → app.html / admin.html)
-│   ├── app.html                   # 双角色工作台(需求方 / 接单方)
-│   ├── task.html                  # 任务详情 + 订单闭环页
-│   ├── org.html                   # 组织 / 企业版治理页(组织钱包·发包·审批·开放集成)
-│   ├── admin.html                 # 运营后台(看板·上线就绪·合规闸门·提现审批·监管)
-│   ├── index.html                 # 旧 Marketplace 枢纽页(已重定向至 landing.html)
-│   └── profile.html               # 旧接单方公开画像页(保留)
-└── smoke_test.py                 # 主链路冒烟测试(验证拦截与放行)
+│   ├── schema.sql                # 建表打底（顺序敏感：ALTER 必须在其 CREATE 之后）
+│   ├── 002_light_trade.sql       # 轻交易模式
+│   └── 003_match_reason.sql      # 匹配理由表
+├── internal/                     # 21 个包
+│   ├── model/                    # 领域模型（Task 状态含 withdrawn）
+│   ├── store/                    # Store 接口 + MemStore(store.go) + MySQL(mysql.go)，行为必须对齐
+│   │
+│   ├── ── v2 主干 ──
+│   ├── identity/                 # 用户与供给方档案
+│   ├── demand/                   # 发单 Publish / MyTasks / Withdraw
+│   ├── trade/                    # 订单状态机（state.go 四态映射）
+│   ├── match/                    # 匹配：factors 五因子 / reason 三类锚点理由 / service 召回裁剪
+│   ├── httpapi/                  # ★ /api/v2/* 全部端点 + drain.go（修未读 body 的 RST）
+│   │
+│   ├── ── v1 遗留 ──
+│   ├── handler/                  # 旧 REST + console/mobile 内嵌页（勿在此找 v2）
+│   ├── service/                  # 旧主链路
+│   ├── compliance/               # 合规闸门（409 拦截 + 翻转）
+│   ├── payment/                  # 托管 stub（冻结/分账/退款）
+│   ├── im/  notify/  kyc/        # IM / 通知中心 / 实名通道
+│   │
+│   ├── ── AI 相关 ──
+│   ├── clarify/  reqai/  quote/  faq/  aihttp/
+│   └── auth/  middleware/        # HS256 JWT 鉴权
+│
+├── web/                          # 静态前端（Go http.FileServer 托管于 /static/）
+│   ├── *.html + design-system.css    # v1 页面套件（landing/app/task/admin/org/auth…）
+│   ├── app/                      # ★ v2 前端：零构建 ES module，接 /api/v2
+│   │   ├── assets/runtime.js     #   api / render / form / router
+│   │   ├── login.html  hall.html  publish.html  profile.html
+│   │   └── _flow.mjs             #   Playwright 流程测试（66 项）
+│   └── v3/                       # ⚠️ 静态设计原型，未接后端（match.html 等尚无 /matches 调用）
+│
+└── test/
+    ├── run_all_m0.sh             # 一键九套回归（每条前重置库 + 干净重启）
+    ├── test_m0_v2/hall/publish/matches/claim/confirm/deliver/accept/withdraw.py
+    └── smoke_test.py             # 主链路冒烟
 ```
+
+### 三代前端的关系（别搞混）
+
+| 目录 | 状态 | 是否接后端 |
+|---|---|---|
+| `web/*.html` | v1 MVP 页面套件 | 接 v1 端点 |
+| `web/app/` | **v2 主线前端，当前开发对象** | 接 `/api/v2` |
+| `web/v3/` | 设计原型（2828 行静态页） | **不接后端**，仅供视觉参考 |
 
 ## 系统前端重设计（2026-10-11，董事长拍板「重设计整个系统页面」）
 
