@@ -44,6 +44,10 @@ type Store interface {
 	ListOrdersByUser(userID string) []*model.Order
 	ListDeliveriesByOrder(orderID string) []*model.Delivery
 	ListReviewsByReviewee(userID string) []*model.Review
+	// ListRevealedReviewsByReviewee 只返回已揭盲(或单方提交满 7 天)的评价。
+	// 历史因子吃这个而不是全量: 未揭盲的评价连算分都不该参与,
+	// 否则"先写的一方"能靠猜对方打几分来调整措辞。
+	ListRevealedReviewsByReviewee(userID string, now int64) []*model.Review
 	ListMatchesByTask(taskID string) []*model.MatchRecord
 	PutMatch(m *model.MatchRecord)
 	ReplaceMatchReasons(matchID string, rs []*model.MatchReason)
@@ -294,10 +298,13 @@ func (s *Service) completedAt(orderID string) int64 {
 	return ds[len(ds)-1].ReviewedAt
 }
 
-// avgRating 历史互评均值。v2 里 review 已被冻存（M4 换成背书），
-// 但历史订单的评价仍然有效，作为过渡期的历史分来源。
+// avgRating 历史互评均值, 只算已揭盲的评价。
+//
+// 为什么不算未揭盲那部分: 揭盲的意义就是"对方看不到我之前写了什么"。
+// 如果未揭盲的评价偷偷进了分数, 这个分数就会通过推荐位和理由反推出去,
+// 同时揭盲就成了摆设。
 func (s *Service) avgRating(providerID string) float64 {
-	revs := s.Store.ListReviewsByReviewee(providerID)
+	revs := s.Store.ListRevealedReviewsByReviewee(providerID, model.Now())
 	if len(revs) == 0 {
 		return 0
 	}

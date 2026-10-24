@@ -419,6 +419,8 @@ P3 企业版从「最小骨架」推向可商用：组织作为统一结算主�
 | GET | `/api/v2/orders/{id}/deliveries` | 这一单的交付记录（含历史轮次），仅交易双方可读 |
 | POST | `/api/v2/orders/{id}/accept` | 需求方验收通过，订单 delivered → completed（四态：已完成），需求单同时关闭 |
 | POST | `/api/v2/orders/{id}/revisions` | 需求方打回，订单 delivered → delivering（四态：回到进行中）；body `{reason}` 必填，500 字内 |
+| POST | `/api/v2/orders/{id}/reviews` | 互评；body `{rating 1-5, comment 可选 500 字内}`。只有这一单双方能评，只有 `completed` 能评，一人一单一次（409 `ALREADY_REVIEWED`）。**提交后不立即可见**：双方都提交才同时揭盲，单方满 7 天自动可见 |
+| GET | `/api/v2/orders/{id}/reviews` | 一单的评价状态；`mine` / `theirs` / `counterpart_submitted` / `can_write`。**未揭盲的对方评价不返回内容，连分数都不给** |
 | GET | `/api/v2/me/orders` | 我参与的单（接的 + 发的），带四态、对端定位/信用分、`needs_me`、交付轮次与最近一轮交付 |
 | GET | `/api/v2/meta/categories` | 类目清单，前端筛选条的唯一来源 |
 | GET | `/api/v2/public/profiles/{slug}` | 公开档案，免登录 |
@@ -523,6 +525,36 @@ v2 是轻交易：**确认开工不碰钱**，不预扣款、不进托管。将�
 `Store.ReviewOrder` 是同一个原子点（内存一把锁，MySQL 事务 + 行锁）：只改订单不改交付，打回原因就丢了；
 只改交付不改订单，单子永远停在待验收，需求方点多少次都没反应。
 
+### 互评与揭盲
+
+一单走完之后，双方互相评价。规则只有一条核心：**先写的人不该吃亏**。
+
+- **谁能评**：只有这一单的需求方与接单方（403 `NOT_PARTICIPANT`）；只有 `completed` 能评
+  （409 `ORDER_NOT_COMPLETED`）。资格先判、状态后判——路人不该从错误里读到"这单还没走完"。
+- **一人一单一次**（409 `ALREADY_REVIEWED`）。`AvgRating` 是对全部已揭盲评价求均值，
+  能重复评就等于自己给自己刷分。库里有 `uk_order_reviewer(order_id, reviewer_id)` 兜底。
+- **打分 1–5**（400 `RATING_RANGE`），正文可选、超 500 字报错不截断（400 `REVIEW_TOO_LONG`）。
+
+**同时揭盲**：这是整个互评制度能不能成立的地方。互评最常见的死法是报复性评价——
+谁先写谁先暴露，后写的人照着报复。所以：
+
+| 情形 | 谁能看见 | 说明 |
+|---|---|---|
+| 只有一方提交 | **只有提交者自己** | 对方连"打了几分"都读不到，连算分也不参与 |
+| 双方都提交 | 两人同时可见 | 后提交的那一刻两条一起揭盲，不是各自提交的时刻 |
+| 单方提交满 7 天 | 该评价进入可见与算分 | 派生态计算（`model.ReviewVisible`），不新增调度器 |
+
+**"交没交"必须透，"打了几分"不能透**：`counterpart_submitted` 告诉对方"他已经评了"，
+否则用户会以为对方不打算评，于是自己也拖着——同时揭盲就变成了互相等待的死锁。
+
+落点在 `Store.SubmitReview`：写入、揭盲、留痕三件事在同一个原子点完成。
+内存一把写锁；MySQL 一个事务，找对侧时 `FOR UPDATE`，两人几乎同时提交时由后到的那一方触发揭盲。
+
+`review_received` 事件在**揭盲时**写，`delta` 恒 0。分数由 `AvgRating` 派生，
+事件只负责回答"他这个分是从哪条评价来的"——两套分数并存，用户和我们都不知道该信哪个。
+匹配侧读的是 `ListRevealedReviewsByReviewee`，**未揭盲的评价不进历史分**：
+偷偷算进去的话，分数会通过推荐位和理由反推出去，揭盲就成了摆设。
+
 轻交易下**验收不碰钱**：没有托管账户要释放，也不写钱包。将来开托管模式，放款就是在 `trade.Accept` 里加一行。
 
 ### 会话
@@ -601,7 +633,7 @@ mysql -h192.168.3.18 -uroot -p zanbuddy < migrations/002_light_trade.sql
 ### 验收
 
 ```bash
-bash test/run_all_m0.sh        # 一次跑完下面九套：每条用例前重置库 + 干净重启服务
+bash test/run_all_m0.sh        # 一次跑完下面十套：每条用例前重置库 + 干净重启服务
 python test/test_m0_v2.py      # 44 项：健康检查、发码、凭证、登录注册、CSRF、档案规则、公开页白名单
 python test/test_m0_hall.py    # 70 项：档案落库比对、角色口径、大厅筛选/排序/分页/脱敏、类目清单
 python test/test_m0_publish.py # 92 项：谁能发单、四项必填与边界值、长字段拦截、澄清提示、我发的需求、自己发自己接不到
@@ -610,10 +642,14 @@ python test/test_m0_claim.py   # 40 项：谁能认领、认领后下架、重�
 python test/test_m0_confirm.py # 62 项：谁能点头、确认进入进行中、退回后重新开放、原因截断、并发确认只算一次
 python test/test_m0_deliver.py # 69 项：谁能交付、未开工/重复交付、说明与链接校验、逐项清单、待验收双方可见
 python test/test_m0_accept.py  # 82 项：谁能验收、打回原因必填不截断、轮次用完不能再打回、并发验收只算一次
+python test/test_m0_review.py  # 62 项：谁能评、没走完不能评、单方提交不透内容、双方提交同时揭盲、一人一单一次、空正文可读回
 python test/test_m0_withdraw.py # 46 项：谁能撤、撤完下架但记录还在、有人接了撤不了、越权不泄露进展、并发只成一个
 node web/app/_flow.mjs         # 66 项：真浏览器 登录→填档案→大厅→认领→点头→交付→打回→重交→验收→自己发单→撤回→别人接走，截图到 web/app/_shots/
 node test/_measure_path.mjs    # 六步路径实测：真浏览器走完一单，输出两侧点击数/输入数/跳转数 + 终态断言（报告见 ../测量-六步路径与一屏审查-2026-10-24.md）
-go test ./internal/store/ -run Credit -v   # 5 项 Go 单测：完成单只留痕不涨分、打回不留痕、重放不重复、幂等键、"干完活"与"干得好"两个 kind 共存
+node test/_verify_review.mjs   # 19 项：互评界面——评价按钮、星级点亮、没选星被拦、提交后等对方、揭盲前对方看不到分数、揭盲后双方可见
+go test ./internal/store/ ./internal/model/ -run "Review|Credit" -v
+                               # 13 项 Go 单测：完成单只留痕不涨分/打回不留痕/重放不重复/两个 kind 共存；
+                               #   单方未揭盲/双方同时揭盲/重复评被拒/列表按 id 兜底/7 天毫秒边界
 ```
 
 **信用事件落库要单独体检**（用例只证明接口返回 200，证明不了事件真的写进了库）：

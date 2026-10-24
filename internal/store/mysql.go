@@ -6,12 +6,13 @@ package store
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync/atomic"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
+	mysqldriver "github.com/go-sql-driver/mysql"
 
 	"zanbuddy/internal/model"
 )
@@ -1073,44 +1074,169 @@ func (s *mysqlStore) PutReview(r *model.Review) {
 		ON DUPLICATE KEY UPDATE rating=VALUES(rating),comment=VALUES(comment)`,
 		r.ID, r.OrderID, r.TaskID, r.ReviewerID, r.RevieweeID, string(r.ReviewerRole), r.Rating, r.Comment, r.CreatedAt)
 }
-func (s *mysqlStore) GetReview(id string) (*model.Review, bool) {
-	r := &model.Review{}
-	err := s.db.QueryRow("SELECT id,order_id,task_id,reviewer_id,reviewee_id,reviewer_role,rating,comment,created_at FROM review WHERE id=?", id).
-		Scan(&r.ID, &r.OrderID, &r.TaskID, &r.ReviewerID, &r.RevieweeID, &r.ReviewerRole, &r.Rating, &r.Comment, &r.CreatedAt)
-	if err == sql.ErrNoRows {
-		return nil, false
+
+// SubmitReview MySQL 实现: 一个事务里 判重 → 落库 → 找对侧 → 同时揭盲 → 留痕。
+//
+// 并发下的顺序问题: 两个人几乎同时提交时, 后到的那一方会看到对方那条并触发揭盲;
+// 先到的那一方提交完就退出, 由后到的补上。所以不会出现"两个人都提交了但都没揭盲"。
+// 找对侧时加 FOR UPDATE, 保证同一单的揭盲只有一个事务在做。
+func (s *mysqlStore) SubmitReview(r *model.Review, at int64) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
 	}
+	defer func() { _ = tx.Rollback() }()
+
+	// 先查一次, 给用户一句"你评过了"而不是让唯一键报 500。唯一键仍是最终兜底。
+	var dup string
+	switch err := tx.QueryRow("SELECT id FROM review WHERE order_id=? AND reviewer_id=?",
+		r.OrderID, r.ReviewerID).Scan(&dup); err {
+	case nil:
+		return ErrReviewExists
+	case sql.ErrNoRows:
+		// 正常路径
+	default:
+		return err
+	}
+
+	r.CreatedAt = at
+	r.RevealedAt = 0
+	if _, err := tx.Exec(`INSERT INTO review (id,order_id,task_id,reviewer_id,reviewee_id,reviewer_role,rating,comment,created_at,revealed_at)
+		VALUES (?,?,?,?,?,?,?,?,?,0)`,
+		r.ID, r.OrderID, r.TaskID, r.ReviewerID, r.RevieweeID, string(r.ReviewerRole), r.Rating, r.Comment, at); err != nil {
+		return mapReviewInsertErr(err)
+	}
+
+	var otherID, otherReviewee string
+	switch err := tx.QueryRow("SELECT id,reviewee_id FROM review WHERE order_id=? AND reviewer_id<>? FOR UPDATE",
+		r.OrderID, r.ReviewerID).Scan(&otherID, &otherReviewee); err {
+	case sql.ErrNoRows:
+		return tx.Commit() // 只有我这一条, 保持未揭盲, 等对方
+	case nil:
+		// 继续
+	default:
+		return err
+	}
+
+	if _, err := tx.Exec("UPDATE review SET revealed_at=? WHERE order_id=? AND revealed_at=0", at, r.OrderID); err != nil {
+		return err
+	}
+	// 内存里的这条也要同步标记揭盲: handler 紧接着要用这个对象回响应,
+	// 只改库不改对象, 用户提交完看到的还是"未揭盲"。
+	r.RevealedAt = at
+	// 留痕: 每人一条 review_received, ref 用各自收到的那条评价 id。
+	// delta 恒 0——分数由 AvgRating 派生, 事件只负责说明"这条评价真实存在"。
+	if err := s.appendCreditEventTx(tx, r.RevieweeID, model.CreditReviewReceived, r.ID, 0, at); err != nil {
+		return err
+	}
+	if err := s.appendCreditEventTx(tx, otherReviewee, model.CreditReviewReceived, otherID, 0, at); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// mapReviewInsertErr 把并发下撞唯一键的 1062 翻成 ErrReviewExists。
+func mapReviewInsertErr(err error) error {
+	var me *mysqldriver.MySQLError
+	if errors.As(err, &me) && me.Number == 1062 {
+		return ErrReviewExists
+	}
+	return err
+}
+
+// scanReview 统一的评价行读取。
+//
+// comment 列可空(VARCHAR NULL): 直接扫进 string 会在"评价不写文字"时
+// 报 converting NULL to string, 表现为查不到任何评价。必须过 NullString。
+func scanReview(sc interface{ Scan(...interface{}) error }, withReveal bool) (*model.Review, error) {
+	r := &model.Review{}
+	var comment sql.NullString
+	var revealed sql.NullInt64
+	var err error
+	if withReveal {
+		err = sc.Scan(&r.ID, &r.OrderID, &r.TaskID, &r.ReviewerID, &r.RevieweeID,
+			&r.ReviewerRole, &r.Rating, &comment, &r.CreatedAt, &revealed)
+	} else {
+		err = sc.Scan(&r.ID, &r.OrderID, &r.TaskID, &r.ReviewerID, &r.RevieweeID,
+			&r.ReviewerRole, &r.Rating, &comment, &r.CreatedAt)
+	}
+	if err != nil {
+		return nil, err
+	}
+	r.Comment = comment.String
+	if revealed.Valid {
+		r.RevealedAt = revealed.Int64
+	}
+	return r, nil
+}
+
+// reviewCols 统一的列清单。
+//
+// revealed_at 必须在这里出现: 它缺过一次, 症状是"双方都提交了但永远显示未揭盲"——
+// 查询按 9 列读, RevealedAt 就恒为 0, 而 update 语句本身是对的, 排查时看着毫无破绽。
+const reviewCols = "id,order_id,task_id,reviewer_id,reviewee_id,reviewer_role,rating,comment,created_at,revealed_at"
+
+func (s *mysqlStore) GetReview(id string) (*model.Review, bool) {
+	r, err := scanReview(s.db.QueryRow("SELECT "+reviewCols+" FROM review WHERE id=?", id), true)
 	if err != nil {
 		return nil, false
 	}
 	return r, true
 }
+
+// ListReviewsByOrder 一张订单上的全部评价, 含未揭盲的(调用方自己用 model.ReviewVisible 判)。
+// 排序带 id 兜底: 同一秒提交的两条 created_at 相同, 只按时间排顺序会抖。
 func (s *mysqlStore) ListReviewsByOrder(orderID string) []*model.Review {
-	rows, err := s.db.Query("SELECT id,order_id,task_id,reviewer_id,reviewee_id,reviewer_role,rating,comment,created_at FROM review WHERE order_id=?", orderID)
+	rows, err := s.db.Query("SELECT "+reviewCols+" FROM review WHERE order_id=? ORDER BY created_at,id", orderID)
 	if err != nil {
 		return []*model.Review{}
 	}
 	defer rows.Close()
 	out := make([]*model.Review, 0)
 	for rows.Next() {
-		r := &model.Review{}
-		if err := rows.Scan(&r.ID, &r.OrderID, &r.TaskID, &r.ReviewerID, &r.RevieweeID, &r.ReviewerRole, &r.Rating, &r.Comment, &r.CreatedAt); err != nil {
+		r, err := scanReview(rows, true)
+		if err != nil {
 			return nil
 		}
 		out = append(out, r)
 	}
 	return out
 }
+
 func (s *mysqlStore) ListReviewsByReviewee(revieweeID string) []*model.Review {
-	rows, err := s.db.Query("SELECT id,order_id,task_id,reviewer_id,reviewee_id,reviewer_role,rating,comment,created_at FROM review WHERE reviewee_id=?", revieweeID)
+	rows, err := s.db.Query("SELECT "+reviewCols+" FROM review WHERE reviewee_id=? ORDER BY created_at,id", revieweeID)
 	if err != nil {
 		return []*model.Review{}
 	}
 	defer rows.Close()
 	out := make([]*model.Review, 0)
 	for rows.Next() {
-		r := &model.Review{}
-		if err := rows.Scan(&r.ID, &r.OrderID, &r.TaskID, &r.ReviewerID, &r.RevieweeID, &r.ReviewerRole, &r.Rating, &r.Comment, &r.CreatedAt); err != nil {
+		r, err := scanReview(rows, true)
+		if err != nil {
+			return nil
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+// ListRevealedReviewsByReviewee 只算已可见的评价。
+//
+// 两个条件都要: 已揭盲(revealed_at>0), 或者单方提交满 7 天(created_at 早于 now-7d)。
+// 第二条是派生判定, 所以这里直接交给 SQL 做, 免得把全表评价捞进内存再筛。
+func (s *mysqlStore) ListRevealedReviewsByReviewee(revieweeID string, now int64) []*model.Review {
+	cutoff := now - model.ReviewAutoRevealMillis
+	rows, err := s.db.Query("SELECT "+reviewCols+` FROM review
+		WHERE reviewee_id=? AND (revealed_at>0 OR created_at<=?)
+		ORDER BY created_at,id`, revieweeID, cutoff)
+	if err != nil {
+		return []*model.Review{}
+	}
+	defer rows.Close()
+	out := make([]*model.Review, 0)
+	for rows.Next() {
+		r, err := scanReview(rows, true)
+		if err != nil {
 			return nil
 		}
 		out = append(out, r)

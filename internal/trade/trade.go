@@ -525,6 +525,15 @@ type OrderView struct {
 	MaxRevisions  int           `json:"max_revisions"`
 	DeliveredAt   int64         `json:"delivered_at,omitempty"`
 	LastDelivery  *DeliveryView `json:"last_delivery,omitempty"`
+
+	// 互评状态。只在订单已完成时有意义, 所以其他状态一律 false。
+	//
+	// CounterpartReviewDone 只表示"对方交没交", 不含分数——
+	// 揭盲前连分数都不能透, 否则先写的人就被动了。
+	// 但"交没交"必须透: 不说的话, 用户会以为对方不打算评, 于是自己也拖着,
+	// 同时揭盲变成互相等待的死锁。
+	MyReviewDone          bool `json:"my_review_done"`
+	CounterpartReviewDone bool `json:"counterpart_review_done"`
 }
 
 // MyOrders 我参与的单(接的 + 发的), 按创建时间倒序。
@@ -601,6 +610,18 @@ func (s *Service) View(o *model.Order, viewerID string) OrderView {
 		dv := toDeliveryView(last)
 		v.LastDelivery = &dv
 		v.DeliveredAt = last.CreatedAt
+	}
+
+	// 互评状态只在已完成时查: 没走完的单查了必然是空的,
+	// 而 /me/orders 一次要算好几单, 能省一次查询就省一次。
+	if o.Status == model.OrderCompleted {
+		for _, rv := range s.st.ListReviewsByOrder(o.ID) {
+			if rv.ReviewerID == viewerID {
+				v.MyReviewDone = true
+			} else {
+				v.CounterpartReviewDone = true
+			}
+		}
 	}
 	return v
 }

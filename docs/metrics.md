@@ -38,15 +38,33 @@ WHERE deleted_at IS NULL
 
 ## 三、有互评的成交单占比
 
+**分子**（按订单数，不按评价条数）：
+
 ```sql
-SELECT
-  (SELECT COUNT(DISTINCT ref_id) FROM credit_event WHERE kind = 'review_received') AS reviewed_orders,
-  (SELECT COUNT(*) FROM `order`
-     WHERE status = 'completed'
-       AND task_id NOT IN ('T-DEMO-001','T-DEMO-002','T-DEMO-003'))            AS completed_orders;
+SELECT COUNT(DISTINCT r.order_id) AS reviewed_orders
+FROM credit_event e
+JOIN review r ON r.id = e.ref_id
+WHERE e.kind = 'review_received';
 ```
 
-**现状**：分子恒为 0。`review_received` 要等第 2 周任务 F（评分揭盲）落地才会写。
+**分母**：
+
+```sql
+SELECT COUNT(*) FROM `order`
+WHERE status = 'completed'
+  AND task_id NOT IN ('T-DEMO-001','T-DEMO-002','T-DEMO-003');
+```
+
+**为什么分子要连 `review` 表**：`review_received` 的 `ref_id` 存的是**评价 id**（`RV-*`），
+一张成交单最多产生两条（需求方评一条、接单方评一条）。直接 `COUNT(DISTINCT ref_id)`
+会把同一单算两次，占比凭空翻倍。**第一版口径就是这么写错的，已改。**
+
+**现状（2026-10-24）**：分子已可产生。`POST /orders/{id}/reviews` 落地后，
+双方都提交（或单方提交满 7 天）即写一条 `review_received`。
+
+**`delta` 恒为 0 是有意的**：它不代表"这条评价没影响"。分数由 `AvgRating`
+（已揭盲评价的均值）派生，`credit_event` 只负责回答"他这个分是从哪条评价来的"。
+看到 delta 全是 0 不要当 bug 修。
 
 **这个数为什么重要**：它衡量「成交之后，双方愿不愿意留下痕迹」。飞轮要转，这一步不能是 0——0 意味着每单都是陌生人一次性交易，评分永远不沉淀，匹配也就永远不会变准。
 
@@ -62,6 +80,8 @@ SELECT kind, COUNT(*) FROM credit_event GROUP BY kind;
 
 预期：`order_completed` 条数 = 成交单数 × 2（需求方 + 接单方各一条）。**不等就说明有验收路径绕过了 `ReviewOrder`**，去查是不是有人在 handler 里另开了一条「完成订单」的路。
 
+`review_received` 条数 ≤ `order_completed` 条数（每次互评揭盲只写一条，且可能有人一直不评）。
+
 ### 4.2 卡在哪一步（这单为什么没成交）
 
 ```sql
@@ -71,6 +91,19 @@ SELECT status, COUNT(*) FROM `order` GROUP BY status;
 `delivered` 堆积 = 需求方不回来看（验收这一步太重）。
 `pending_escrow` 堆积 = 合规闸门没过。
 `disputed` = 出事了，逐单看。
+
+### 4.3 揭盲状态（评价有没有被压着）
+
+```sql
+SELECT
+  SUM(revealed_at > 0)                AS revealed,
+  SUM(revealed_at = 0)                AS waiting,
+  SUM(revealed_at = 0 AND created_at <= ?) AS overdue_auto
+FROM review;
+```
+
+`waiting` 长期不降 = 一方提交后另一方拖着不评。这类单在 7 天后会被自动揭盲（派生态，不落库），
+所以 `overdue_auto` 大于 0 是正常的，它说明兜底生效了。
 
 ---
 

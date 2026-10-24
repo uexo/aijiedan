@@ -28,6 +28,9 @@ var (
 	ErrNotReviewable = errors.New("store: order not reviewable")
 	// ErrNoDelivery 订单标着已交付, 却没有对应的交付记录(数据不一致)。
 	ErrNoDelivery = errors.New("store: no delivery record")
+	// ErrReviewExists 这个人已经评过这一单了。
+	// 一个人对同一单只能评一次: AvgRating 是对全部评价求均值, 重复评一次等于自己给自己刷分。
+	ErrReviewExists = errors.New("store: review already submitted")
 )
 
 // fallbackSlug 给没有短号的用户补一个确定性短号。
@@ -148,9 +151,22 @@ type Store interface {
 	GetDelivery(id string) (*model.Delivery, bool)
 	ListDeliveriesByOrder(orderID string) []*model.Delivery
 	PutReview(r *model.Review)
+	// SubmitReview 提交一条评价, 满足条件时把同一单的两条一起揭盲并留痕。
+	//
+	// 为什么写入、揭盲、留痕要在一个方法里做完: 三者必须同生共死。
+	// 只写不揭盲 → 对方的评价永远被压着; 揭了不写事件 → 事件流与事实不符,
+	// 事后查不出"他这个分是从哪条评价来的"。
+	// 重复提交返回 ErrReviewExists(唯一键 uk_order_reviewer 兜底)。
+	SubmitReview(r *model.Review, at int64) error
 	GetReview(id string) (*model.Review, bool)
 	ListReviewsByOrder(orderID string) []*model.Review
 	ListReviewsByReviewee(revieweeID string) []*model.Review
+	// ListRevealedReviewsByReviewee 只返回已可见的评价, 用于算 AvgRating。
+	//
+	// 为什么不改 ListReviewsByReviewee 而是新开一个: 老方法还在给 v1 页面用,
+	// 在冻结区里改行为等于让没人测的代码跟着变。新方法只让 v2 的匹配用。
+	// 可见的判定见 model.ReviewVisible(已揭盲, 或单方提交已满 7 天)。
+	ListRevealedReviewsByReviewee(revieweeID string, now int64) []*model.Review
 	// ListCreditEvents 某个用户的信用事件流(按发生顺序)。
 	// 写入不单独开口子: order_completed 由 ReviewOrder 在同一个事务/临界区里落,
 	// 这样才能保证"订单完成"与"信用留痕"要么都在, 要么都不在。
@@ -956,12 +972,57 @@ func (s *MemStore) PutReview(r *model.Review) {
 	defer s.mu.Unlock()
 	s.reviews[r.ID] = r
 }
+
+// SubmitReview 内存实现: 一把写锁内完成"判重 + 落评价 + 揭盲 + 留痕"。
+//
+// 揭盲时机只有一种: 同一单里已经存在对方那条评价。此刻两条一起可见——
+// 这是"同时揭盲"的全部实现, 没有第二个开关。
+func (s *MemStore) SubmitReview(r *model.Review, at int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, ex := range s.reviews {
+		if ex.OrderID == r.OrderID && ex.ReviewerID == r.ReviewerID {
+			return ErrReviewExists
+		}
+	}
+
+	r.CreatedAt = at
+	r.RevealedAt = 0
+	s.reviews[r.ID] = r
+
+	// 找对侧: 同订单、由另一个人写的评价。
+	var other *model.Review
+	for _, ex := range s.reviews {
+		if ex.OrderID == r.OrderID && ex.ReviewerID != r.ReviewerID {
+			other = ex
+			break
+		}
+	}
+	if other == nil {
+		return nil // 只有我这一条, 保持未揭盲, 等对方
+	}
+
+	r.RevealedAt = at
+	if other.RevealedAt == 0 {
+		other.RevealedAt = at
+	}
+	// 留痕: 每人一条 review_received, ref 用各自收到的那条评价的 id。
+	// delta 恒 0——分数由 AvgRating 派生, 事件只负责说明"这条评价真实存在"。
+	s.appendCreditEventLocked(r.RevieweeID, model.CreditReviewReceived, r.ID, 0, at)
+	s.appendCreditEventLocked(other.RevieweeID, model.CreditReviewReceived, other.ID, 0, at)
+	return nil
+}
+
 func (s *MemStore) GetReview(id string) (*model.Review, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	r, ok := s.reviews[id]
 	return r, ok
 }
+
+// ListReviewsByOrder 一张订单上的全部评价。
+// 排序必须有 id 兜底: 同一秒提交的两条 created_at 相同, 只按时间排每次顺序都可能不同。
 func (s *MemStore) ListReviewsByOrder(orderID string) []*model.Review {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -971,6 +1032,12 @@ func (s *MemStore) ListReviewsByOrder(orderID string) []*model.Review {
 			out = append(out, r)
 		}
 	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CreatedAt != out[j].CreatedAt {
+			return out[i].CreatedAt < out[j].CreatedAt
+		}
+		return out[i].ID < out[j].ID
+	})
 	return out
 }
 func (s *MemStore) ListReviewsByReviewee(revieweeID string) []*model.Review {
@@ -979,6 +1046,21 @@ func (s *MemStore) ListReviewsByReviewee(revieweeID string) []*model.Review {
 	out := make([]*model.Review, 0)
 	for _, r := range s.reviews {
 		if r.RevieweeID == revieweeID {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// ListRevealedReviewsByReviewee 只算已可见的评价。
+// 未揭盲的那条对谁都不该产生影响——连算分也不该, 否则"先写的一方"
+// 能靠猜对方给几分来调整自己的措辞。
+func (s *MemStore) ListRevealedReviewsByReviewee(revieweeID string, now int64) []*model.Review {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]*model.Review, 0)
+	for _, r := range s.reviews {
+		if r.RevieweeID == revieweeID && model.ReviewVisible(r, now) {
 			out = append(out, r)
 		}
 	}

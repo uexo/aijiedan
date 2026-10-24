@@ -362,7 +362,12 @@ const (
 )
 
 // Review 双向评价: 订单完成后, 参与双方互评。
-// 评分 1-5; 被评价者的信用分由此重算(均值映射 0-100)。
+// 评分 1-5; 被评价者的历史分(AvgRating)由已揭盲的评价求均值算出。
+//
+// 为什么需要 RevealedAt:
+// 互评最大的现实问题是报复性评价——谁先写谁先暴露, 后写的人照着报复。
+// 所以两条评价要"同时揭盲": 双方都提交后才互相可见。
+// RevealedAt > 0 表示已揭盲; 0 表示还在等对方, 对谁都不可见。
 type Review struct {
 	ID           string `json:"id"`
 	OrderID      string `json:"order_id"`
@@ -373,16 +378,53 @@ type Review struct {
 	Rating       int    `json:"rating"`        // 1-5
 	Comment      string `json:"comment"`
 	CreatedAt    int64  `json:"created_at"`
+	RevealedAt   int64  `json:"revealed_at"` // 0 = 未揭盲, 仅本人可见自己的提交
+}
+
+// 单方提交满这么久自动揭盲, 不等对方。
+// 一直不写等于赖账, 不能让已写的一方永远拿不到那条评价带来的分。
+const ReviewAutoRevealDays = 7
+
+// ReviewAutoRevealMillis 自动揭盲的毫秒阈值。
+//
+// 单独抽出来是因为这里错过一次: 全项目时间戳都是 UnixMilli(model.Now),
+// 而 7 天按秒写成 7*86400 会让"7 天"变成 84 秒——所有评价一提交就自动揭盲,
+// 而且不会有任何报错, 只会表现为"同时揭盲没生效"。单位写在一起, 只用一次。
+const ReviewAutoRevealMillis = int64(ReviewAutoRevealDays) * 24 * 60 * 60 * 1000
+
+// ReviewVisible 一条评价现在是否已对他人可见。
+//
+// 两种揭盲方式:
+//  1. 双方都提交 → 后提交的那一刻两条一起揭盲(RevealedAt 被写上)
+//  2. 单方提交满 7 天 → 读的时候算出来, 不靠定时任务
+//
+// 第 2 条为什么不落库: 落库就得有个东西定期去扫表, 而判定条件完全由
+// created_at 决定, 读时算一次就够。少一个调度器, 少一处能坏的地方。
+func ReviewVisible(r *Review, now int64) bool {
+	if r == nil {
+		return false
+	}
+	if r.RevealedAt > 0 {
+		return true
+	}
+	if r.CreatedAt <= 0 {
+		return false
+	}
+	return now-r.CreatedAt >= ReviewAutoRevealMillis
 }
 
 // CreditEvent 信用事件: 信用分从"一个数字"变成"一串可解释事件"。
-// user.credit_score 只是快照, 由事件驱动写入。
 //
 // 为什么把"干完活"和"干得好"拆成两个 kind:
 //   - order_completed 在验收通过那一刻就发生, 此时双方还没互评, AvgRating 仍是 0。
 //     若硬拿 AvgRating 映射 delta, 完成单只能拿到 0 分; 若给固定正分, 又变成
 //     "刷单就能涨信用"——正是我们要防的。所以这个 kind 只留痕(delta=0), 不动分。
-//   - review_received 在互评揭盲后写, 由 AvgRating 映射 delta, 这时才真正动分。
+//   - review_received 在互评揭盲后写, 说明"这个人收到了一条真实评价"。
+//
+// 两个 kind 的 delta 现在都是 0, 这不是没做完, 是同一个原则:
+// **零样本不调参数**。分数由 AvgRating(已揭盲评价的均值) 派生, 历史因子直接吃它;
+// credit_event 负责的是"可解释的事件流"——事后能回答"他这个分是怎么来的",
+// 而不是自己另立一套分数。两套分数并存, 用户和我们都不知道该信哪个。
 //
 // 两者 kind 不同, 唯一键 uk_user_kind_ref(user_id,kind,ref_id) 不会互相顶掉,
 // 同一次验收重放也只会命中自己那条。
@@ -390,8 +432,8 @@ type CreditEvent struct {
 	ID         string `json:"id"`
 	UserID     string `json:"user_id"`
 	Kind       string `json:"kind"`
-	RefID      string `json:"ref_id"`      // 目前是订单号
-	Delta      int    `json:"delta"`       // 本事件对信用分的增减, 可为 0
+	RefID      string `json:"ref_id"`      // order_completed 用订单号; review_received 用评价 id
+	Delta      int    `json:"delta"`       // 本事件对信用分的增减, 目前恒 0
 	ScoreAfter int    `json:"score_after"` // 事件发生后的快照
 	CreatedAt  int64  `json:"created_at"`
 }
@@ -399,7 +441,7 @@ type CreditEvent struct {
 // 信用事件类型
 const (
 	CreditOrderCompleted = "order_completed" // 验收通过: 只留痕, delta 恒 0
-	CreditReviewReceived = "review_received" // 收到互评: delta 由 AvgRating 映射
+	CreditReviewReceived = "review_received" // 收到互评且已揭盲: 只留痕, delta 恒 0
 )
 
 // ComplianceState 平台级合规开关。生产存配置/DB; M0 存内存, 由 admin 翻转模拟合规线落地。

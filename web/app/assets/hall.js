@@ -54,6 +54,9 @@ let inboxItems = []; // 需求方: 别人接了我的单
 let myOpenTasks = []; // 需求方: 我发的、还没人接的需求(不在订单里, 要单独查)
 let mineOpen = true;
 let myProfile = {}; // 档案完整度, 横幅要用; 确认之后横幅得跟着变
+// 互评打分: 每个订单选了几星。放外面是因为重渲染会重建按钮,
+// 存在 DOM 上就会在列表刷新时丢掉用户已经选好的分数。
+let starPick = {};
 
 /* ---------- 小工具 ---------- */
 
@@ -301,6 +304,7 @@ function orderItem(o) {
     ${o.cancel_reason ? html`<p class="tiny muted mt6">退回原因：${o.cancel_reason}</p>` : ''}
     ${deliveryBox(o)}
     ${o.needs_me ? actionUI(o) : ''}
+    ${o.state === 'done' ? reviewDoneUI(o) : ''}
   </li>`;
 }
 
@@ -416,6 +420,68 @@ function deliverUI(o) {
       <button class="btn btn-quiet btn-sm" type="button" data-close-box="${o.id}">再等等</button>
     </div>
   </div>`;
+}
+
+/* 互评。一单走完之后才有这一格，而且必须说清"现在看不看得见对方打的星"。
+   规则是同时揭盲: 双方都提交才互相可见。不说清楚的话，用户会以为对方
+   不打算评，于是自己也拖着——那就成了互相等待的死锁。 */
+function reviewDoneUI(o) {
+  const who = o.counterparty || '对方';
+  const mine = !!o.my_review_done;
+  const theirs = !!o.counterpart_review_done;
+
+  if (mine) {
+    return html`
+    <div class="oact" data-act="${o.id}">
+      <span class="tiny muted">你已评价${who}</span>
+      ${theirs
+        ? html`<button class="btn btn-quiet btn-sm" type="button" data-show-reviews="${o.id}">看双方评价</button>`
+        : html`<span class="tiny muted">· 等对方评价，双方都提交后才互相可见</span>`}
+    </div>
+
+    <div class="obox" hidden data-box="show-${o.id}">
+      <div data-reviews="${o.id}"><p class="tiny muted">加载中…</p></div>
+      <div class="flex ac g8 wrapw mt8">
+        <button class="btn btn-quiet btn-sm" type="button" data-close-box="${o.id}">收起</button>
+      </div>
+    </div>`;
+  }
+
+  return html`
+  <div class="oact" data-act="${o.id}">
+    <button class="btn btn-ink btn-sm" type="button" data-ask-review="${o.id}">评价${who}</button>
+    ${theirs ? html`<span class="tiny muted">他先评了。你提交后才互相可见，不会被他照着改</span>` : ''}
+  </div>
+
+  <div class="obox" hidden data-box="review-${o.id}">
+    <p><strong>给 ${who} 打个分？</strong>提交后不能改。双方都提交之后才互相看见——这样先写的人不会被报复。</p>
+    <div class="flex ac g8 wrapw" data-stars="${o.id}">
+      ${[1, 2, 3, 4, 5].map(
+        (n) => html`<button class="btn btn-quiet btn-sm" type="button" data-star="${n}" aria-pressed="false">${n} 星</button>`
+      )}
+    </div>
+    <label class="label mt8" for="rc-${o.id}">说一句（可选，500 字内）</label>
+    <textarea class="input" id="rc-${o.id}" rows="3" maxlength="500" placeholder="比如：交付干净，启动说明写得比我自己写的还清楚"></textarea>
+    <div class="flex ac g8 wrapw mt8">
+      <button class="btn btn-ink btn-sm" type="button" data-do-review="${o.id}">确认提交</button>
+      <button class="btn btn-quiet btn-sm" type="button" data-close-box="${o.id}">先不评</button>
+    </div>
+  </div>`;
+}
+
+/* 双方评价的展示。每条都要带"谁写的"，否则两段话摆在一起分不清方向。
+   时间只到"几天前": 精确到分钟对判断"这人靠不靠得住"没有帮助。 */
+function reviewsBox(items) {
+  if (!items.length) return html`<p class="tiny muted">还没有可见的评价</p>`;
+  return html`<ul class="ditems">
+    ${items.map(
+      (r) => html`<li class="${r.mine ? 'don' : ''}">
+        <span>${r.mine ? '我' : r.reviewer_name || '对方'} → ${r.mine ? '对方' : '我'}</span>
+        <span>${'★'.repeat(Number(r.rating) || 0)}${'☆'.repeat(5 - (Number(r.rating) || 0))}</span>
+        ${r.comment ? html`<span class="dnote">${r.comment}</span>` : html`<span class="tiny muted">（没写正文）</span>`}
+      </li>`
+    )}
+  </ul>`;
 }
 
 /* 确认开工、退回，都要点两下。认领点错还能去别处找单，
@@ -909,6 +975,70 @@ async function doAccept(id, btn) {
   }
 }
 
+/* 提交互评。分数必须显式选——默认给 5 星等于替用户表了态。 */
+async function doReview(id, btn) {
+  const stars = Number(starPick[id]) || 0;
+  const input = document.getElementById('rc-' + id);
+  const comment = input ? input.value.trim() : '';
+
+  if (!stars) {
+    toast('先选 1 到 5 星', 'warn');
+    return;
+  }
+
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '提交中…';
+  try {
+    const data = await api('POST', '/orders/' + encodeURIComponent(id) + '/reviews', {
+      rating: stars,
+      comment: comment,
+    });
+    delete starPick[id];
+    await loadOrders();
+    renderMine();
+    if (data && data.counterpart_submitted) {
+      toast('评价已提交，双方都评完了，现在可以互相看见', 'ok');
+    } else {
+      toast('评价已提交。等对方也评完，两份评价才互相可见', 'ok');
+    }
+  } catch (err) {
+    const code = err instanceof ApiError ? err.code : '';
+    // 已评过 / 单没走完: 都不是"再试一次"能解决的, 先把界面拉回真实状态。
+    if (code === 'ALREADY_REVIEWED' || code === 'ORDER_NOT_COMPLETED' || code === 'ORDER_NOT_FOUND') {
+      await loadOrders();
+      renderMine();
+      toast(err.message || '这一单现在不能评价', 'warn');
+      return;
+    }
+    toast((err && err.message) || '没提交上，再试一次', 'err');
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
+/* 拉双方评价。theirs 为空时要说出"为什么空"——
+   接口空着不解释, 用户会读成"对方没评我", 而实际上可能只是还没揭盲。 */
+async function doShowReviews(id) {
+  const holder = el.mineList.querySelector('[data-reviews="' + id + '"]');
+  if (!holder) return;
+  try {
+    const data = await api('GET', '/orders/' + encodeURIComponent(id) + '/reviews');
+    const mine = (data && data.mine) || [];
+    const theirs = (data && data.theirs) || [];
+    const box = el.mineList.querySelector('[data-box="show-' + id + '"]');
+    if (box) box.hidden = false;
+    holder.innerHTML = reviewsBox(mine.concat(theirs));
+    if (!theirs.length) {
+      toast(data && data.counterpart_submitted
+        ? '对方还没到揭盲条件，还要再等等'
+        : '对方还没评，双方都评完才互相可见', 'warn');
+    }
+  } catch (err) {
+    holder.innerHTML = '<p class="tiny muted">评价没读上来，刷新再试</p>';
+  }
+}
+
 async function doRevise(id, btn) {
   const label = btn.textContent;
   const box = el.mineList.querySelector('[data-box="revise-' + id + '"]');
@@ -1007,6 +1137,26 @@ el.mineList.addEventListener('click', (e) => {
     openBox(askDel.dataset.askDeliver, 'deliver');
     return;
   }
+  const askRv = e.target.closest('[data-ask-review]');
+  if (askRv) {
+    openBox(askRv.dataset.askReview, 'review');
+    return;
+  }
+  // 星级: 点第 n 个按钮就把 1..n 全点亮。
+  // 用 aria-pressed 而不是自己编 class, 屏幕阅读器和测试脚本都能读到同一个状态。
+  const star = e.target.closest('[data-star]');
+  if (star) {
+    const group = star.closest('[data-stars]');
+    const oid = group.dataset.stars;
+    starPick[oid] = Number(star.dataset.star);
+    group.querySelectorAll('[data-star]').forEach((b) => {
+      const on = Number(b.dataset.star) <= starPick[oid];
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      b.classList.toggle('btn-ink', on);
+      b.classList.toggle('btn-quiet', !on);
+    });
+    return;
+  }
   const close = e.target.closest('[data-close-box]');
   if (close) {
     closeBox(close.dataset.closeBox);
@@ -1033,7 +1183,20 @@ el.mineList.addEventListener('click', (e) => {
     return;
   }
   const goR = e.target.closest('[data-do-revise]');
-  if (goR) doRevise(goR.dataset.doRevise, goR);
+  if (goR) {
+    doRevise(goR.dataset.doRevise, goR);
+    return;
+  }
+  const goRv = e.target.closest('[data-do-review]');
+  if (goRv) {
+    doReview(goRv.dataset.doReview, goRv);
+    return;
+  }
+  const showRv = e.target.closest('[data-show-reviews]');
+  if (showRv) {
+    doShowReviews(showRv.dataset.showReviews);
+    return;
+  }
 });
 
 el.navMine.addEventListener('click', () => {

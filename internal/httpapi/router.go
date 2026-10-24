@@ -68,6 +68,10 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /api/v2/orders/{id}/deliveries", RequireAuth(http.HandlerFunc(s.listDeliveries)))
 	mux.Handle("POST /api/v2/orders/{id}/accept", RequireAuth(http.HandlerFunc(s.acceptOrder)))
 	mux.Handle("POST /api/v2/orders/{id}/revisions", RequireAuth(http.HandlerFunc(s.reviseOrder)))
+	// 互评: 一单走完之后才有的动作, 所以挂在订单下而不是 /reviews/{id}。
+	// 提交后双方都交了才互相可见(裁定①同时揭盲), 单方满 7 天自动可见。
+	mux.Handle("POST /api/v2/orders/{id}/reviews", RequireAuth(http.HandlerFunc(s.submitReview)))
+	mux.Handle("GET /api/v2/orders/{id}/reviews", RequireAuth(http.HandlerFunc(s.listReviews)))
 
 	// 公开页: 免登录, 是信用资产的对外出口
 	mux.HandleFunc("GET /api/v2/public/profiles/{slug}", s.publicProfile)

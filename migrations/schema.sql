@@ -164,7 +164,9 @@ CREATE TABLE `review` (
   `rating`        TINYINT     NOT NULL,
   `comment`       VARCHAR(512) NULL,
   `created_at`    BIGINT      NOT NULL,
+  `revealed_at`   BIGINT      NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_order_reviewer` (`order_id`, `reviewer_id`),
   KEY `idx_order` (`order_id`),
   KEY `idx_reviewee` (`reviewee_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
