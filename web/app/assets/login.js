@@ -164,6 +164,13 @@ rolePick.addEventListener('keydown', (e) => {
   el.click();
 });
 
+// 落地页带 ?role=demand|supply 进来时预选身份，让用户少点一次。
+const wantedRole = new URLSearchParams(location.search).get('role');
+if (wantedRole === 'demand' || wantedRole === 'supply') {
+  const pre = rolePick.querySelector(`[data-role="${wantedRole}"]`);
+  if (pre) pre.click();
+}
+
 nextBtn.addEventListener('click', () => {
   if (!role) {
     toast('先选一个身份', 'warn');

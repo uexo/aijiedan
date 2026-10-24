@@ -55,26 +55,26 @@ zanbuddy/
 │   └── auth/  middleware/        # HS256 JWT 鉴权
 │
 ├── web/                          # 静态前端（Go http.FileServer 托管于 /static/）
-│   ├── *.html + design-system.css    # v1 页面套件（landing/app/task/admin/org/auth…）
-│   ├── app/                      # ★ v2 前端：零构建 ES module，接 /api/v2
-│   │   ├── assets/runtime.js     #   api / render / form / router
-│   │   ├── login.html  hall.html  publish.html  profile.html
-│   │   └── _flow.mjs             #   Playwright 流程测试（66 项）
-│   └── v3/                       # ⚠️ 静态设计原型，未接后端（match.html 等尚无 /matches 调用）
+│   ├── landing.html              # 唯一入口：全部 CTA 已指向 app/login.html
+│   ├── *.html + design-system.css    # v1 剩余页面（task/admin/org/auth，运营与旧流程用）
+│   └── app/                      # ★ v2 前端：零构建 ES module，接 /api/v2
+│       ├── assets/runtime.js     #   api / render / form / router
+│       ├── login.html  hall.html  publish.html  profile.html
+│       └── _flow.mjs             #   Playwright 流程测试（66 项）
 │
 └── test/
     ├── run_all_m0.sh             # 一键九套回归（每条前重置库 + 干净重启）
+    ├── _verify_entry.mjs         # 入口与身份预选回归（6 项）
     ├── test_m0_v2/hall/publish/matches/claim/confirm/deliver/accept/withdraw.py
     └── smoke_test.py             # 主链路冒烟
 ```
 
-### 三代前端的关系（别搞混）
+### 前端入口（2026-10-24 收敛）
 
-| 目录 | 状态 | 是否接后端 |
-|---|---|---|
-| `web/*.html` | v1 MVP 页面套件 | 接 v1 端点 |
-| `web/app/` | **v2 主线前端，当前开发对象** | 接 `/api/v2` |
-| `web/v3/` | 设计原型（2828 行静态页） | **不接后端**，仅供视觉参考 |
+只有一条路径：`landing.html` → `app/login.html`（可带 `?role=demand|supply` 预选身份）→ `app/hall.html`。
+
+v1 的 `auth.html` / `app.html` / `task.html` 仍在仓库，但落地页已不再指向它们；
+运营后台走 `landing.html` → `admin.html`。静态原型目录 `web/v3/` 已删除（可从 git 历史恢复）。
 
 ## 系统前端重设计（2026-10-11，董事长拍板「重设计整个系统页面」）
 
