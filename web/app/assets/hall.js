@@ -1,4 +1,5 @@
 import { api, html, money, toast, ApiError } from './runtime.js';
+import { fetchCandidates, whoCards, bindWhy } from './matches.js';
 
 /* 需求大厅：拉列表、筛选、展开要求。
    一屏只做一件事——让接单方在 10 秒内判断"这单跟我有没有关系"。 */
@@ -247,7 +248,9 @@ function renderMine() {
 
 /* 还没人接的需求。它和订单卡长得像但含义不同:
    订单说的是"这件事在推进", 这条说的是"这件事还悬着, 没人应"。
-   撤回只挂在这一格上: 有人接了之后就得走订单侧的退回, 两条链路各管各的状态。 */
+   撤回只挂在这一格上: 有人接了之后就得走订单侧的退回, 两条链路各管各的状态。
+   「谁能接」也挂这一格: 只有发单本人看得到推荐位, 放大厅卡片上等于把别人的
+   推荐名单摊给所有人看。 */
 function taskItem(t) {
   const cat = t.category_name || catMap[t.category] || t.category || '未分类';
   return html`
@@ -267,8 +270,11 @@ function taskItem(t) {
     </div>
 
     <div class="oact" data-act="${t.id}">
+      <button class="btn btn-quiet btn-sm" type="button" data-ask-who="${t.id}">谁能接</button>
       <button class="btn btn-quiet btn-sm" type="button" data-ask-withdraw="${t.id}">撤回这条</button>
     </div>
+
+    <div class="obox whow" hidden data-box="who-${t.id}"></div>
 
     <div class="obox" hidden data-box="withdraw-${t.id}">
       <p><strong>把这条从大厅撤掉？</strong>撤掉之后别人就搜不到了，也不能再被认领。已经有人接的单撤不了，那种要走退回。</p>
@@ -829,6 +835,9 @@ el.mineToggle.addEventListener('click', () => {
   renderMine();
 });
 
+// 候选人卡上的「看凭据」挂在容器上: 卡片整块重渲染, 逐个绑事件每次都得重来
+bindWhy(el.mineList);
+
 /* ---------- 接单方: 交付 ---------- */
 
 /* 交付是轻交易里唯一"由接单方推着走"的动作: 不点这一下, 单子永远停在进行中。
@@ -1073,6 +1082,33 @@ async function doRevise(id, btn) {
   }
 }
 
+/* 「谁能接」按需算，不在页面加载时批量算。
+   算一次要给所有接单方算语义相似度, 一屏挂十条单就是十次全表计算;
+   而多数时候需求方只是路过来看一眼。点开才算, 也算得准——中间可能刚有人建档。 */
+async function doWho(id) {
+  openBox(id, 'who');
+  const box = el.mineList.querySelector('[data-box="who-' + id + '"]');
+  if (!box) return;
+  box.innerHTML = html`<p class="tiny muted">正在算谁能接…</p>`;
+  try {
+    const data = await fetchCandidates(id);
+    box.innerHTML = html`
+      ${whoCards(data)}
+      <div class="flex ac g8 wrapw mt8">
+        <button class="btn btn-quiet btn-sm" type="button" data-close-box="${id}">收起</button>
+      </div>`;
+  } catch (err) {
+    const code = err instanceof ApiError ? err.code : '';
+    // 已经有人接了 / 单子撤了: 不是"算不出来", 是这一格的前提没了
+    if (code === 'TASK_NOT_OPEN' || code === 'TASK_NOT_FOUND') {
+      box.innerHTML = html`<p class="tiny muted">${err.message || '这一单已经不在等人接了'}</p>`;
+      await loadOrders();
+      return;
+    }
+    box.innerHTML = html`<p class="tiny muted">没算上来，过一会儿再点一次。</p>`;
+  }
+}
+
 /* 撤回。成功之后这张卡直接从"我发的单"里消失, 而不是原地改成"已撤回":
    这一格存在的意义是"还没人接、还等着人", 撤回的单不再等任何人,
    留在列表里只会让"挂着 N 条"这个数字对不上。 */
@@ -1102,6 +1138,11 @@ async function doWithdraw(id, btn) {
 }
 
 el.mineList.addEventListener('click', (e) => {
+  const askWho = e.target.closest('[data-ask-who]');
+  if (askWho) {
+    doWho(askWho.dataset.askWho);
+    return;
+  }
   const askW = e.target.closest('[data-ask-withdraw]');
   if (askW) {
     openBox(askW.dataset.askWithdraw, 'withdraw');

@@ -59,14 +59,17 @@ zanbuddy/
 │   ├── *.html + design-system.css    # v1 剩余页面（task/admin/org/auth，运营与旧流程用）
 │   └── app/                      # ★ v2 前端：零构建 ES module，接 /api/v2
 │       ├── assets/runtime.js     #   api / render / form / router
+│       ├── assets/matches.js     #   「谁能接」三卡：发单页与大厅共用同一套渲染
 │       ├── login.html  hall.html  publish.html  profile.html
 │       └── _flow.mjs             #   Playwright 流程测试（66 项）
 │
 └── test/
-    ├── run_all_m0.sh             # 一键九套回归（每条前重置库 + 干净重启）
+    ├── run_all_m0.sh             # 一键十套回归（每条前重置库 + 干净重启）
     ├── _verify_entry.mjs         # 入口与身份预选回归（6 项）
+    ├── _verify_review.mjs        # 互评与同时揭盲的真浏览器验收（19 项）
+    ├── _verify_who.mjs           # 「谁能接」三卡的真浏览器验收（27 项）
     ├── _measure_path.mjs         # 六步路径实测（点击数基线 + 终态断言）
-    ├── test_m0_v2/hall/publish/matches/claim/confirm/deliver/accept/withdraw.py
+    ├── test_m0_v2/hall/publish/matches/claim/confirm/deliver/accept/review/withdraw.py
     └── smoke_test.py             # 主链路冒烟
 ```
 

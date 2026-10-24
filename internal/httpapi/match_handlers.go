@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math"
 	"net/http"
+	"strings"
 
 	"zanbuddy/internal/match"
 )
@@ -49,6 +50,10 @@ func (s *Server) taskMatches(w http.ResponseWriter, r *http.Request) {
 //
 // primary_endorsement 现在恒为 null(M4 才有背书数据), 但字段要留着:
 // 前端不需要为"有没有背书"写两套布局, 拿到 null 就少渲染一块。
+//
+// portfolio 只带第一条, 不是偷懒: 档案允许存 3 条, 全搬上卡会把一张卡变成简历。
+// 第一条是他自己排在最前面的, 也就是他最想让人看见的那个。
+// 有它才是"能看着真东西做决定"; 只有技能标签的话, 需求方看到的全是自述。
 type matchCard struct {
 	MatchID    string            `json:"match_id"`
 	UserID     string            `json:"user_id"`
@@ -56,12 +61,19 @@ type matchCard struct {
 	Name       string            `json:"name"`
 	Headline   string            `json:"headline"`
 	Skills     []string          `json:"skills"`
+	Portfolio  []portfolioView   `json:"portfolio"`
 	Score      float64           `json:"score"`
 	Stats      matchStats        `json:"stats"`
 	Reasons    []matchReasonView `json:"reasons"`
 	Selectable bool              `json:"selectable"`
 	// PrimaryEndorsement 留空占位, 序列化成 null
 	PrimaryEndorsement interface{} `json:"primary_endorsement"`
+}
+
+// portfolioView 作品链接。label 是给人看的名字, url 是要点得开的地址。
+type portfolioView struct {
+	Label string `json:"label"`
+	URL   string `json:"url"`
 }
 
 type matchStats struct {
@@ -98,6 +110,17 @@ func toCard(c match.Candidate) matchCard {
 			Anchor: matchAnchor{Type: r.AnchorType, Ref: r.AnchorRef, Label: r.AnchorLabel},
 		})
 	}
+	// 作品只带第一条, 且必须是能点开的地址: 存了个空 label 的脏数据不该
+	// 变成卡片上一个点了没反应的「作品」。
+	portfolio := make([]portfolioView, 0, 1)
+	if c.Profile != nil {
+		for _, p := range c.Profile.Portfolio {
+			if strings.HasPrefix(p.URL, "http://") || strings.HasPrefix(p.URL, "https://") {
+				portfolio = append(portfolio, portfolioView{Label: p.Label, URL: p.URL})
+				break
+			}
+		}
+	}
 	card := matchCard{
 		MatchID:    c.MatchID,
 		UserID:     c.User.ID,
@@ -105,6 +128,7 @@ func toCard(c match.Candidate) matchCard {
 		Name:       c.User.Name,
 		Headline:   c.Profile.Headline,
 		Skills:     skills,
+		Portfolio:  portfolio,
 		Score:      math.Round(c.Score*10) / 10,
 		Stats:      matchStats{Orders: c.Stats.Orders, AvgDays: c.Stats.AvgDays, Repeat: c.Stats.RepeatClients},
 		Reasons:    reasons,

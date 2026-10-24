@@ -1,4 +1,5 @@
 import { api, html, toast } from './runtime.js';
+import { fetchCandidates, whoCards, bindWhy } from './matches.js';
 
 /* 发单页。校验口径与后端 internal/demand 一致, 但文案不在这里重复写:
    前端只做"空着就点不动"和字数计数, 到底合不合规由服务端说了算。
@@ -209,12 +210,32 @@ function onPublished(v) {
   if (clar.length) {
     box.innerHTML = html`
       <strong>还能补这几项，补了更容易被接：</strong>
-      <ul class="tb-list mt8">${clar.map((c) => html`<li>${c}</li>`).join('')}</ul>`;
+      <ul class="tb-list mt8">${clar.map((c) => html`<li>${c}</li>`)}</ul>`;
     box.hidden = false;
   } else {
     box.hidden = true;
   }
   doneSec.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  loadWho(v.id);
+}
+
+/* 发完单当场把能接的人摆出来。
+   这一刻是发单方唯一有耐心看推荐位的时候——他刚花三分钟写完需求,
+   最想知道的是"有没有人对得上", 而不是"去大厅逛逛"。
+   算不出来不算失败: 这一单已经发出去了, 推荐位只是附加信息。 */
+async function loadWho(taskId) {
+  const box = document.getElementById('done-who');
+  if (!box) return;
+  box.innerHTML = html`<p class="tiny muted">正在算谁能接这一单…</p>`;
+  box.hidden = false;
+  try {
+    const data = await fetchCandidates(taskId);
+    box.innerHTML = html`
+      <h2 class="sec-h mb4">现在能接这一单的人</h2>
+      ${whoCards(data)}`;
+  } catch (err) {
+    box.innerHTML = html`<p class="tiny muted">没能算出谁能接，不影响这一单已经发出。</p>`;
+  }
 }
 
 document.getElementById('done-again').addEventListener('click', () => {
@@ -225,8 +246,16 @@ document.getElementById('done-again').addEventListener('click', () => {
   addItemRow();
   form.hidden = false;
   doneSec.hidden = true;
+  // 上一单的候选人还留在 DOM 里: 再发一单时它已经不属于这一单了
+  const who = document.getElementById('done-who');
+  if (who) {
+    who.hidden = true;
+    who.innerHTML = '';
+  }
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
+
+bindWhy(document.getElementById('done-who'));
 
 document.getElementById('logout').addEventListener('click', async () => {
   try {

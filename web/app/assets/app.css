@@ -378,6 +378,39 @@ select.input{appearance:none;background-image:linear-gradient(45deg,transparent 
 /* 发完单回到大厅，把刚发的那条描出来（2 秒后由脚本摘掉） */
 .task.is-new{border-color:var(--seal);box-shadow:0 0 0 2px var(--seal-wash)}
 
+/* ---------- 谁能接（三卡） ---------- */
+/* 一块地方两处用：发单成功页、大厅「我发的单」。所以不自带外边距，
+   让放它的人决定上下留多少白。 */
+.whow{border-top:1px solid var(--rule);padding-top:12px}
+.wlist{list-style:none;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
+/* 卡片等高：三张并排时名字长短不一，高度不齐会看着像没做完 */
+.wcard{border:1px solid var(--rule);border-radius:var(--r);background:var(--card);
+  padding:12px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.wtop{display:flex;align-items:flex-start;gap:8px}
+.wrank{flex:0 0 auto;width:20px;height:20px;border-radius:50%;background:var(--ink);color:var(--card);
+  font-size:.7rem;display:flex;align-items:center;justify-content:center}
+.wgrow{min-width:0}
+.wgrow strong{display:block;font-size:.92rem;font-weight:650;line-height:1.35;letter-spacing:-.01em}
+.wgrow .tiny{display:block;margin-top:2px;line-height:1.45}
+.wstat{line-height:1.45}
+.wskills{display:flex;gap:5px;flex-wrap:wrap}
+/* 作品链接是这张卡上唯一能点开看真东西的地方, 给一点下划线提示可点 */
+.wwork{margin:0;line-height:1.45}
+.wwork a{color:var(--seal-2);border-bottom:1px solid var(--rule-2);word-break:break-word}
+.wreasons{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+/* 一条理由 = 一个按钮。理由本身是可读的结论, 「看凭据」才是动作:
+   把整条做成链接会让人以为点了等于选他。 */
+.wwhy{display:flex;align-items:flex-start;gap:6px;justify-content:space-between;width:100%;
+  text-align:left;font-size:.8rem;line-height:1.5;color:var(--ink-2);padding:0}
+.wwhy:hover span:first-child{color:var(--ink)}
+.wwhy .wmore{flex:0 0 auto;color:var(--ink-4);font-size:.72rem;white-space:nowrap}
+.wwhy[aria-expanded="true"] .wmore{color:var(--seal)}
+.wbox{margin-top:5px;padding:6px 8px;border-left:2px solid var(--rule-2);
+  background:var(--paper-2);word-break:break-word;line-height:1.5}
+.whow-foot{margin-top:10px;line-height:1.6}
+.whow-empty{margin-top:8px;line-height:1.6}
+@media(max-width:760px){.wlist{grid-template-columns:1fr}}
+
 /* ---------- 宁可不动，也别卡在透明帧 ---------- */
 @media(prefers-reduced-motion:no-preference){
   .rise{animation:rise .35s cubic-bezier(.2,.7,.3,1) both}
