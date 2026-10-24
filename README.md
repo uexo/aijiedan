@@ -65,6 +65,7 @@ zanbuddy/
 └── test/
     ├── run_all_m0.sh             # 一键九套回归（每条前重置库 + 干净重启）
     ├── _verify_entry.mjs         # 入口与身份预选回归（6 项）
+    ├── _measure_path.mjs         # 六步路径实测（点击数基线 + 终态断言）
     ├── test_m0_v2/hall/publish/matches/claim/confirm/deliver/accept/withdraw.py
     └── smoke_test.py             # 主链路冒烟
 ```
@@ -611,6 +612,7 @@ python test/test_m0_deliver.py # 69 项：谁能交付、未开工/重复交付�
 python test/test_m0_accept.py  # 82 项：谁能验收、打回原因必填不截断、轮次用完不能再打回、并发验收只算一次
 python test/test_m0_withdraw.py # 46 项：谁能撤、撤完下架但记录还在、有人接了撤不了、越权不泄露进展、并发只成一个
 node web/app/_flow.mjs         # 66 项：真浏览器 登录→填档案→大厅→认领→点头→交付→打回→重交→验收→自己发单→撤回→别人接走，截图到 web/app/_shots/
+node test/_measure_path.mjs    # 六步路径实测：真浏览器走完一单，输出两侧点击数/输入数/跳转数 + 终态断言（报告见 ../测量-六步路径与一屏审查-2026-10-24.md）
 go test ./internal/store/ -run Credit -v   # 5 项 Go 单测：完成单只留痕不涨分、打回不留痕、重放不重复、幂等键、"干完活"与"干得好"两个 kind 共存
 ```
 
