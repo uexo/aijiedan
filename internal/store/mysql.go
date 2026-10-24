@@ -865,10 +865,10 @@ func (s *mysqlStore) ReviewOrder(orderID string, accept bool, note string, at in
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var status, taskID string
+	var status, taskID, requesterID, providerID string
 	var maxRev int
-	if err := tx.QueryRow("SELECT status,task_id,max_revisions FROM `order` WHERE id=? FOR UPDATE", orderID).
-		Scan(&status, &taskID, &maxRev); err != nil {
+	if err := tx.QueryRow("SELECT status,task_id,max_revisions,requester_id,provider_id FROM `order` WHERE id=? FOR UPDATE", orderID).
+		Scan(&status, &taskID, &maxRev, &requesterID, &providerID); err != nil {
 		if err == sql.ErrNoRows {
 			return ErrOrderGone
 		}
@@ -901,6 +901,14 @@ func (s *mysqlStore) ReviewOrder(orderID string, accept bool, note string, at in
 			if _, err := tx.Exec("UPDATE task SET status=? WHERE id=?", string(model.TaskClosed), taskID); err != nil {
 				return err
 			}
+		}
+		// 飞轮留痕: 完成单只记事件、delta 恒 0(完成不等于好评, 分要靠 review_received 才动)。
+		// 与订单状态同事务: 不会出现"订单已完成但信用事件没落"的半截状态。
+		if err := s.appendCreditEventTx(tx, requesterID, model.CreditOrderCompleted, orderID, 0, at); err != nil {
+			return err
+		}
+		if err := s.appendCreditEventTx(tx, providerID, model.CreditOrderCompleted, orderID, 0, at); err != nil {
+			return err
 		}
 		return tx.Commit()
 	}
@@ -1106,6 +1114,48 @@ func (s *mysqlStore) ListReviewsByReviewee(revieweeID string) []*model.Review {
 			return nil
 		}
 		out = append(out, r)
+	}
+	return out
+}
+
+// --- Credit Events ---
+
+// appendCreditEventTx 幂等写一条信用事件。调用方必须已开启事务。
+//
+// 幂等键是库里的 uk_user_kind_ref(user_id,kind,ref_id), 撞键时用 no-op 更新收场:
+// 信用事件一旦发生就不该被改写, 重试只应该"不报错", 不该"覆盖分数"。
+func (s *mysqlStore) appendCreditEventTx(tx *sql.Tx, userID, kind, refID string, delta int, at int64) error {
+	if userID == "" || refID == "" {
+		return nil
+	}
+	var score int
+	if err := tx.QueryRow("SELECT credit_score FROM `user` WHERE id=? AND deleted_at IS NULL", userID).Scan(&score); err != nil {
+		if err != sql.ErrNoRows {
+			return err
+		}
+		score = 0 // 用户不存在时不写脏数据, 只把快照置 0
+	}
+	score += delta
+	_, err := tx.Exec(`INSERT INTO credit_event (id,user_id,kind,ref_id,delta,score_after,created_at)
+		VALUES (?,?,?,?,?,?,?)
+		ON DUPLICATE KEY UPDATE id=id`,
+		s.NextID("CE"), userID, kind, refID, delta, score, at)
+	return err
+}
+
+func (s *mysqlStore) ListCreditEvents(userID string) []*model.CreditEvent {
+	rows, err := s.db.Query("SELECT id,user_id,kind,ref_id,delta,score_after,created_at FROM credit_event WHERE user_id=? ORDER BY created_at,id", userID)
+	if err != nil {
+		return []*model.CreditEvent{}
+	}
+	defer rows.Close()
+	out := make([]*model.CreditEvent, 0)
+	for rows.Next() {
+		e := &model.CreditEvent{}
+		if err := rows.Scan(&e.ID, &e.UserID, &e.Kind, &e.RefID, &e.Delta, &e.ScoreAfter, &e.CreatedAt); err != nil {
+			return nil
+		}
+		out = append(out, e)
 	}
 	return out
 }

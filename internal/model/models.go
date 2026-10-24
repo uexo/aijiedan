@@ -375,6 +375,33 @@ type Review struct {
 	CreatedAt    int64  `json:"created_at"`
 }
 
+// CreditEvent 信用事件: 信用分从"一个数字"变成"一串可解释事件"。
+// user.credit_score 只是快照, 由事件驱动写入。
+//
+// 为什么把"干完活"和"干得好"拆成两个 kind:
+//   - order_completed 在验收通过那一刻就发生, 此时双方还没互评, AvgRating 仍是 0。
+//     若硬拿 AvgRating 映射 delta, 完成单只能拿到 0 分; 若给固定正分, 又变成
+//     "刷单就能涨信用"——正是我们要防的。所以这个 kind 只留痕(delta=0), 不动分。
+//   - review_received 在互评揭盲后写, 由 AvgRating 映射 delta, 这时才真正动分。
+//
+// 两者 kind 不同, 唯一键 uk_user_kind_ref(user_id,kind,ref_id) 不会互相顶掉,
+// 同一次验收重放也只会命中自己那条。
+type CreditEvent struct {
+	ID         string `json:"id"`
+	UserID     string `json:"user_id"`
+	Kind       string `json:"kind"`
+	RefID      string `json:"ref_id"`      // 目前是订单号
+	Delta      int    `json:"delta"`       // 本事件对信用分的增减, 可为 0
+	ScoreAfter int    `json:"score_after"` // 事件发生后的快照
+	CreatedAt  int64  `json:"created_at"`
+}
+
+// 信用事件类型
+const (
+	CreditOrderCompleted = "order_completed" // 验收通过: 只留痕, delta 恒 0
+	CreditReviewReceived = "review_received" // 收到互评: delta 由 AvgRating 映射
+)
+
 // ComplianceState 平台级合规开关。生产存配置/DB; M0 存内存, 由 admin 翻转模拟合规线落地。
 type ComplianceState struct {
 	Items map[ComplianceItem]bool `json:"items"`

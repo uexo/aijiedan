@@ -611,7 +611,19 @@ python test/test_m0_deliver.py # 69 项：谁能交付、未开工/重复交付�
 python test/test_m0_accept.py  # 82 项：谁能验收、打回原因必填不截断、轮次用完不能再打回、并发验收只算一次
 python test/test_m0_withdraw.py # 46 项：谁能撤、撤完下架但记录还在、有人接了撤不了、越权不泄露进展、并发只成一个
 node web/app/_flow.mjs         # 66 项：真浏览器 登录→填档案→大厅→认领→点头→交付→打回→重交→验收→自己发单→撤回→别人接走，截图到 web/app/_shots/
+go test ./internal/store/ -run Credit -v   # 5 项 Go 单测：完成单只留痕不涨分、打回不留痕、重放不重复、幂等键、"干完活"与"干得好"两个 kind 共存
 ```
+
+**信用事件落库要单独体检**（用例只证明接口返回 200，证明不了事件真的写进了库）：
+
+```bash
+ZANBUDDY_DB_PASSWORD=xxxx \
+  C:/Users/admin/.workbuddy/binaries/python/envs/default/Scripts/python.exe test/check_credit.py
+```
+
+它核对四件事：每条 completed 订单恰好 2 条 `order_completed`、`delta` 全为 0、
+没有「订单完成但事件不全」的半截状态、没有重复的 `(user,kind,ref)`。
+飞轮断掉的典型症状就是——订单状态往前走了，`credit_event` 里什么都没有，而所有用例依然全绿。
 
 **每条用例前必须重置数据库并重启服务**（`run_all_m0.sh` 已经这么做了）。
 种子需求 `T-DEMO-001..003` 是共享的，认领一张就少一张；连着跑不重置，

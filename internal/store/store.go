@@ -151,6 +151,10 @@ type Store interface {
 	GetReview(id string) (*model.Review, bool)
 	ListReviewsByOrder(orderID string) []*model.Review
 	ListReviewsByReviewee(revieweeID string) []*model.Review
+	// ListCreditEvents 某个用户的信用事件流(按发生顺序)。
+	// 写入不单独开口子: order_completed 由 ReviewOrder 在同一个事务/临界区里落,
+	// 这样才能保证"订单完成"与"信用留痕"要么都在, 要么都不在。
+	ListCreditEvents(userID string) []*model.CreditEvent
 	GetCompliance() *model.ComplianceState
 	SetCompliance(item model.ComplianceItem, on bool)
 
@@ -218,6 +222,7 @@ type MemStore struct {
 	orders        map[string]*model.Order
 	deliveries    map[string]*model.Delivery
 	reviews       map[string]*model.Review
+	creditEvents  map[string]*model.CreditEvent // key: event_id
 	wallets       map[string]*model.Wallet
 	ledgers       map[string]*model.Ledger
 	withdrawals   map[string]*model.Withdrawal
@@ -246,6 +251,7 @@ func NewMem() *MemStore {
 		orders:        map[string]*model.Order{},
 		deliveries:    map[string]*model.Delivery{},
 		reviews:       map[string]*model.Review{},
+		creditEvents:  map[string]*model.CreditEvent{},
 		wallets:       map[string]*model.Wallet{},
 		ledgers:       map[string]*model.Ledger{},
 		withdrawals:   map[string]*model.Withdrawal{},
@@ -843,6 +849,10 @@ func (s *MemStore) ReviewOrder(orderID string, accept bool, note string, at int6
 		if t, ok := s.tasks[o.TaskID]; ok {
 			t.Status = model.TaskClosed
 		}
+		// 飞轮留痕: 完成单只记事件、delta 恒 0(完成不等于好评)。
+		// 写在同一把写锁里, 保证"订单已完成"与"信用事件已落"不会只成立一半。
+		s.appendCreditEventLocked(o.RequesterID, model.CreditOrderCompleted, o.ID, 0, at)
+		s.appendCreditEventLocked(o.ProviderID, model.CreditOrderCompleted, o.ID, 0, at)
 		return nil
 	}
 
@@ -972,6 +982,56 @@ func (s *MemStore) ListReviewsByReviewee(revieweeID string) []*model.Review {
 			out = append(out, r)
 		}
 	}
+	return out
+}
+
+// --- Credit Events ---
+
+// appendCreditEventLocked 幂等追加一条信用事件。调用方必须已持有写锁。
+//
+// 幂等键与库里的 uk_user_kind_ref 保持一致: (user_id, kind, ref_id)。
+// 重复写入直接跳过, 不做 ON DUPLICATE 覆盖——信用事件一旦发生就不该被改写。
+func (s *MemStore) appendCreditEventLocked(userID, kind, refID string, delta int, at int64) {
+	if userID == "" || refID == "" {
+		return
+	}
+	for _, e := range s.creditEvents {
+		if e.UserID == userID && e.Kind == kind && e.RefID == refID {
+			return
+		}
+	}
+	score := 0
+	if u, ok := s.users[userID]; ok && u != nil {
+		score = u.CreditScore + delta
+	}
+	ev := &model.CreditEvent{
+		ID:         s.NextID("CE"),
+		UserID:     userID,
+		Kind:       kind,
+		RefID:      refID,
+		Delta:      delta,
+		ScoreAfter: score,
+		CreatedAt:  at,
+	}
+	s.creditEvents[ev.ID] = ev
+}
+
+func (s *MemStore) ListCreditEvents(userID string) []*model.CreditEvent {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]*model.CreditEvent, 0)
+	for _, e := range s.creditEvents {
+		if e.UserID == userID {
+			out = append(out, e)
+		}
+	}
+	// 排序用 id 兜底: 同一秒内多条事件 created_at 相同, 只按时间排会来回抖。
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CreatedAt != out[j].CreatedAt {
+			return out[i].CreatedAt < out[j].CreatedAt
+		}
+		return out[i].ID < out[j].ID
+	})
 	return out
 }
 
