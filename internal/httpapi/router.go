@@ -73,6 +73,14 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /api/v2/orders/{id}/reviews", RequireAuth(http.HandlerFunc(s.submitReview)))
 	mux.Handle("GET /api/v2/orders/{id}/reviews", RequireAuth(http.HandlerFunc(s.listReviews)))
 
+	// 背书: 订单验收通过之后才有的事, 所以也挂在订单下。
+	// 与互评的区别是它不可撤销、永久公开、且直接进匹配理由——一张订单一个人一条。
+	mux.Handle("GET /api/v2/orders/{id}/endorsement", RequireAuth(http.HandlerFunc(s.getEndorsementInvite)))
+	mux.Handle("POST /api/v2/orders/{id}/endorsement", RequireAuth(http.HandlerFunc(s.writeEndorsement)))
+	// 追加挂在背书自己身上: 原文不可编辑, 想补充只能往下加一条, 且只有原作者能加。
+	mux.Handle("POST /api/v2/endorsements/{id}/appends", RequireAuth(http.HandlerFunc(s.appendEndorsement)))
+	mux.Handle("GET /api/v2/me/endorsements", RequireAuth(http.HandlerFunc(s.myEndorsements)))
+
 	// 公开页: 免登录, 是信用资产的对外出口
 	mux.HandleFunc("GET /api/v2/public/profiles/{slug}", s.publicProfile)
 

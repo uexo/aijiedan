@@ -444,6 +444,8 @@ function reviewDoneUI(o) {
   const who = o.counterparty || '对方';
   const mine = !!o.my_review_done;
   const theirs = !!o.counterpart_review_done;
+  // 背书入口与"评没评过"无关，两条分支都要带上。
+  const es = endorseSlot(o);
 
   if (mine) {
     return html`
@@ -452,6 +454,7 @@ function reviewDoneUI(o) {
       ${theirs
         ? html`<button class="btn btn-quiet btn-sm" type="button" data-show-reviews="${o.id}">看双方评价</button>`
         : html`<span class="tiny muted">· 等对方评价，双方都提交后才互相可见</span>`}
+      ${es.act}
     </div>
 
     <div class="obox" hidden data-box="show-${o.id}">
@@ -459,13 +462,15 @@ function reviewDoneUI(o) {
       <div class="flex ac g8 wrapw mt8">
         <button class="btn btn-quiet btn-sm" type="button" data-close-box="${o.id}">收起</button>
       </div>
-    </div>`;
+    </div>
+    ${es.box}`;
   }
 
   return html`
   <div class="oact" data-act="${o.id}">
     <button class="btn btn-ink btn-sm" type="button" data-ask-review="${o.id}">评价${who}</button>
     ${theirs ? html`<span class="tiny muted">他先评了。你提交后才互相可见，不会被他照着改</span>` : ''}
+    ${es.act}
   </div>
 
   <div class="obox" hidden data-box="review-${o.id}">
@@ -481,6 +486,85 @@ function reviewDoneUI(o) {
       <button class="btn btn-ink btn-sm" type="button" data-do-review="${o.id}">确认提交</button>
       <button class="btn btn-quiet btn-sm" type="button" data-close-box="${o.id}">先不评</button>
     </div>
+  </div>
+  ${es.box}`;
+}
+
+/* 背书入口。与评语并排放在同一格，因为用户做完一单想"给对方留句话"是一个念头。
+   但规则完全不同：评语可以等对方、可以互相揭盲；背书一写就公开、不能改、
+   直接进下一次的推荐理由。所以按钮写的是动作（写背书），不是评价。 */
+function endorseSlot(o) {
+  const who = o.counterparty || '对方';
+  return {
+    act: html`<button class="btn btn-quiet btn-sm" type="button" data-ask-endorse="${o.id}">给${who}写背书</button>`,
+    box: html`
+    <div class="obox" hidden data-box="endorse-${o.id}">
+      <div data-endorse="${o.id}"><p class="tiny muted">加载中…</p></div>
+      <div class="flex ac g8 wrapw mt8">
+        <button class="btn btn-quiet btn-sm" type="button" data-close-box="${o.id}">收起</button>
+      </div>
+    </div>`,
+  };
+}
+
+/* 背书这一格的内容。
+   能不能写、为什么不能写、三问是什么——全部由服务端给（GET /orders/{id}/endorsement）。
+   前端不自己算 12 字、不自己拼问题：规则写两遍必然漂，最后是前端放行、服务端拒收。 */
+function endorseForm(inv) {
+  const who = inv.target_name || '对方';
+  const mine = inv.mine;
+
+  if (!inv.can_write) {
+    if (!mine) {
+      return html`<p class="tiny muted">${inv.why_not || '现在还不能写背书'}</p>`;
+    }
+    const qs = inv.questions || [];
+    const answered = qs.filter((q) => (mine.answers || {})[q.key]);
+    const appends = mine.appends || [];
+    return html`
+    <p class="mb4"><strong>你给 ${who} 写的背书</strong>
+      <span class="tiny muted">· 写完不能改，只能往下追加</span></p>
+    <blockquote class="endorse-q">${mine.body}</blockquote>
+    ${answered.length
+      ? html`<ul class="ditems">
+          ${answered.map(
+            (q) => html`<li><span class="tiny muted">${q.ask}</span>
+              <span class="dnote">${mine.answers[q.key]}</span></li>`
+          )}
+        </ul>`
+      : ''}
+    ${appends.length
+      ? html`<ul class="ditems">
+          ${appends.map(
+            (a) => html`<li><span class="tiny muted">追加</span><span class="dnote">${a.body}</span></li>`
+          )}
+        </ul>`
+      : ''}
+    <label class="label mt8" for="ea-${inv.order_id}">再补一句（原文不动）</label>
+    <textarea class="input" id="ea-${inv.order_id}" rows="2" maxlength="500"
+      placeholder="比如：后来又找我改过一次，没另外收费"></textarea>
+    <div class="flex ac g8 wrapw mt8">
+      <button class="btn btn-ink btn-sm" type="button" data-do-append="${mine.id}" data-order="${inv.order_id}">追加</button>
+    </div>`;
+  }
+
+  return html`
+  <p class="mb4"><strong>给 ${who} 写一段背书</strong></p>
+  <p class="tiny muted">这段话会公开挂在你名下，写完不能改。${inv.min_chars} 字起——
+    写清楚他做了什么，比夸他好更有用。</p>
+  <label class="label mt8" for="eb-${inv.order_id}">他做的事，和你收到的东西</label>
+  <textarea class="input" id="eb-${inv.order_id}" rows="4" maxlength="${inv.max_chars}"
+    data-ebody="${inv.order_id}" data-min="${inv.min_chars}"
+    placeholder="做了什么、你自己怎么用的、和你要的对不对得上"></textarea>
+  <p class="tiny muted" data-ecount="${inv.order_id}">0 字 / 至少 ${inv.min_chars} 字</p>
+  ${(inv.questions || []).map(
+    (q) => html`<label class="label mt8" for="eq-${inv.order_id}-${q.key}">${q.ask}</label>
+      <input class="input" type="text" id="eq-${inv.order_id}-${q.key}" maxlength="200"
+        data-eans="${q.key}" data-eorder="${inv.order_id}" placeholder="${q.hint || ''}">`
+  )}
+  <p class="tiny muted mt8">三问至少答 ${inv.answers_needed || 2} 个，答不上来的可以空着。</p>
+  <div class="flex ac g8 wrapw mt8">
+    <button class="btn btn-ink btn-sm" type="button" data-do-endorse="${inv.order_id}">提交背书</button>
   </div>`;
 }
 
@@ -1057,6 +1141,93 @@ async function doShowReviews(id) {
   }
 }
 
+/* ---------- 背书 ---------- */
+
+async function openEndorse(id) {
+  openBox(id, 'endorse');
+  const holder = el.mineList.querySelector('[data-endorse="' + id + '"]');
+  if (!holder) return;
+  holder.innerHTML = html`<p class="tiny muted">加载中…</p>`;
+  try {
+    const inv = await api('GET', '/orders/' + encodeURIComponent(id) + '/endorsement');
+    holder.innerHTML = endorseForm(inv);
+    bindEndorseCount(id);
+  } catch (err) {
+    holder.innerHTML = html`<p class="tiny muted">${(err && err.message) || '没能读到背书信息，刷新再试'}</p>`;
+  }
+}
+
+/* 字数按"去掉空白后的字符"算，和服务端 model.CharCount 同一口径。
+   自己按 .length 算的话，换行和空格会被算进去——用户在框里敲了 11 个字加两个换行，
+   前端显示 13 字放行，服务端拒收。这种不一致最难解释。 */
+function bindEndorseCount(id) {
+  const ta = el.mineList.querySelector('[data-ebody="' + id + '"]');
+  const out = el.mineList.querySelector('[data-ecount="' + id + '"]');
+  if (!ta || !out) return;
+  const min = Number(ta.dataset.min) || 12;
+  const paint = () => {
+    const n = Array.from(ta.value.replace(/\s/g, '')).length;
+    out.textContent = n + ' 字 / 至少 ' + min + ' 字';
+    out.classList.toggle('is-warn', n > 0 && n < min);
+  };
+  ta.addEventListener('input', paint);
+  paint();
+}
+
+async function doEndorse(id, btn) {
+  const holder = el.mineList.querySelector('[data-endorse="' + id + '"]');
+  if (!holder) return;
+  const ta = holder.querySelector('[data-ebody="' + id + '"]');
+  const answers = {};
+  holder.querySelectorAll('[data-eans]').forEach((inp) => {
+    const v = inp.value.trim();
+    if (v) answers[inp.dataset.eans] = v;
+  });
+
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '提交中…';
+  try {
+    await api('POST', '/orders/' + encodeURIComponent(id) + '/endorsement', {
+      body: ta ? ta.value : '',
+      answers,
+    });
+    toast('背书已写好，会出现在下一次的推荐理由里', 'ok');
+    // 重新拉订单与推荐位: 背书改变了这个人被推荐时的凭据,
+    // 「我的单」里那些还没人接的需求, 卡片上的理由也该跟着变。
+    await loadOrders();
+    renderMine();
+    await openEndorse(id);
+    load(true);
+  } catch (err) {
+    toast((err && err.message) || '没提交上，再试一次', 'err');
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
+async function doAppend(endorsementId, orderId, btn) {
+  const ta = document.getElementById('ea-' + orderId);
+  const body = ta ? ta.value.trim() : '';
+  if (!body) {
+    toast('写一句要补的话', 'warn');
+    if (ta) ta.focus();
+    return;
+  }
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '追加中…';
+  try {
+    await api('POST', '/endorsements/' + encodeURIComponent(endorsementId) + '/appends', { body });
+    toast('已追加，原文没有改动', 'ok');
+    await openEndorse(orderId);
+  } catch (err) {
+    toast((err && err.message) || '没追加上，再试一次', 'err');
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
 async function doRevise(id, btn) {
   const label = btn.textContent;
   const box = el.mineList.querySelector('[data-box="revise-' + id + '"]');
@@ -1245,6 +1416,21 @@ el.mineList.addEventListener('click', (e) => {
   const showRv = e.target.closest('[data-show-reviews]');
   if (showRv) {
     doShowReviews(showRv.dataset.showReviews);
+    return;
+  }
+  const askE = e.target.closest('[data-ask-endorse]');
+  if (askE) {
+    openEndorse(askE.dataset.askEndorse);
+    return;
+  }
+  const goE = e.target.closest('[data-do-endorse]');
+  if (goE) {
+    doEndorse(goE.dataset.doEndorse, goE);
+    return;
+  }
+  const goAp = e.target.closest('[data-do-append]');
+  if (goAp) {
+    doAppend(goAp.dataset.doAppend, goAp.dataset.order, goAp);
     return;
   }
 });

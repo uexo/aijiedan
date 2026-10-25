@@ -51,6 +51,13 @@ type Store interface {
 	ListMatchesByTask(taskID string) []*model.MatchRecord
 	PutMatch(m *model.MatchRecord)
 	ReplaceMatchReasons(matchID string, rs []*model.MatchReason)
+	// ListEndorsementsByTarget 收到的、可见且计权重的背书, 新的在前。
+	// 过滤条件在存储层: 匹配要的是"能拿去说服需求方的凭据",
+	// 被标记过的和零权重的都不该变成推荐理由。
+	ListEndorsementsByTarget(targetID string) []*model.Endorsement
+	// GetUser 理由里要写"谁给他背的书"。不具名的背书说服力减半——
+	// 具名才有代价, 有代价的话才值得信。
+	GetUser(id string) (*model.User, bool)
 }
 
 // Service 召回服务。
@@ -78,6 +85,10 @@ type Candidate struct {
 	Reasons  []Reason
 	Stats    CandidateStats
 	NowScore Score
+	// Facts 生成理由用的凭据。必须一起带出去：
+	// 卡上除了三条理由，还要摆一句客户的背书原话（primary_endorsement）——
+	// 理由负责"为什么是他"，背书负责"有人愿意具名说这句话"。两者不是一回事。
+	Facts Facts
 }
 
 // CandidateStats 卡片上的数字。算不出来的给 0，前端不显示——
@@ -159,6 +170,7 @@ func (s *Service) Candidates(taskID string) ([]Candidate, error) {
 			Reasons:  reasons,
 			Stats:    stats,
 			NowScore: sc,
+			Facts:    facts,
 		})
 	}
 
@@ -284,9 +296,43 @@ func (s *Service) collectFacts(providerID string) (CandidateStats, Facts) {
 		}
 	}
 
-	// 背书锚点在 M4 落地前恒为 0：endorsement 表还没有写入路径。
-	// 这里不查空表假装算过——历史评分这条理由就该在这段时间里不出现。
+	// 背书：只取最新一条当理由锚点，条数另算。
+	//
+	// 为什么不把几条都列进理由：一张卡最多 3 条理由，背书要占的位置是
+	// "有人愿意具名为他说一句话"。列十条反而稀释——需求方记住的是一句话，不是十条标题。
+	//
+	// 存储层给的是"可见且计权重"（零权重与 void 已过滤），但 flagged 仍然在里面：
+	// flagged 的语义是"还在等人工复核、页面照常展示并带标记"，不是"已经判定有问题"。
+	// 展示与推荐是两件事——一条可能刷出来的话可以让人自己判断，不能拿去当平台推荐。
+	// 所以这里再收一道 status == active。
+	if es := rankableEndorsements(s.Store.ListEndorsementsByTarget(providerID)); len(es) > 0 {
+		top := es[0]
+		facts.EndorsementCount = len(es)
+		facts.EndorsementID = top.ID
+		facts.EndorsementQuote = top.Body
+		facts.EndorsementRelation = top.Relation
+		if u, ok := s.Store.GetUser(top.AuthorID); ok {
+			facts.EndorsementAuthor = u.Name
+			facts.EndorsementLabel = u.Name + " 的背书"
+		} else {
+			facts.EndorsementLabel = "一条背书"
+		}
+	}
+
 	return stats, facts
+}
+
+// rankableEndorsements 从"可见且计权重"里再挑出能当推荐理由的那些。
+// 只认 active：flagged 是待复核，void 已由存储层滤掉，这里再判一次 status 是防止
+// 以后有人放宽存储层的过滤条件时，一条待复核的背书悄悄变成平台背书。
+func rankableEndorsements(es []*model.Endorsement) []*model.Endorsement {
+	out := make([]*model.Endorsement, 0, len(es))
+	for _, e := range es {
+		if e != nil && e.Status == model.EndorseActive && e.Weight > 0 {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // completedAt 订单被验收通过的时间，取最后一轮交付的 reviewed_at。

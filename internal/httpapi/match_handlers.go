@@ -66,8 +66,21 @@ type matchCard struct {
 	Stats      matchStats        `json:"stats"`
 	Reasons    []matchReasonView `json:"reasons"`
 	Selectable bool              `json:"selectable"`
-	// PrimaryEndorsement 留空占位, 序列化成 null
-	PrimaryEndorsement interface{} `json:"primary_endorsement"`
+	// PrimaryEndorsement 卡上那句客户背书。没有背书就是 null，前端少渲染一块。
+	// 它跟理由的区别：理由是平台算出来的，背书是别人愿意具名说的话——
+	// 后者不可编辑、不可撤销，说错了有代价。
+	PrimaryEndorsement *endorsementBrief `json:"primary_endorsement"`
+}
+
+// endorsementBrief 候选卡上的背书摘要。
+//
+// 只给摘录不给全文：全文最长 1000 字，摆进一张候选人卡会把卡撑成一封信。
+// 想读全文点开信用页，那里有完整原文和所有追加。
+type endorsementBrief struct {
+	ID         string `json:"id"`
+	AuthorName string `json:"author_name"`
+	Relation   string `json:"relation"`
+	Excerpt    string `json:"excerpt"`
 }
 
 // portfolioView 作品链接。label 是给人看的名字, url 是要点得开的地址。
@@ -134,7 +147,24 @@ func toCard(c match.Candidate) matchCard {
 		Reasons:    reasons,
 		Selectable: true,
 	}
+	if c.Facts.EndorsementID != "" {
+		card.PrimaryEndorsement = &endorsementBrief{
+			ID:         c.Facts.EndorsementID,
+			AuthorName: c.Facts.EndorsementAuthor,
+			Relation:   c.Facts.EndorsementRelation,
+			Excerpt:    excerptRunes(c.Facts.EndorsementQuote, 60),
+		}
+	}
 	return card
+}
+
+// excerptRunes 按 rune 截断。按字节截会把汉字劈成半个，序列化出去是乱码。
+func excerptRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
 }
 
 func writeMatchErr(w http.ResponseWriter, r *http.Request, err error) {

@@ -1067,6 +1067,172 @@ func (s *mysqlStore) ListDeliveriesByOrder(orderID string) []*model.Delivery {
 	return out
 }
 
+// --- Endorsements (M4) ---
+//
+// 为什么不写 credit_event：背书自己的表已经是一等资产，谁给谁写的、什么时候写的、
+// 原文是什么，都能直接查。credit_event 回答的是"他这个分是从哪条来的"，
+// 而背书的 weight（100/0）目前不参与任何分数计算——历史因子吃的是 AvgRating。
+// 现在加一个 delta 恒 0 的第三种 kind，等于多一处要维护、要体检、要写进契约的东西，
+// 换不到任何可解释性。等背书真的开始影响分数那天再加，那时它才有事件可讲。
+const endorCols = "id,order_id,task_id,author_id,target_id,relation,body,answers,char_count,status,weight,source,created_at"
+
+// PutEndorsement MySQL 实现：一个事务里 判重 → 定权重 → 落库。
+//
+// 定权重必须 SELECT ... FOR UPDATE：两个并发请求同时读到"没有历史"，
+// 就会各自记 100 分，"12 个月只计一次"直接失效。
+func (s *mysqlStore) PutEndorsement(e *model.Endorsement) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// 先查一次，给用户一句"你写过了"而不是让唯一键报 500。唯一键仍是最终兜底。
+	var dup string
+	switch err := tx.QueryRow("SELECT id FROM endorsement WHERE order_id=? AND author_id=?",
+		e.OrderID, e.AuthorID).Scan(&dup); err {
+	case nil:
+		return ErrEndorsementExists
+	case sql.ErrNoRows:
+	default:
+		return err
+	}
+
+	if e.Weight > 0 {
+		since := e.CreatedAt - int64(model.EndorsementWeightWindowDays)*24*60*60*1000
+		var n int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM endorsement
+			WHERE author_id=? AND target_id=? AND weight>0 AND created_at>=? FOR UPDATE`,
+			e.AuthorID, e.TargetID, since).Scan(&n); err != nil {
+			return err
+		}
+		if n > 0 {
+			e.Weight = 0
+		}
+	}
+
+	if e.Status == "" {
+		e.Status = model.EndorseActive
+	}
+	if e.Source == "" {
+		e.Source = model.EndorseLive
+	}
+	// answers 是 JSON 列：map 必须自己序列化。存字符串进去会被 MySQL 当 JSON 字符串，
+	// 读出来反序列化就变成 "{}" 的字符串而不是对象。
+	answers, err := json.Marshal(e.Answers)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO endorsement
+		(id,order_id,task_id,author_id,target_id,relation,body,answers,char_count,status,weight,source,created_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		e.ID, e.OrderID, e.TaskID, e.AuthorID, e.TargetID, e.Relation, e.Body,
+		string(answers), e.CharCount, e.Status, e.Weight, e.Source, e.CreatedAt); err != nil {
+		var me *mysqldriver.MySQLError
+		if errors.As(err, &me) && me.Number == 1062 {
+			return ErrEndorsementExists
+		}
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *mysqlStore) GetEndorsement(id string) (*model.Endorsement, bool) {
+	e, err := scanEndorsement(s.db.QueryRow("SELECT "+endorCols+" FROM endorsement WHERE id=?", id))
+	if err != nil {
+		return nil, false
+	}
+	return e, true
+}
+
+func (s *mysqlStore) GetEndorsementByOrderAuthor(orderID, authorID string) (*model.Endorsement, bool) {
+	e, err := scanEndorsement(s.db.QueryRow("SELECT "+endorCols+
+		" FROM endorsement WHERE order_id=? AND author_id=?", orderID, authorID))
+	if err != nil {
+		return nil, false
+	}
+	return e, true
+}
+
+func (s *mysqlStore) ListEndorsementsByTarget(targetID string) []*model.Endorsement {
+	return s.queryEndorsements("SELECT "+endorCols+` FROM endorsement
+		WHERE target_id=? AND status IN ('active','flagged') AND weight>0
+		ORDER BY created_at DESC, id DESC`, targetID)
+}
+
+func (s *mysqlStore) ListEndorsementsByAuthor(authorID string) []*model.Endorsement {
+	return s.queryEndorsements("SELECT "+endorCols+` FROM endorsement
+		WHERE author_id=? AND status<>'void' ORDER BY created_at DESC, id DESC`, authorID)
+}
+
+func (s *mysqlStore) queryEndorsements(q string, args ...interface{}) []*model.Endorsement {
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = rows.Close() }()
+	out := make([]*model.Endorsement, 0)
+	for rows.Next() {
+		e, err := scanEndorsement(rows)
+		if err != nil {
+			return nil
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+// scanEndorsement 统一的背书行读取。
+//
+// answers 必须过 []byte：JSON 列一旦扫进 string 会报类型不匹配，
+// 症状是"背书一条都查不到"——而不是它真的没有记录。
+func scanEndorsement(sc interface{ Scan(...interface{}) error }) (*model.Endorsement, error) {
+	e := &model.Endorsement{}
+	var answers []byte
+	if err := sc.Scan(&e.ID, &e.OrderID, &e.TaskID, &e.AuthorID, &e.TargetID,
+		&e.Relation, &e.Body, &answers, &e.CharCount, &e.Status, &e.Weight, &e.Source, &e.CreatedAt); err != nil {
+		return nil, err
+	}
+	e.Answers = map[string]string{}
+	if len(answers) > 0 {
+		_ = json.Unmarshal(answers, &e.Answers)
+	}
+	return e, nil
+}
+
+func (s *mysqlStore) PutEndorsementAppend(a *model.EndorsementAppend) error {
+	// 背书不存在时不要静默插入：追加挂在一个不存在的 ID 上，页面上永远不会出现。
+	var one int
+	switch err := s.db.QueryRow("SELECT 1 FROM endorsement WHERE id=?", a.EndorsementID).Scan(&one); err {
+	case nil:
+	case sql.ErrNoRows:
+		return ErrEndorsementGone
+	default:
+		return err
+	}
+	_, err := s.db.Exec(`INSERT INTO endorsement_append (id,endorsement_id,author_id,body,created_at)
+		VALUES (?,?,?,?,?)`, a.ID, a.EndorsementID, a.AuthorID, a.Body, a.CreatedAt)
+	return err
+}
+
+func (s *mysqlStore) ListEndorsementAppends(endorsementID string) []*model.EndorsementAppend {
+	rows, err := s.db.Query(`SELECT id,endorsement_id,author_id,body,created_at
+		FROM endorsement_append WHERE endorsement_id=? ORDER BY created_at ASC, id ASC`, endorsementID)
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = rows.Close() }()
+	out := make([]*model.EndorsementAppend, 0)
+	for rows.Next() {
+		a := &model.EndorsementAppend{}
+		if err := rows.Scan(&a.ID, &a.EndorsementID, &a.AuthorID, &a.Body, &a.CreatedAt); err != nil {
+			return nil
+		}
+		out = append(out, a)
+	}
+	return out
+}
+
 // --- Reviews ---
 func (s *mysqlStore) PutReview(r *model.Review) {
 	_, _ = s.db.Exec(`INSERT INTO review (id,order_id,task_id,reviewer_id,reviewee_id,reviewer_role,rating,comment,created_at)

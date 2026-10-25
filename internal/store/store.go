@@ -31,6 +31,11 @@ var (
 	// ErrReviewExists 这个人已经评过这一单了。
 	// 一个人对同一单只能评一次: AvgRating 是对全部评价求均值, 重复评一次等于自己给自己刷分。
 	ErrReviewExists = errors.New("store: review already submitted")
+	// ErrEndorsementExists 这个人已经给这一单写过背书了。
+	// 背书原文不可编辑, 想补充只能追加——所以重复提交不是"覆盖", 是拒收。
+	ErrEndorsementExists = errors.New("store: endorsement already written")
+	// ErrEndorsementGone 要追加的背书不存在(或已被置 void 后清理)。
+	ErrEndorsementGone = errors.New("store: endorsement not found")
 )
 
 // fallbackSlug 给没有短号的用户补一个确定性短号。
@@ -167,6 +172,26 @@ type Store interface {
 	// 在冻结区里改行为等于让没人测的代码跟着变。新方法只让 v2 的匹配用。
 	// 可见的判定见 model.ReviewVisible(已揭盲, 或单方提交已满 7 天)。
 	ListRevealedReviewsByReviewee(revieweeID string, now int64) []*model.Review
+	// --- 背书 (M4) ---
+	//
+	// PutEndorsement 落一条背书。同一订单同一作者重复写返回 ErrEndorsementExists
+	// (唯一键 uk_order_author 兜底, 不靠应用层先查——先查再写中间有窗口)。
+	//
+	// 为什么权重也在这层算而不在 trade 层算一遍再传进来:
+	// "同一对用户 12 个月只计一次" 要读历史记录, 读和写必须在同一个临界区。
+	// 分成两步会出现两个并发请求都读到"没有历史", 于是都记 100 分。
+	PutEndorsement(e *model.Endorsement) error
+	GetEndorsement(id string) (*model.Endorsement, bool)
+	GetEndorsementByOrderAuthor(orderID, authorID string) (*model.Endorsement, bool)
+	// ListEndorsementsByTarget 某个人收到的、可见且计权重的背书, 新的在前。
+	// "可见" = active 或 flagged(flagged 页面照常展示、带标记, 藏起来等于替用户做判断);
+	// "计权重" = weight > 0(12 个月内第二条记 0, 记录留着只是不进列表)。
+	// 要不要把 flagged 拿去当推荐理由, 是使用方的事——匹配侧自己再收一道, 见 match.rankableEndorsements。
+	ListEndorsementsByTarget(targetID string) []*model.Endorsement
+	// ListEndorsementsByAuthor 某个人写出去的背书(全部状态), 用于"我写过的"。
+	ListEndorsementsByAuthor(authorID string) []*model.Endorsement
+	PutEndorsementAppend(a *model.EndorsementAppend) error
+	ListEndorsementAppends(endorsementID string) []*model.EndorsementAppend
 	// ListCreditEvents 某个用户的信用事件流(按发生顺序)。
 	// 写入不单独开口子: order_completed 由 ReviewOrder 在同一个事务/临界区里落,
 	// 这样才能保证"订单完成"与"信用留痕"要么都在, 要么都不在。
@@ -238,7 +263,9 @@ type MemStore struct {
 	orders        map[string]*model.Order
 	deliveries    map[string]*model.Delivery
 	reviews       map[string]*model.Review
-	creditEvents  map[string]*model.CreditEvent // key: event_id
+	endorsements  map[string]*model.Endorsement
+	endorseAppend map[string][]*model.EndorsementAppend // key: endorsement_id
+	creditEvents  map[string]*model.CreditEvent         // key: event_id
 	wallets       map[string]*model.Wallet
 	ledgers       map[string]*model.Ledger
 	withdrawals   map[string]*model.Withdrawal
@@ -267,6 +294,8 @@ func NewMem() *MemStore {
 		orders:        map[string]*model.Order{},
 		deliveries:    map[string]*model.Delivery{},
 		reviews:       map[string]*model.Review{},
+		endorsements:  map[string]*model.Endorsement{},
+		endorseAppend: map[string][]*model.EndorsementAppend{},
 		creditEvents:  map[string]*model.CreditEvent{},
 		wallets:       map[string]*model.Wallet{},
 		ledgers:       map[string]*model.Ledger{},
@@ -1012,6 +1041,120 @@ func (s *MemStore) SubmitReview(r *model.Review, at int64) error {
 	s.appendCreditEventLocked(r.RevieweeID, model.CreditReviewReceived, r.ID, 0, at)
 	s.appendCreditEventLocked(other.RevieweeID, model.CreditReviewReceived, other.ID, 0, at)
 	return nil
+}
+
+// --- Endorsements (M4) ---
+
+// PutEndorsement 内存实现：判重 + 定权重 + 落库在一把写锁里做完。
+//
+// 为什么权重不能由调用方算好再传进来：
+// "同一对用户 12 个月内只计一次"要读历史。读和写分两处，两个并发请求
+// 会同时读到"没有历史"，于是两条都记 100——两个人来回背几次就成"长期合作伙伴"了。
+// MySQL 版用 SELECT ... FOR UPDATE 做同一件事。
+func (s *MemStore) PutEndorsement(e *model.Endorsement) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, ex := range s.endorsements {
+		if ex.OrderID == e.OrderID && ex.AuthorID == e.AuthorID {
+			return ErrEndorsementExists
+		}
+	}
+
+	if e.Weight > 0 {
+		since := e.CreatedAt - int64(model.EndorsementWeightWindowDays)*24*60*60*1000
+		for _, ex := range s.endorsements {
+			if ex.AuthorID == e.AuthorID && ex.TargetID == e.TargetID &&
+				ex.Weight > 0 && ex.CreatedAt >= since {
+				e.Weight = 0
+				break
+			}
+		}
+	}
+	if e.Status == "" {
+		e.Status = model.EndorseActive
+	}
+	if e.Source == "" {
+		e.Source = model.EndorseLive
+	}
+	s.endorsements[e.ID] = e
+	return nil
+}
+
+func (s *MemStore) GetEndorsement(id string) (*model.Endorsement, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	e, ok := s.endorsements[id]
+	return e, ok
+}
+
+func (s *MemStore) GetEndorsementByOrderAuthor(orderID, authorID string) (*model.Endorsement, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, e := range s.endorsements {
+		if e.OrderID == orderID && e.AuthorID == authorID {
+			return e, true
+		}
+	}
+	return nil, false
+}
+
+// ListEndorsementsByTarget 收到的、可见且计权重的背书，新的在前。
+// 排序带 ID 兜底：同毫秒写入的两条（用例里常见）靠 map 遍历会给出随机顺序。
+func (s *MemStore) ListEndorsementsByTarget(targetID string) []*model.Endorsement {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]*model.Endorsement, 0)
+	for _, e := range s.endorsements {
+		if e.TargetID == targetID && model.Weighted(e) {
+			out = append(out, e)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].CreatedAt != out[j].CreatedAt {
+			return out[i].CreatedAt > out[j].CreatedAt
+		}
+		return out[i].ID > out[j].ID
+	})
+	return out
+}
+
+func (s *MemStore) ListEndorsementsByAuthor(authorID string) []*model.Endorsement {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]*model.Endorsement, 0)
+	for _, e := range s.endorsements {
+		if e.AuthorID == authorID {
+			out = append(out, e)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].CreatedAt != out[j].CreatedAt {
+			return out[i].CreatedAt > out[j].CreatedAt
+		}
+		return out[i].ID > out[j].ID
+	})
+	return out
+}
+
+func (s *MemStore) PutEndorsementAppend(a *model.EndorsementAppend) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// 只能给存在的背书追加。接口层已经挡过一次，这里再挡是防"删了还追加"。
+	if _, ok := s.endorsements[a.EndorsementID]; !ok {
+		return ErrEndorsementGone
+	}
+	s.endorseAppend[a.EndorsementID] = append(s.endorseAppend[a.EndorsementID], a)
+	return nil
+}
+
+func (s *MemStore) ListEndorsementAppends(endorsementID string) []*model.EndorsementAppend {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	src := s.endorseAppend[endorsementID]
+	out := make([]*model.EndorsementAppend, len(src))
+	copy(out, src)
+	return out
 }
 
 func (s *MemStore) GetReview(id string) (*model.Review, bool) {

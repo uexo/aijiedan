@@ -33,12 +33,15 @@ type Reason struct {
 // 与 Profile 分开是因为来源不同：Profile 是"现在他值多少分"，
 // Facts 是"有什么东西可以指给需求方看"。前者会变，后者是凭据。
 type Facts struct {
-	CompletedOrders  int    // 已完成的订单数
-	LatestOrderID    string // 最近一单的订单号（锚点 ref）
-	LatestOrderTitle string // 最近一单的需求标题（锚点 label 的一半）
-	EndorsementCount int    // 收到的背书条数（M4 之前恒为 0，因而这条理由不产出）
-	EndorsementID    string
-	EndorsementLabel string
+	CompletedOrders     int    // 已完成的订单数
+	LatestOrderID       string // 最近一单的订单号（锚点 ref）
+	LatestOrderTitle    string // 最近一单的需求标题（锚点 label 的一半）
+	EndorsementCount    int    // 收到的、计权重的背书条数
+	EndorsementID       string // 最新一条的 ID（锚点 ref）
+	EndorsementLabel    string // 锚点 label：谁写的 + 「的背书」
+	EndorsementQuote    string // 最新一条的正文（理由里要引原话，不能只说条数）
+	EndorsementAuthor   string // 最新一条的作者名
+	EndorsementRelation string // client / peer，决定理由里的称呼
 }
 
 // BuildReasons 按五因子生成理由，产出不出的因子直接跳过。
@@ -143,5 +146,32 @@ func orderLabel(f Facts) string {
 }
 
 func endorsementText(f Facts) string {
-	return fmt.Sprintf("收到 %d 条来自真实客户的背书", f.EndorsementCount)
+	// 有原话就引原话。理由的功能是"让读的人自己去判断"，
+	// "收到 3 条背书"是一个数字，说服力不如当事人自己写的那句话。
+	if f.EndorsementQuote != "" {
+		who := f.EndorsementAuthor
+		if who == "" {
+			who = "一位客户"
+		}
+		// client 是需求方写的，peer 是接单方写的。称呼错了等于替他改了身份。
+		role := "客户"
+		if f.EndorsementRelation == "peer" {
+			role = "合作方"
+		}
+		return fmt.Sprintf("%s（%s）为他背书：「%s」", who, role, quoteRunes(f.EndorsementQuote, 24))
+	}
+	if f.EndorsementCount > 0 {
+		return fmt.Sprintf("收到 %d 条来自真实客户的背书", f.EndorsementCount)
+	}
+	return ""
+}
+
+// quoteRunes 截一段原文并加省略号。按 rune 截，不按字节——
+// 按字节截会把一个汉字劈成两半，序列化出去就是乱码。
+func quoteRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
 }
