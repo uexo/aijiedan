@@ -23,7 +23,19 @@ import argparse
 import os
 import sys
 
-import pymysql
+try:
+    import pymysql
+except ModuleNotFoundError:
+    # 驱动没装就报一句能照着做的话。默认的 traceback 只说了"没有这个模块"，
+    # 没说"这台机器上有三个 python，你用的是哪一个"——那才是真正要回答的问题。
+    sys.exit(
+        "缺少 pymysql。当前解释器：\n"
+        "  %s\n"
+        "装一下再重跑同一条命令：\n"
+        "  \"%s\" -m pip install pymysql\n"
+        "或者换一个已经装好 pymysql 的解释器（别猜，用 -c \"import pymysql\" 试）。"
+        % (sys.executable, sys.executable)
+    )
 
 # 连接参数全部可经环境变量覆盖；密码禁止硬编码，必须走 ZANBUDDY_DB_PASSWORD。
 HOST = os.getenv("ZANBUDDY_DB_HOST", "192.168.3.18")
