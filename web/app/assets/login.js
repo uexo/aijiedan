@@ -116,9 +116,10 @@ async function sendCode(btn) {
   if (!result.valid) return false;
   if (btn) busy(btn, true, '发送中…');
   try {
-    await api('POST', '/auth/code', { phone: phoneEl.value.trim() });
+    const data = await api('POST', '/auth/code', { phone: phoneEl.value.trim() });
     sentTo = phoneEl.value.trim();
     document.getElementById('sent-to').textContent = sentTo.replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2');
+    paintDevCode(data);
     startCountdown();
     toast('验证码已发送', 'ok');
     return true;
@@ -127,6 +128,31 @@ async function sendCode(btn) {
     return false;
   } finally {
     if (btn) busy(btn, false);
+  }
+}
+
+/* 演示环境没有短信通道, 后端把码放在 dev_code 里回来。页面必须显示它——
+   否则用户看到"已发送至 138****1234"，然后手机永远收不到，卡在这一步。
+   一个收不到短信的登录页，等于没有注册入口。生产接上短信通道后 dev_code 消失，
+   这一段自动不显示，不用改代码。 */
+function paintDevCode(data) {
+  const box = document.getElementById('dev-code');
+  if (!box) return;
+  const code = data && data.dev_code;
+  if (!code) {
+    box.hidden = true;
+    box.innerHTML = '';
+    return;
+  }
+  box.hidden = false;
+  box.innerHTML = html`演示环境不发短信，验证码是 <b class="mono">${code}</b>
+    <button class="btn btn-quiet btn-sm" type="button" id="fill-code">填入</button>`;
+  const fill = document.getElementById('fill-code');
+  if (fill) {
+    fill.addEventListener('click', () => {
+      codeEl.value = code;
+      codeEl.focus();
+    });
   }
 }
 
