@@ -64,7 +64,11 @@ class Api {
 }
 
 const dataOf = (x) => (x && x.d && x.d.data) || {};
-const phone = '157' + String(Math.floor(Math.random() * 1e8)).padStart(8, '0');
+// 默认随机手机号（每次跑都是一个新接单方，用例之间不互相污染）。
+// 演示时传 PROVIDER_PHONE 固定下来，否则每次演示页面上的人名都变。
+const phone =
+  process.env.PROVIDER_PHONE ||
+  '157' + String(Math.floor(Math.random() * 1e8)).padStart(8, '0');
 
 /* 1. 先用接口把一张单走到"已完成"——背书只对做完的活开放 */
 const P = new Api();
@@ -101,6 +105,16 @@ r = await P.call('POST', `/api/v2/orders/${orderId}/deliveries`, {
 step('接单方交付', r.st === 201, JSON.stringify(r.d).slice(0, 140));
 r = await R.call('POST', `/api/v2/orders/${orderId}/accept`, {});
 step('需求方验收通过', r.st === 200, JSON.stringify(r.d).slice(0, 140));
+
+// SEED_ONLY=1 时到此为止：留一个"单已做完、背书还没写"的现场，
+// 人打开页面就能看到空的可填背书框。演示和验收用同一段准备代码，
+// 免得演示环境里手点一遍六步、每次都点歪。
+if (process.env.SEED_ONLY === '1') {
+  console.log('');
+  console.log('演示现场已就绪: 13800000001 登录 → 大厅 → 我的单 → 写背书');
+  console.log(`ORDER=${orderId}`);
+  process.exit(0); // 浏览器还没起，不必关
+}
 
 /* 2. 浏览器：需求方登录，进大厅，打开「我的单」 */
 const browser = await chromium.launch({
