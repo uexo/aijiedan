@@ -1233,6 +1233,54 @@ func (s *mysqlStore) ListEndorsementAppends(endorsementID string) []*model.Endor
 	return out
 }
 
+// --- 邀请链接命中 ---
+
+func (s *mysqlStore) PutInviteHit(h *model.InviteHit) {
+	if h == nil || h.TaskID == "" {
+		return
+	}
+	if h.ID == "" {
+		h.ID = "IH-" + time.Now().Format("20060102150405") + "-" + itoa(atomic.AddInt64(&s.seq, 1))
+	}
+	if h.OpenedAt == 0 {
+		h.OpenedAt = time.Now().UnixMilli()
+	}
+	// 写失败不报错也不拦页面: 记不上这一笔, 损失的是指标, 不是用户的动作。
+	// 为了一个打点把「点开链接的人」挡在门外, 是把统计放在了使用前面。
+	_, _ = s.db.Exec("INSERT INTO invite_hit (id, task_id, opened_at) VALUES (?,?,?)",
+		h.ID, h.TaskID, h.OpenedAt)
+}
+
+func (s *mysqlStore) ListInviteHits(taskIDs []string) []*model.InviteHit {
+	if len(taskIDs) == 0 {
+		return nil
+	}
+	// 占位符按实际数量拼: IN (?,?,?) 的长度必须和参数个数一致,
+	// 少一个就是语法错误, 多一个会静默按 NULL 比较、查不到任何行。
+	ph := make([]string, len(taskIDs))
+	args := make([]interface{}, len(taskIDs))
+	for i, id := range taskIDs {
+		ph[i] = "?"
+		args[i] = id
+	}
+	q := "SELECT id, task_id, opened_at FROM invite_hit WHERE task_id IN (" +
+		strings.Join(ph, ",") + ") ORDER BY opened_at ASC, id ASC"
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	out := make([]*model.InviteHit, 0, len(taskIDs))
+	for rows.Next() {
+		var h model.InviteHit
+		if err := rows.Scan(&h.ID, &h.TaskID, &h.OpenedAt); err != nil {
+			return nil
+		}
+		out = append(out, &h)
+	}
+	return out
+}
+
 // --- Reviews ---
 func (s *mysqlStore) PutReview(r *model.Review) {
 	_, _ = s.db.Exec(`INSERT INTO review (id,order_id,task_id,reviewer_id,reviewee_id,reviewer_role,rating,comment,created_at)

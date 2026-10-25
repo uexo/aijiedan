@@ -90,40 +90,60 @@ const (
 // 真要说清楚在 IM 里说, 那里能贴截图。
 const reasonMaxRunes = 60
 
-// Claim 接单方主动认领一个开放需求。
+// ClaimCheck 这个人现在能不能接这一单。nil 表示能接。
 //
-// 判断顺序分两段: 先问"这个人有没有资格接", 再问"这一单还能不能接"。
-// 顺序不能反——反过来的话, 需求方点到一个刚被接走的单, 会看到"这一单刚被接走了",
-// 以为是自己手慢, 其实他压根不该有认领这个动作。权限问题要报权限问题。
-func (s *Service) Claim(taskID, providerID string) (*model.Order, error) {
+// 为什么单独抽出来: 「发出去的链接」那一页要在用户点之前就说清"你为什么接不了"。
+// 如果那页自己再写一遍判断, 两份规则一定会漂, 而漂的方向永远是
+// "页面说能接、点下去被拒"——用户会以为系统坏了, 而不是自己身份不对。
+//
+// 顺序: 先资格(是不是接单方、档案全不全), 后状态(单还在不在),
+// 最后才是"这是不是你自己发的单"。权限问题要报权限问题。
+func (s *Service) ClaimCheck(taskID, providerID string) error {
 	u, ok := s.st.GetUser(providerID)
 	if !ok {
-		return nil, ErrNotProvider
+		return ErrNotProvider
 	}
 	if u.Role != model.RoleProvider {
-		return nil, ErrNotProvider
+		return ErrNotProvider
 	}
 	// 档案是背书产品的地基: 没有定位这句话, 需求方看到认领只会问"你是谁"。
 	// 也因此, 没档案的人不该有机会先把单锁住。
 	p, hasProfile := s.st.GetProfile(providerID)
 	if !hasProfile || !u.Onboarded || strings.TrimSpace(p.Headline) == "" {
-		return nil, ErrNoProfile
+		return ErrNoProfile
 	}
 
 	t, ok := s.st.GetTask(taskID)
 	if !ok {
-		return nil, ErrTaskNotFound
+		return ErrTaskNotFound
 	}
 	if t.Status != model.TaskOpen {
-		return nil, ErrTaskTaken
+		return ErrTaskTaken
 	}
 	if t.RequesterID == providerID {
-		return nil, ErrSelfClaim
+		return ErrSelfClaim
+	}
+	return nil
+}
+
+// Claim 接单方主动认领一个开放需求。
+func (s *Service) Claim(taskID, providerID string) (*model.Order, error) {
+	if err := s.ClaimCheck(taskID, providerID); err != nil {
+		return nil, err
 	}
 
 	// 真正的抢单点。两个接单方同时点, 只有一个能过。
+	// ClaimCheck 刚判过一遍, 这里仍然可能失败——查与抢之间有一瞬,
+	// 而那一瞬正是两个人同时点的时候。
 	if !s.st.ClaimOpenTask(taskID) {
 		return nil, ErrTaskTaken
+	}
+
+	// 抢到之后重新读一次: ClaimCheck 读的是抢之前的那份快照,
+	// 而订单要落的是"抢到的那一刻"的单子(状态、金额、归属)。
+	t, ok := s.st.GetTask(taskID)
+	if !ok {
+		return nil, ErrTaskNotFound
 	}
 
 	o := &model.Order{

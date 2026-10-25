@@ -12,21 +12,25 @@ import (
 // hallTask 大厅卡片视图。字段是白名单:
 // 需求方的手机号、内部 ID 一概不出这个接口, 只给昵称、公开短号和信用分。
 type hallTask struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Category    string `json:"category"`
-	CategoryName string `json:"category_name"`
-	BudgetCents int64  `json:"budget_cents"`
-	Spec        string `json:"spec"`
+	ID             string `json:"id"`
+	Title          string `json:"title"`
+	Category       string `json:"category"`
+	CategoryName   string `json:"category_name"`
+	BudgetCents    int64  `json:"budget_cents"`
+	Spec           string `json:"spec"`
 	Deliverables   string `json:"deliverables"`
 	RequiredFormat string `json:"required_format"`
 	StyleRef       string `json:"style_ref"`
-	DeadlineAt  int64  `json:"deadline_at"`
-	CreatedAt   int64  `json:"created_at"`
-	Status      string `json:"status"`
-	Requester   string `json:"requester"`
-	RequesterSlug string `json:"requester_slug"`
-	CreditScore int    `json:"requester_credit"`
+	DeadlineAt     int64  `json:"deadline_at"`
+	CreatedAt      int64  `json:"created_at"`
+	Status         string `json:"status"`
+	Requester      string `json:"requester"`
+	RequesterSlug  string `json:"requester_slug"`
+	CreditScore    int    `json:"requester_credit"`
+	// StateLabel 这一单现在处于什么状态的人话说法(开放中/已有人接/已完成/已撤回)。
+	// 放进来是因为认领页要告诉点开链接的人"这张单现在还能不能接",
+	// 让他自己从 status 猜, 前端早晚猜错一个。
+	StateLabel string `json:"state_label"`
 }
 
 // listTasks 需求大厅列表。公开可读: 没登录也能看平台上有哪些需求,
@@ -99,6 +103,7 @@ func (s *Server) toHallTask(t *model.Task) hallTask {
 		DeadlineAt:     t.SpecObj.DeadlineAt,
 		CreatedAt:      t.CreatedAt,
 		Status:         string(t.Status),
+		StateLabel:     taskStateLabel(t.Status),
 		Requester:      "需求方",
 	}
 	if u, ok := s.Store.GetUser(t.RequesterID); ok {

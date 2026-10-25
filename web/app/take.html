@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>有个活想请你接 · zanbuddy 联赞</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="wrap">
+    <a class="brand" href="hall.html"><span class="mk">赞</span> zanbuddy <small>联赞</small></a>
+    <div class="nlinks">
+      <a class="btn btn-quiet btn-sm" href="hall.html">去大厅看看</a>
+    </div>
+  </div>
+</nav>
+
+<main class="wrap page take-page">
+
+  <p class="tiny muted mb8" id="crumb" hidden>有人把这一单发给了你</p>
+
+  <div id="loading" class="card card-pad">
+    <p class="muted">正在打开这一单…</p>
+  </div>
+
+  <!-- 正常态：把这一单摊开给人看，右边给出唯一一个动作 -->
+  <section id="main" hidden>
+    <div class="take-grid">
+
+      <article class="card card-pad">
+        <div class="flex ac jb wrapw g8">
+          <span class="tag tag-mono" id="cat">类目</span>
+          <span class="state state-todo" id="state">开放中</span>
+        </div>
+        <h1 class="take-h" id="title">—</h1>
+
+        <div class="take-money">
+          <span class="take-amount" id="budget">—</span>
+          <span class="tiny muted" id="deadline"></span>
+        </div>
+
+        <h2 class="sec-h mt20">要做什么</h2>
+        <p class="take-spec" id="spec">—</p>
+
+        <div id="deli-wrap" hidden>
+          <h2 class="sec-h mt20">交付什么</h2>
+          <p class="take-spec" id="deli">—</p>
+        </div>
+
+        <div id="fmt-wrap" hidden>
+          <h2 class="sec-h mt8">交付格式</h2>
+          <p class="take-spec" id="fmt">—</p>
+        </div>
+
+        <div id="items-wrap" hidden>
+          <h2 class="sec-h mt20">会按这几条验收</h2>
+          <ol class="take-items" id="items"></ol>
+          <p class="tiny muted mt8">验收就是照这张单子一条条对。对不上会被打回，不扣钱，但这一轮不算完成。</p>
+        </div>
+
+        <div class="take-who mt20">
+          <span class="tiny muted">发单人</span>
+          <strong id="who">—</strong>
+          <span class="tiny muted" id="credit"></span>
+        </div>
+      </article>
+
+      <aside class="take-act">
+        <div class="card card-pad">
+          <h2 class="take-act-h" id="act-h">接这一单</h2>
+          <p class="take-act-p" id="act-p">接了之后会等你点确认开工。中间随时可以退出，钱这一阶段不过平台。</p>
+          <button class="btn btn-ink btn-block btn-lg" type="button" id="claim">接这一单</button>
+          <div id="act-extra" class="mt8"></div>
+          <p class="tiny muted mt12" id="act-note">认领不等于成交：发单的人点头之后，这一单才开始。</p>
+        </div>
+        <p class="tiny muted mt12">这一单是别人发给你的链接。接不了没关系，<a href="hall.html">大厅里还有别的</a>。</p>
+      </aside>
+
+    </div>
+  </section>
+
+  <!-- 接不了 / 接完了 / 不存在：三种都给一句人话 + 一个出口 -->
+  <section id="blocked" class="card card-pad" hidden>
+    <h1 class="take-h" id="bk-h">这一单接不了</h1>
+    <p class="muted" id="bk-p"></p>
+    <div class="flex ac g8 wrapw mt16" id="bk-acts"></div>
+  </section>
+
+</main>
+
+<script type="module" src="assets/take.js"></script>
+</body>
+</html>

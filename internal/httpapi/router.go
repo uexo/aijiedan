@@ -48,6 +48,10 @@ func (s *Server) Routes() http.Handler {
 	// 需求大厅: 公开可读。落地页 → 大厅 → 登录, 前台不该建在登录墙后面。
 	mux.HandleFunc("GET /api/v2/tasks", s.listTasks)
 	mux.HandleFunc("GET /api/v2/meta/categories", s.listCategories)
+	// 单条需求的公开详情: 给"发出去的链接"落点用。开放中的单给全部字段,
+	// 其余状态只回单号+标题+状态——那句话是"这单被人接了", 不是"来读他的需求书"。
+	// WithAuth 而不是 RequireAuth: 免登录也要能看, 但登录了就要顺手回一句"你能接/为什么不能"。
+	mux.Handle("GET /api/v2/tasks/{id}", WithAuth(http.HandlerFunc(s.publicTask)))
 
 	// 发单: 要登录(得知道是谁发的), 但不需要档案——按 PRD 只对供给方强制。
 	mux.Handle("POST /api/v2/tasks", RequireAuth(http.HandlerFunc(s.publishTask)))
@@ -56,6 +60,12 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /api/v2/tasks/{id}/withdraw", RequireAuth(http.HandlerFunc(s.withdrawTask)))
 	// 匹配: 发单之后看"谁能接"。只给发单本人看, 别人看到的是这单有没有人抢。
 	mux.Handle("GET /api/v2/tasks/{id}/matches", RequireAuth(http.HandlerFunc(s.taskMatches)))
+
+	// 发出去: 一句能直接说出口的话 + 一条短链。只有发单方拿得到这句话——
+	// 里面带标题和价格, 怎么把它说出去是发单人的事, 平台替他定。
+	mux.Handle("GET /api/v2/tasks/{id}/invite", RequireAuth(http.HandlerFunc(s.taskInvite)))
+	// 那个唯一的数: 发出去的单, 24 小时内有人点进来的比例。
+	mux.Handle("GET /api/v2/me/invite-stats", RequireAuth(http.HandlerFunc(s.myInviteStats)))
 
 	// 交易: 认领与我的单。认领是写操作, 必须登录。
 	mux.Handle("POST /api/v2/tasks/{id}/take", RequireAuth(http.HandlerFunc(s.claimTask)))

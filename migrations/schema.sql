@@ -367,3 +367,14 @@ CREATE TABLE `match_reason` (
   PRIMARY KEY (`id`),
   KEY `idx_match` (`match_id`, `rank_no`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 邀请链接被打开的记录。一张单一条, 时间戳而不是计数器:
+-- 口径是「发出去 24 小时内有没有人点」, 只有存了时刻才能算。
+-- 不记 IP、不记 UA: 现在只需要知道"点了没", 多记一项就多一份隐私债。
+CREATE TABLE `invite_hit` (
+  `id`        VARCHAR(32) NOT NULL,
+  `task_id`   VARCHAR(32) NOT NULL,
+  `opened_at` BIGINT      NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_task` (`task_id`, `opened_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

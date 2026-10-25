@@ -105,6 +105,44 @@ FROM review;
 `waiting` 长期不降 = 一方提交后另一方拖着不评。这类单在 7 天后会被自动揭盲（派生态，不落库），
 所以 `overdue_auto` 大于 0 是正常的，它说明兜底生效了。
 
+### 4.4 传到了没有（邀请链接 24 小时内被打开的比例）· 2026-10-25 新增
+
+**为什么需要它**：唯一 KPI 是成交单数，但成交单数为 0 时分不清两种情况——
+**没人要**（需求本身不成立）和**没人知道**（单子发出去但没送到能接的人手上）。
+这两种情况的下一步动作完全相反：前者改产品，后者改触达。只看成交数是看不出来的。
+
+口径：分母 = 这个人的全部单；分子 = 其中「首次打开时刻 − 发单时刻 ≤ 24 小时」的单；
+**没满 24 小时且没人打开的单不进分母**（算进去会系统性压低比例，看起来像没人感兴趣）。
+
+```sql
+-- 分母（已到期的单）
+SELECT COUNT(*) AS decidable
+FROM task t
+WHERE t.requester_id = ?
+  AND t.created_at <= ? - 86400000;          -- now - 24h
+
+-- 分子（24h 内至少被打开过一次的单）
+SELECT COUNT(*) AS opened_in_time
+FROM task t
+WHERE t.requester_id = ?
+  AND EXISTS (
+    SELECT 1 FROM invite_hit h
+    WHERE h.task_id = t.id
+      AND h.opened_at >= t.created_at
+      AND h.opened_at <= t.created_at + 86400000
+  );
+```
+
+接口版：`GET /api/v2/me/invite-stats` → `{window_hours, published, opened_in_time, too_early, ratio}`。
+
+**怎么读这个数**：
+- `ratio` 低（< 1/3）→ 话术没人愿意发，或者发给了错的人。先看话术本身，不要先改产品。
+- `ratio` 高但成交仍为 0 → 传到了，但对方看了不接。问题在需求或价格，这时候才该动产品。
+- `too_early` 长期 > 0 而 `ratio` 不动 → 单子刚发出去，还没有结论，别急着下判断。
+
+**不记 IP、不记 UA、不去重**：现在只需要知道「点了没」。同一个人点开三次不是噪音，
+那正是他在犹豫。多记一项就多一份隐私债，而这一单成不成立都还不知道。
+
 ---
 
 ## 五、执行约定

@@ -104,6 +104,17 @@ type Store interface {
 	// 与"我接的单"不同: 没人接的单不在任何订单里, 只能靠这条查出来。
 	ListTasksByRequester(userID string) []*model.Task
 	SearchTasks(f TaskFilter) []*model.Task
+	// PutInviteHit 记一次"邀请链接被打开"。
+	//
+	// 没有鉴权、没有去重: 链接本身就是公开的, 谁的浏览器打开都算一次。
+	// 去重会掩盖真实情况——同一个人反复点开三次, 说明他没看懂或没决定,
+	// 那不是噪音, 那正是要看的东西。
+	PutInviteHit(h *model.InviteHit)
+	// ListInviteHits 这几张单上的全部打开记录(按时间正序)。传空的返回空。
+	//
+	// 为什么按批量取而不是逐单取: 算"24 小时内被打开的比例"要跨这个人的
+	// 所有单做分母, 逐单查就是 N+1 次往数据库跑。
+	ListInviteHits(taskIDs []string) []*model.InviteHit
 	PutMatch(m *model.MatchRecord)
 	GetMatch(id string) (*model.MatchRecord, bool)
 	ListMatchesByTask(taskID string) []*model.MatchRecord
@@ -266,6 +277,7 @@ type MemStore struct {
 	endorsements  map[string]*model.Endorsement
 	endorseAppend map[string][]*model.EndorsementAppend // key: endorsement_id
 	creditEvents  map[string]*model.CreditEvent         // key: event_id
+	inviteHits    []*model.InviteHit                    // 量小, 用切片比 map 好读: 这里只追加和按时间读
 	wallets       map[string]*model.Wallet
 	ledgers       map[string]*model.Ledger
 	withdrawals   map[string]*model.Withdrawal
@@ -715,6 +727,48 @@ func (s *MemStore) indexTask(t *model.Task) {
 		}
 		s.taskIndex[tk][t.ID] = true
 	}
+}
+
+// --- 邀请链接命中 ---
+
+func (s *MemStore) PutInviteHit(h *model.InviteHit) {
+	if h == nil || h.TaskID == "" {
+		return
+	}
+	// ID 在锁外生成: NextID 走的是 atomic 计数, 和 Mutex 保护的字段不是一回事,
+	// 混用会让 seq 出现"加了两次只涨一次"。这条注释是给下一个人看的, 别搬进来。
+	if h.ID == "" {
+		h.ID = s.NextID("IH")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.inviteHits = append(s.inviteHits, h)
+}
+
+func (s *MemStore) ListInviteHits(taskIDs []string) []*model.InviteHit {
+	if len(taskIDs) == 0 {
+		return nil
+	}
+	want := make(map[string]bool, len(taskIDs))
+	for _, id := range taskIDs {
+		want[id] = true
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]*model.InviteHit, 0, len(s.inviteHits))
+	for _, h := range s.inviteHits {
+		if want[h.TaskID] {
+			out = append(out, h)
+		}
+	}
+	// 排序带 ID 兜底: 同一毫秒的两条(演示和用例里的常态)靠插入顺序不稳。
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].OpenedAt != out[j].OpenedAt {
+			return out[i].OpenedAt < out[j].OpenedAt
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out
 }
 
 // --- Matches ---

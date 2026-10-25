@@ -20,7 +20,7 @@ PORT="${ZANBUDDY_PORT:-8082}"
 export ZANBUDDY_PORT="$PORT"
 MYSQL="${ZANBUDDY_DB_DSN-1}"                      # 空串 = 内存模式
 
-TESTS="${*:-test_m0_v2 test_m0_hall test_m0_publish test_m0_matches test_m0_claim test_m0_confirm test_m0_deliver test_m0_accept test_m0_review test_m0_endorse test_m0_withdraw}"
+TESTS="${*:-test_m0_v2 test_m0_hall test_m0_publish test_m0_matches test_m0_claim test_m0_confirm test_m0_deliver test_m0_accept test_m0_review test_m0_endorse test_m0_invite test_m0_withdraw}"
 FAILED=""
 
 for t in $TESTS; do

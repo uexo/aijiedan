@@ -216,8 +216,82 @@ function onPublished(v) {
     box.hidden = true;
   }
   doneSec.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  loadSend(v.id);
   loadWho(v.id);
 }
+
+/* 发出去之后最该做的事：把这一单送到一个具体的人手上。
+ *
+ * 为什么不只是给一个链接：发单的人把链接发给朋友，是拿自己的信用在担保。
+ * 他卡住的不是"复制"这一步，是不知道怎么开口——给一句现成的话，他才发得出去。
+ * 这句话由服务端生成（demand.InviteSentence），因为大厅卡、小程序、开放 API
+ * 三个入口各拼一个版本，早晚不一致，而不一致的正是被人读到的那一行。
+ */
+let sendText = '';
+let sendURL = '';
+
+async function loadSend(taskId) {
+  const box = document.getElementById('done-send');
+  if (!box) return;
+  try {
+    const inv = await api('GET', '/tasks/' + encodeURIComponent(taskId) + '/invite');
+    sendText = inv.sentence || '';
+    sendURL = inv.url || '';
+    if (!sendText) return;
+    document.getElementById('send-box').textContent = sendText;
+    box.hidden = false;
+    const hint = document.getElementById('send-hint');
+    if (inv.can_redo === false && inv.why_not) {
+      // 撤回过/已经有人接的单，再发链接出去是自欺：对方点开只会看到"不在了"。
+      hint.textContent = inv.why_not;
+      document.getElementById('send-copy').disabled = true;
+      document.getElementById('send-link').disabled = true;
+    }
+  } catch (err) {
+    /* 拿不到这句话不影响这一单已经发出去了，安静失败 */
+  }
+}
+
+// 复制。优先 navigator.clipboard（https / localhost 才有），
+// 局域网 http 打开时它不存在，退回到选中文本——让用户长按复制，
+// 而不是弹一句"复制失败"了事。
+async function copy(text, okMsg) {
+  const hint = document.getElementById('send-hint');
+  if (!text) return;
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if (!ok) throw new Error('copy failed');
+    }
+    if (hint) hint.textContent = okMsg || '已复制，去微信粘贴给他';
+  } catch (e) {
+    const el = document.getElementById('send-box');
+    if (el) {
+      el.classList.add('is-pick');
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(r);
+      }
+    }
+    if (hint) hint.textContent = '上面这段已经选中了，长按复制';
+  }
+}
+
+document.getElementById('send-copy').addEventListener('click', () => copy(sendText));
+document.getElementById('send-link').addEventListener('click', () => copy(sendURL, '链接已复制'));
 
 /* 发完单当场把能接的人摆出来。
    这一刻是发单方唯一有耐心看推荐位的时候——他刚花三分钟写完需求,
@@ -252,6 +326,18 @@ document.getElementById('done-again').addEventListener('click', () => {
     who.hidden = true;
     who.innerHTML = '';
   }
+  // 上一单的发送话术也要清掉: 再发一单时它已经不属于这一单了,
+  // 留着的话有人会复制错——把上一单的价格发给下一个人。
+  const send = document.getElementById('done-send');
+  if (send) {
+    send.hidden = true;
+    document.getElementById('send-box').textContent = '';
+    document.getElementById('send-hint').textContent = '';
+    document.getElementById('send-copy').disabled = false;
+    document.getElementById('send-link').disabled = false;
+  }
+  sendText = '';
+  sendURL = '';
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 

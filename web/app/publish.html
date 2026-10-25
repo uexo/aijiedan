@@ -135,6 +135,20 @@
       </div>
     </div>
     <div id="done-clar" class="note mt12" hidden></div>
+
+    <!-- 发出去之后第一件事不是"去大厅逛逛"，是"把这一单送到一个具体的人手上"。
+         大厅里没人认识你，链接可以。所以这一块排在推荐位前面。 -->
+    <div id="done-send" class="send" hidden>
+      <h2 class="sec-h">把这一单发给一个人</h2>
+      <p class="tiny muted mt4">单子挂在大厅里，但大厅里没人认识你。发给一个你觉得能干的、或者认识能干的人的人——这一单才开始。</p>
+      <div class="send-box" id="send-box"></div>
+      <div class="flex ac g8 wrapw mt8">
+        <button class="btn btn-ink btn-sm" type="button" id="send-copy">复制这段话</button>
+        <button class="btn btn-quiet btn-sm" type="button" id="send-link">只复制链接</button>
+        <span class="tiny muted" id="send-hint"></span>
+      </div>
+    </div>
+
     <div id="done-who" class="whow mt16" hidden></div>
     <div class="flex ac g8 wrapw mt16">
       <a class="btn btn-ink btn-sm" href="hall.html" id="done-go">去大厅看这一单</a>

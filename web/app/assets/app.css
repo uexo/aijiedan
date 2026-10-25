@@ -434,3 +434,54 @@ select.input{appearance:none;background-image:linear-gradient(45deg,transparent 
 }
 /* 字数没够的提示用 warn 不用红: 没写够不是错误, 是还没写完。 */
 .is-warn{color:var(--warn)}
+
+/* ---------- 认领页（/t/{id} 落点） ----------
+   这一页的读者是被别人用微信发来一条链接的人，不是自己找上门的用户。
+   他手机打开的概率远高于桌面，所以布局从单列往上长，不从两栏往下压。 */
+.take-page{padding-top:24px}
+.take-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:start}
+.take-h{font-size:1.6rem;line-height:1.35;margin:12px 0 0;letter-spacing:-.01em}
+.take-money{display:flex;align-items:baseline;gap:12px;margin-top:14px;flex-wrap:wrap}
+/* 金额是这一屏唯一的数字，给足字号。价格看不清的单，没人往下读。 */
+.take-amount{font-size:2.1rem;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.take-spec{margin:6px 0 0;line-height:1.75;color:var(--ink-2)}
+.take-items{margin:8px 0 0;padding-left:20px;line-height:1.8;color:var(--ink-2)}
+.take-who{display:flex;align-items:baseline;gap:10px;padding-top:14px;border-top:1px solid var(--rule)}
+.take-act{position:sticky;top:20px}
+.take-act-h{font-size:1.06rem;margin:0 0 6px}
+.take-act-p{margin:0 0 14px;font-size:.88rem;line-height:1.65;color:var(--ink-3)}
+@media (max-width:860px){
+  .take-grid{grid-template-columns:minmax(0,1fr)}
+  .take-act{position:static}
+  .take-amount{font-size:1.8rem}
+  .take-h{font-size:1.34rem}
+}
+
+/* ---------- 发单成功后的"发出去" ----------
+   这一段是整页唯一的"社交动作"，长得像一条已经写好的微信消息，
+   而不是像一段代码或一个 URL。人对"一段话"有反应，对"一串地址"没有。 */
+.send{margin-top:18px;padding:16px;border:1px solid var(--rule);border-radius:var(--r);background:var(--paper-2)}
+.send-box{
+  margin-top:10px;padding:12px 14px;background:var(--card);border:1px solid var(--rule);
+  border-radius:var(--r);line-height:1.75;font-size:.95rem;color:var(--ink);
+  white-space:pre-wrap;word-break:break-word;user-select:text;
+}
+/* 剪贴板不可用时高亮选中态，让"长按复制"这件事有视觉依据 */
+.send-box.is-pick{border-color:var(--ink-3);box-shadow:0 0 0 3px rgba(0,0,0,.05)}
+@media (max-width:560px){
+  .send{padding:12px}
+  /* 手机上按钮并排会挤成两个字一行，改成各占一半也要能看清 */
+  .send .btn{flex:1 1 auto}
+}
+
+/* ---------- 工具类必须放在最后 ----------
+   同一个类写两处，后面的赢。.sec-h/.take-h 这些标题类里都写了 margin:0，
+   而它们定义在文件后半段——工具类写在前面时会被整体盖掉，
+   表现为 <h2 class="sec-h mt20"> 一点间距都没有。
+   历史上就是这样: mt4/mt6/mt20/mb4 四个类压根没定义，其余几个定义了也不生效，
+   全站二十多处间距靠运气。放最后一处，才不用每次改标题都去想谁在后面。 */
+.mt4{margin-top:4px}.mt6{margin-top:6px}.mt8{margin-top:8px}
+.mt12{margin-top:12px}.mt16{margin-top:16px}.mt20{margin-top:20px}
+.mb4{margin-bottom:4px}.mb6{margin-bottom:6px}.mb8{margin-bottom:8px}
+.mb12{margin-bottom:12px}.mb16{margin-bottom:16px}.mb20{margin-bottom:20px}
+.mb24{margin-bottom:24px}

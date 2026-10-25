@@ -111,10 +111,14 @@ func main() {
 	matchSvc := match.NewService(st, match.NewEmbedder())
 
 	mux := http.NewServeMux()
-	mux.Handle("/api/v2/", httpapi.NewServer(idSvc, tradeSvc, demandSvc, matchSvc, st, "2.0.0").Routes())
+	api := httpapi.NewServer(idSvc, tradeSvc, demandSvc, matchSvc, st, "2.0.0")
+	mux.Handle("/api/v2/", api.Routes())
 	mux.Handle("/api/", h)
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web")))) // 用户画像页等静态前端
-	mux.Handle("/", h)                                                                     // 根路径落地页
+	// 发出去的那条短链。放在 /static 之外: 这个地址是要被人念出来、抄到微信里的,
+	// 多一段 "static/app" 就多一处念错的机会。
+	mux.Handle("GET /t/{id}", api.InviteOpen())
+	mux.Handle("/", h) // 根路径落地页
 
 	if os.Getenv("ZANBUDDY_JWT_SECRET") == "" {
 		log.Println("警告: ZANBUDDY_JWT_SECRET 未设置, 正在用开发默认值签名会话; 生产必须设置")
