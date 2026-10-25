@@ -42,6 +42,10 @@ await page.waitForSelector('[data-pane="3"]:not([hidden])');
 await page.waitForSelector('#dev-code:not([hidden])', { timeout: 5000 }).catch(() => {});
 const devText = ((await page.textContent('#dev-code')) || '').replace(/\s+/g, ' ');
 check('第三步把演示验证码显示出来', /验证码是\s*0{6}/.test(devText), devText.trim());
+await page.screenshot({
+  path: 'E:/workspace/project/aijiedan/zanbuddy/web/app/_shots/login-dev-code.png',
+  fullPage: true,
+});
 
 await page.click('#fill-code');
 check('一键填入填进了输入框', (await page.inputValue('#code')) === '000000');
