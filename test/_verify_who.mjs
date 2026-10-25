@@ -214,6 +214,56 @@ if (tid) {
   step('接单方读别人的推荐名单被拒', false, '没找到刚发的单');
 }
 
+/* ---------- 接单方也会发单: 发完必须看得见, 还得找得到「谁能接」 ---------- */
+// 面板原本是 `open = isProvider ? [] : myOpenTasks`: 接单方发完单, 那一格空的,
+// 而「谁能接」只挂在那格上。路是通的, 只是没人告诉他门在哪。
+const TITLE_B = '把 python 抓取脚本整理成能维护的版本';
+await pageB.goto(BASE + '/static/app/publish.html', { waitUntil: 'networkidle' });
+await pageB.waitForSelector('#category option[value="data"]', { state: 'attached', timeout: 15000 });
+await pageB.fill('#title', TITLE_B);
+await pageB.selectOption('#category', 'data');
+await pageB.fill('#budget', '600');
+await pageB.fill(
+  '#spec',
+  '现有脚本是一个 800 行单文件，变量名是拼音，跑一次要改三处路径。想要能维护的版本：配置外置、函数拆开、加一份 README。'
+);
+await pageB.fill('#deliverables', '重构后的脚本 + README');
+await pageB.fill('#format', 'py + md');
+await pageB.click('#submit');
+await pageB.waitForSelector('#done:not([hidden])', { timeout: 15000 });
+step('接单方也能发单', true);
+
+await pageB.goto(BASE + '/static/app/hall.html', { waitUntil: 'networkidle' });
+await pageB.waitForSelector('#mine-list [data-open-task]', { state: 'attached', timeout: 15000 });
+const mineTitle = await pageB.textContent('#mine-title');
+step('面板标题跟着内容走', mineTitle.trim() === '我发的单', mineTitle.trim());
+const navLabel = await pageB.textContent('#nav-mine-label');
+step('导航上也不写「我接的单」', navLabel.trim() === '我发的单', navLabel.trim());
+const mineTxt = await pageB.textContent('#mine-list');
+step('自己发的单在面板里看得见', mineTxt.includes(TITLE_B));
+
+const askB = await pageB.$('[data-open-task] [data-ask-who]');
+step('接单方也找得到「谁能接」入口', askB !== null);
+if (askB) {
+  await askB.click();
+  await pageB.waitForSelector('[data-box^="who-"]:not([hidden]) [data-who]', { timeout: 20000 });
+  const mineWho = await pageB.textContent('[data-box^="who-"]:not([hidden])');
+  step('点开之后确实给出了人', /技能对得上|做过|完成过/.test(mineWho), mineWho.slice(0, 50));
+}
+await pageB.screenshot({ path: OUT + '/who-4-provider.png', fullPage: true });
+
+// 自己发的单在大厅里仍然不能认领(后端 SELF_CLAIM 会拒), 按钮就别摆出来。
+// 摆出来再让人吃一个 409, 是把后端规则翻译成一次无意义的点击。
+const selfCard = await pageB.evaluate((title) => {
+  const art = Array.from(document.querySelectorAll('article[data-card]')).find((a) =>
+    (a.textContent || '').includes(title)
+  );
+  if (!art) return null;
+  return { claim: !!art.querySelector('[data-claim]'), tag: /你发的/.test(art.textContent || '') };
+}, TITLE_B);
+step('自己发的单在大厅里不出现认领按钮', selfCard !== null && selfCard.claim === false, JSON.stringify(selfCard));
+step('并且标着「你发的」', selfCard !== null && selfCard.tag === true);
+
 step('全程无 JS 报错', errs.length === 0, errs.slice(0, 2).join(' | '));
 
 await browser.close();

@@ -134,7 +134,7 @@ function card(t) {
       <p class="tiny muted mt12">这一单由 ${t.requester || '需求方'} 发布，验收标准以「交付物」和「交付格式」为准。</p>
     </div>
 
-    ${canClaim ? claimUI(t) : ''}
+    ${canClaim && !mineTask ? claimUI(t) : ''}
   </article>`;
 }
 
@@ -192,15 +192,24 @@ function renderMine() {
   const items = isProvider ? mineItems : inboxItems;
   // 还没人接的需求不在任何订单里, 要单独列——否则自己刚发出去的单,
   // 在大厅里滚两页就再也找不着了(它旁边还挂着几十条别人的单)。
-  const open = isProvider ? [] : myOpenTasks;
+  // 两种身份都列: 发单入口对谁都开着(见 paintWho 里那段注释), 而「谁能接」
+  // 只挂在这一格上。接单方发的单不列出来, 他发完就再也找不到那个入口——
+  // 路本来是通的, 只是没人告诉他门在哪。
+  const open = myOpenTasks;
   const pending = items.filter((o) => o.needs_me).length;
   const n = items.length + open.length;
 
   // 标题跟着"有没有事等你"变: 全在进行了还挂「等你确认」, 是在催一件已经做完的事
   if (isProvider) {
-    el.mineTitle.textContent = '我接的单';
-    el.navMineLabel.textContent = '我接的单';
-    el.mineNote.textContent = '认领之后等需求方确认；确认开工的单在「进行中」，交完等验收。';
+    // 标题跟着内容走: 只有自己发的单、一张接的单都没有时, 挂「我接的单」
+    // 底下却是自己发的单, 人会以为自己点错了地方。
+    const onlyMine = items.length === 0;
+    el.mineTitle.textContent = onlyMine ? '我发的单' : '我接的单';
+    el.navMineLabel.textContent = onlyMine ? '我发的单' : '我接的单';
+    const notes = [];
+    if (!onlyMine) notes.push('认领之后等需求方确认；确认开工的单在「进行中」，交完等验收。');
+    if (open.length) notes.push(`${open.length} 条你发的还没人接，点「谁能接」看系统推荐的人。`);
+    el.mineNote.textContent = notes.join('');
   } else if (pending > 0) {
     // "等你确认"和"等你验收"是两种事: 一个是还没开工, 一个是已经交了东西。
     // 混成一个标题, 需求方会以为又来了个认领。
@@ -216,7 +225,7 @@ function renderMine() {
     el.mineTitle.textContent = '我发的单';
     el.navMineLabel.textContent = '我的单';
     el.mineNote.textContent = open.length
-      ? `挂着 ${open.length} 条还没人接。有人认领或交付时，会出现在这里。`
+      ? `挂着 ${open.length} 条还没人接，点「谁能接」看系统推荐的人。有人认领或交付时，会出现在这里。`
       : '暂时没有等你处理的单。有人认领或交付你的需求时，会出现在这里。';
   }
 
