@@ -1,4 +1,4 @@
-import { api, html, toast } from './runtime.js';
+import { api, html, toast, copyText } from './runtime.js';
 import { fetchCandidates, whoCards, bindWhy } from './matches.js';
 
 /* 发单页。校验口径与后端 internal/demand 一致, 但文案不在这里重复写:
@@ -252,41 +252,15 @@ async function loadSend(taskId) {
   }
 }
 
-// 复制。优先 navigator.clipboard（https / localhost 才有），
-// 局域网 http 打开时它不存在，退回到选中文本——让用户长按复制，
-// 而不是弹一句"复制失败"了事。
+// 复制这段话。真正的复制逻辑在 runtime.copyText 里——我的单上也要复制同一句话，
+// 两份实现早晚一份记得加"局域网 http 没有 clipboard"的退路、另一份忘。
 async function copy(text, okMsg) {
   const hint = document.getElementById('send-hint');
-  if (!text) return;
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(text);
-    } else {
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.setAttribute('readonly', '');
-      ta.style.position = 'fixed';
-      ta.style.top = '-1000px';
-      document.body.appendChild(ta);
-      ta.select();
-      const ok = document.execCommand('copy');
-      document.body.removeChild(ta);
-      if (!ok) throw new Error('copy failed');
-    }
-    if (hint) hint.textContent = okMsg || '已复制，去微信粘贴给他';
-  } catch (e) {
-    const el = document.getElementById('send-box');
-    if (el) {
-      el.classList.add('is-pick');
-      const r = document.createRange();
-      r.selectNodeContents(el);
-      const sel = window.getSelection();
-      if (sel) {
-        sel.removeAllRanges();
-        sel.addRange(r);
-      }
-    }
-    if (hint) hint.textContent = '上面这段已经选中了，长按复制';
+  const res = await copyText(text, document.getElementById('send-box'));
+  if (hint) {
+    hint.textContent = res === 'ok' ? (okMsg || '已复制，去微信粘贴给他')
+      : res === 'pick' ? '上面这段已经选中了，长按复制'
+      : '';
   }
 }
 

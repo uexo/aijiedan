@@ -203,6 +203,82 @@ await dp.waitForSelector('#mine-list li', { timeout: 10000 }).catch(() => {});
 const mineText = (await dp.locator('#mine-list').textContent()) || '';
 step('发单方能看到这一单已被人接', /已有人接|待确认/.test(mineText), mineText.slice(0, 60));
 
+/* ---------- 6. 那个数要长在发单方眼前 ----------
+   前面几段验的是"传出去了没有"这个事实存在; 这一段验的是发单方自己能不能看见。
+   看不见的数不是指标, 是日志。 */
+const ctx4 = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+const dp2 = await ctx4.newPage();
+dp2.on('pageerror', (e) => errors.push(String(e)));
+await login(dp2, demandPhone, 'demand');
+await dp2.waitForURL(/hall\.html|profile\.html/, { timeout: 12000 });
+
+const title2 = '把客服话术过一遍';
+const made = await dp2.evaluate(async (t) => {
+  // 写请求要自己带 CSRF 双提交里的那个头: runtime 的 api() 会带, 裸 fetch 不会,
+  // 少了它服务端回 403, 看起来像"没权限发单"。
+  const m = document.cookie.match(/(?:^|; )csrf_token=([^;]+)/);
+  const r = await fetch('/api/v2/tasks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': m ? m[1] : '' },
+    body: JSON.stringify({
+      title: t,
+      category: 'nlp',
+      spec: '需要 python + rag，支持文档上传与中文问答，交付要能跑起来。',
+      budget_cents: 50000,
+      deliverables: '1 套源码 + 部署文档',
+      required_format: 'Python 项目(zip) + README',
+      style_ref: '生产级可维护代码',
+      skills: ['python', 'rag', '自动化'],
+      items: ['能读 PDF', '返回带引用片段'],
+    }),
+  });
+  const j = await r.json();
+  return { st: r.status, id: (j.data && j.data.id) || '' };
+}, title2);
+step('另发一条还挂着的单（用它验发单方看到的那一格）', made.st === 201 && /^T/.test(made.id), JSON.stringify(made));
+
+await dp2.goto(BASE + '/static/app/hall.html', { waitUntil: 'networkidle' });
+await dp2.waitForSelector(`[data-open-task="${made.id}"]`, { timeout: 10000 });
+const cardText = async () =>
+  ((await dp2.locator(`[data-open-task="${made.id}"]`).textContent()) || '').trim();
+
+step('还没人点开时，卡片上就写着', /链接还没人点开/.test(await cardText()), (await cardText()).slice(0, 60));
+
+/* 让另一个人（无痕上下文）点一次短链 */
+await anon.goto(`${BASE}/t/${made.id}`, { waitUntil: 'networkidle' });
+
+await dp2.reload({ waitUntil: 'networkidle' });
+await dp2.waitForSelector(`[data-open-task="${made.id}"]`, { timeout: 10000 });
+step('被点开一次之后，卡片上的数变了', /链接被点开 1 次/.test(await cardText()), (await cardText()).slice(0, 60));
+await dp2.locator(`[data-open-task="${made.id}"]`).screenshot({ path: `${OUT}/card-opened.png` });
+
+/* "再发一次"必须有落脚处：那段话不能只在发单成功那一屏存在 */
+await dp2.click(`[data-ask-send="${made.id}"]`);
+await dp2.waitForSelector(`[data-box="send-${made.id}"] .send-box`, { timeout: 8000 });
+const again = ((await dp2.textContent(`[data-box="send-${made.id}"] .send-box`)) || '').trim();
+step('「发出去」能重新拿到那段话', again.includes(title2) && /\/t\/T-/.test(again), again.slice(0, 60));
+step('重新拿到的金额写法一致', /500 元/.test(again) && !/500\.00/.test(again), again);
+const copyBtn = await dp2.locator(`[data-copy-send="${made.id}"]`).count();
+step('有「复制这段话」按钮', copyBtn === 1, copyBtn);
+await dp2.click(`[data-copy-send="${made.id}"]`);
+// 复制的落点反馈是异步写的（clipboard 要 await），点完立刻读会读到空字符串。
+// 等它出现，而不是 sleep 一个拍脑袋的毫秒数。
+const hintSel = `[data-box="send-${made.id}"] [data-send-hint]`;
+await dp2.waitForFunction(
+  (sel) => /已复制|长按/.test((document.querySelector(sel) || {}).textContent || ''),
+  hintSel,
+  { timeout: 4000 }
+).catch(() => {});
+const hint2 = ((await dp2.textContent(hintSel)) || '').trim();
+step('复制后有反馈', /已复制|长按/.test(hint2), hint2);
+await dp2.screenshot({ path: `${OUT}/send-again.png`, fullPage: true });
+
+/* 已被人接走的单不该还给一个"发出去"的按钮：对方点开只会看到"不在了" */
+await dp.evaluate(
+  (args) => fetch(`/api/v2/tasks/${args.id}/invite`).then((r) => r.json()),
+  { id: taskId }
+).then((j) => step('被接走的单不再给"再发一次"的口子', j && j.data && j.data.can_redo === false, j && j.data && j.data.can_redo));
+
 step('无 JS 报错', errors.length === 0, errors.slice(0, 2).join(' | '));
 
 await browser.close();

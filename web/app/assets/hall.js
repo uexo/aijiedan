@@ -1,4 +1,4 @@
-import { api, html, money, toast, ApiError } from './runtime.js';
+import { api, html, money, toast, ApiError, copyText } from './runtime.js';
 import { fetchCandidates, whoCards, bindWhy } from './matches.js';
 
 /* 需求大厅：拉列表、筛选、展开要求。
@@ -262,11 +262,12 @@ function renderMine() {
    推荐名单摊给所有人看。 */
 function taskItem(t) {
   const cat = t.category_name || catMap[t.category] || t.category || '未分类';
+  const opens = Number(t.open_count) || 0;
   return html`
   <li class="oitem" data-open-task="${t.id}">
     <div class="flex ac jb wrapw g8">
       <span class="state state-todo">${t.state_label || '开放中'}</span>
-      <span class="tiny muted">${ago(t.created_at)}挂出 · 还没人接</span>
+      <span class="tiny muted">${ago(t.created_at)}挂出 · 还没人接 · ${sentLine(t)}</span>
     </div>
     <strong>${t.title}</strong>
     <div class="oline">
@@ -279,10 +280,12 @@ function taskItem(t) {
     </div>
 
     <div class="oact" data-act="${t.id}">
+      <button class="btn ${opens > 0 ? 'btn-quiet' : 'btn-ink'} btn-sm" type="button" data-ask-send="${t.id}">发出去</button>
       <button class="btn btn-quiet btn-sm" type="button" data-ask-who="${t.id}">谁能接</button>
       <button class="btn btn-quiet btn-sm" type="button" data-ask-withdraw="${t.id}">撤回这条</button>
     </div>
 
+    <div class="obox" hidden data-box="send-${t.id}"></div>
     <div class="obox whow" hidden data-box="who-${t.id}"></div>
 
     <div class="obox" hidden data-box="withdraw-${t.id}">
@@ -293,6 +296,21 @@ function taskItem(t) {
       </div>
     </div>
   </li>`;
+}
+
+/* 发出去之后的下半句。
+   一个 0 有两种读法：「这话没说到人手上」和「平台不好用」，这两种的下一步完全不同。
+   分开它们的不是数字，是那句"发出去"的话还在不在——所以 0 次的时候
+   卡片上要留一个能重新拿到那段话的入口，而不是只报一个数。
+   满一天还没人点，措辞变重一档：第一小时是"还没"，第二天是"一次都没"。
+
+   这一行和"还没人接"并列而不是替换它：两件事都会让单子悬着，
+   而且先后有因果——没人点开就不会有人接。只留一句，另半句就得靠猜。 */
+function sentLine(t) {
+  const n = Number(t.open_count) || 0;
+  if (n > 0) return `链接被点开 ${n} 次`;
+  const age = Date.now() - Number(t.created_at || 0);
+  return age >= 86400000 ? '链接一次都没被点开' : '链接还没人点开';
 }
 
 function orderItem(o) {
@@ -1289,6 +1307,58 @@ async function doWho(id) {
   }
 }
 
+/* 从"发出去"那个盒子里复制。linkOnly 只拿短链——
+   有时候对方已经在聊天窗口里，只缺地址，把整段话糊上去反而像群发。 */
+async function copyFromBox(btn, linkOnly) {
+  const box = btn.closest('[data-box]');
+  if (!box) return;
+  const text = linkOnly ? box.dataset.url : box.dataset.sentence;
+  const hint = box.querySelector('[data-send-hint]');
+  const res = await copyText(text, box.querySelector('[data-send-text]'));
+  if (!hint) return;
+  hint.textContent = res === 'ok'
+    ? (linkOnly ? '链接已复制' : '已复制，去微信粘贴给他')
+    : res === 'pick' ? '上面这段已经选中了，长按复制' : '';
+}
+
+/* 重新拿到"发出去"的那段话。
+   发单成功页上有这一段，但那一屏关掉就没了。而"发出去"不是一次动作，
+   是要重复的动作：没人点开，就换个说法再发一次。
+   话术没有第二个落脚处，这件事就只能靠人记，记不住等于没有。 */
+async function doSend(id) {
+  openBox(id, 'send');
+  const box = el.mineList.querySelector('[data-box="send-' + id + '"]');
+  if (!box) return;
+  box.innerHTML = html`<p class="tiny muted">正在取出这段话…</p>`;
+  try {
+    const inv = await api('GET', '/tasks/' + encodeURIComponent(id) + '/invite');
+    if (!inv.sentence) throw new Error('EMPTY_SENTENCE');
+    box.dataset.sentence = inv.sentence;
+    box.dataset.url = inv.url || '';
+    // 撤回过、或者已经有人接的单不再给复制按钮: 对方点开只会看到"不在了"，
+    // 让他去发一条注定点不开的链接，是把已经结束的事再演一遍。
+    const dead = inv.can_redo === false;
+    box.innerHTML = html`
+      <div class="send-box" data-send-text>${inv.sentence}</div>
+      ${dead
+        ? html`<p class="tiny muted mt6">${inv.why_not || '这一单已经不在等人接了。'}</p>`
+        : html`<div class="flex ac g8 wrapw mt8">
+            <button class="btn btn-ink btn-sm" type="button" data-copy-send="${id}">复制这段话</button>
+            <button class="btn btn-quiet btn-sm" type="button" data-copy-link="${id}">只复制链接</button>
+            <span class="tiny muted" data-send-hint></span>
+          </div>`}
+      <div class="flex ac g8 wrapw mt8">
+        <button class="btn btn-quiet btn-sm" type="button" data-close-box="${id}">收起</button>
+      </div>`;
+  } catch (err) {
+    box.innerHTML = html`
+      <p class="tiny muted">这段话没取上来，过一会儿再点一次。</p>
+      <div class="flex ac g8 wrapw mt8">
+        <button class="btn btn-quiet btn-sm" type="button" data-close-box="${id}">收起</button>
+      </div>`;
+  }
+}
+
 /* 撤回。成功之后这张卡直接从"我发的单"里消失, 而不是原地改成"已撤回":
    这一格存在的意义是"还没人接、还等着人", 撤回的单不再等任何人,
    留在列表里只会让"挂着 N 条"这个数字对不上。 */
@@ -1317,7 +1387,22 @@ async function doWithdraw(id, btn) {
   }
 }
 
-el.mineList.addEventListener('click', (e) => {
+el.mineList.addEventListener('click', async (e) => {
+  const askSend = e.target.closest('[data-ask-send]');
+  if (askSend) {
+    doSend(askSend.dataset.askSend);
+    return;
+  }
+  const cpSend = e.target.closest('[data-copy-send]');
+  if (cpSend) {
+    await copyFromBox(cpSend, false);
+    return;
+  }
+  const cpLink = e.target.closest('[data-copy-link]');
+  if (cpLink) {
+    await copyFromBox(cpLink, true);
+    return;
+  }
   const askWho = e.target.closest('[data-ask-who]');
   if (askWho) {
     doWho(askWho.dataset.askWho);

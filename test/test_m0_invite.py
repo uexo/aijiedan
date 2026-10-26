@@ -8,6 +8,8 @@
   - 谁能看 —— 详情公开（大厅本来就公开），话术只有发单方拿得到
   - 能不能接 —— viewer 在点之前就说清楚：你自己的单/没填档案/身份不对/已被接走
   - 那个数 —— 24 小时内被打开的比例；还没到期的单单列，不压分母
+  - 那个数要看得见 —— /me/tasks 每条带 open_count，发单/撤单返回也带，
+    不然它只存在于 curl 里，发单方永远不知道自己那段话发出去没有
 
 最后一条是这一段全部的意义：只看成交数是分不清"没人要"和"没人知道"的。
 
@@ -306,6 +308,37 @@ st, d = P_OK.invite(T2)
 check("别的接单方拿不到", st == 403, st)
 st, d = R.invite("T-NOT-EXIST")
 check("不存在的单 404", st == 404 and code_of(d) == "TASK_NOT_FOUND", (st, d))
+
+print("[10] 那个数要长在发单方眼前, 不能只在 curl 里")
+st, d = R.my_tasks()
+items = data_of(d).get("items") or []
+by_id = {t.get("id"): t for t in items}
+check("我的单里能拿到刚发的这一条", T3 in by_id, list(by_id.keys()))
+check("没被打开过就是 0", (by_id.get(T3) or {}).get("open_count") == 0, by_id.get(T3))
+check("同一屏里别的单不串味", (by_id.get(T2) or {}).get("open_count") == 0, by_id.get(T2))
+
+# 之前几段已经打过 T_MAIN, 所以它是"被人点过"的那一档
+check("被打过的单数得出次数", (by_id.get(T_MAIN) or {}).get("open_count", 0) >= 1, by_id.get(T_MAIN))
+
+open_short_link(T3)
+open_short_link(T3)
+st, d = R.my_tasks()
+after = {t.get("id"): t for t in (data_of(d).get("items") or [])}
+t3 = after.get(T3) or {}
+check("打开两次就记两次", t3.get("open_count") == 2, t3.get("open_count"))
+# 按 task_id 分桶, 不是全局计数: 混在一起的话, 一次误点会把所有单都变成"发到了"
+check("同一屏里没被点的单还是 0", (after.get(T2) or {}).get("open_count") == 0, (after.get(T2) or {}).get("open_count"))
+
+# 发单的 201 回的是 demand.View(发单页要用的那套字段), 不是列表项——
+# 所以这里不要求它带 open_count: 刚发出去必然是 0, 而成功页上的话术
+# 是另取 /tasks/{id}/invite, 那边自带 opens。字段跟着用它的人走。
+st, d = R.publish(**make_task("第四单：把客服话术过一遍", 50000))
+T4 = data_of(d).get("id") or ""
+
+# 撤单返回走的是同一份列表映射, 少一个字段就会出现"刚撤的单少了类目名"那类问题
+st, d = R.call("POST", "/api/v2/tasks/%s/withdraw" % T4, {})
+check("撤退单返回也带 open_count", "open_count" in (data_of(d) or {}), data_of(d))
+check("撤回后状态对", (data_of(d) or {}).get("status") == "withdrawn", data_of(d))
 
 print("")
 print("发出去: %d 通过, %d 失败" % (PASS, FAIL))

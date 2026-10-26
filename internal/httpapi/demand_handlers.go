@@ -38,10 +38,7 @@ func (s *Server) myTasks(w http.ResponseWriter, r *http.Request) {
 	cl, _ := Claims(r)
 	tasks := s.Demand.MyTasks(cl.UserID)
 
-	items := make([]myTask, 0, len(tasks))
-	for _, t := range tasks {
-		items = append(items, toMyTask(t))
-	}
+	items := s.toMyTasks(tasks)
 	WriteOK(w, r, map[string]interface{}{
 		"items": items,
 		"total": len(items),
@@ -59,25 +56,46 @@ func (s *Server) withdrawTask(w http.ResponseWriter, r *http.Request) {
 		writeDemandErr(w, r, err)
 		return
 	}
-	WriteOK(w, r, toMyTask(t))
+	WriteOK(w, r, s.toMyTasks([]*model.Task{t})[0])
 }
 
-// toMyTask 需求单 → 列表项。发单返回和撤单返回共用一份映射:
-// 两处各写一遍, 加字段时必漏一个, 表现为"刚撤的单少了类目名"。
-func toMyTask(t *model.Task) myTask {
-	return myTask{
-		ID:           t.ID,
-		Title:        t.Title,
-		Category:     t.Category,
-		CategoryName: categoryLabel(t.Category),
-		BudgetCents:  t.BudgetCents,
-		Spec:         t.Spec,
-		DeadlineAt:   t.SpecObj.DeadlineAt,
-		ItemCount:    len(t.SpecObj.Items),
-		Status:       string(t.Status),
-		StateLabel:   taskStateLabel(t.Status),
-		CreatedAt:    t.CreatedAt,
+// toMyTasks 需求单 → 列表项。「我的单」列表和撤单返回共用这一份映射:
+// 各写一遍, 加字段时必漏一个, 表现为"刚撤的单少了类目名"。
+//
+// 发单的 201 不走这里: 它回的是 demand.View(带 deliverables/items/clarifications
+// 那套发单页要用的字段), 是"刚发出去的东西长什么样", 不是"挂在列表里长什么样"。
+// 打开次数也就没有出现在 201 里——那会儿它必然是 0, 而成功页上的话术是
+// 另取 /tasks/{id}/invite, 那边自带 opens。
+// 打开次数一次批量取: 逐条查表在"我发的单"里就是 N 次往返。这一屏最多几十条,
+// 一次 in (...) 就够, 而分开查会在列表边界上悄悄变慢, 平时看不出来。
+func (s *Server) toMyTasks(ts []*model.Task) []myTask {
+	ids := make([]string, 0, len(ts))
+	for _, t := range ts {
+		ids = append(ids, t.ID)
 	}
+	opens := make(map[string]int, len(ids))
+	for _, h := range s.Store.ListInviteHits(ids) {
+		opens[h.TaskID]++
+	}
+
+	out := make([]myTask, 0, len(ts))
+	for _, t := range ts {
+		out = append(out, myTask{
+			ID:           t.ID,
+			Title:        t.Title,
+			Category:     t.Category,
+			CategoryName: categoryLabel(t.Category),
+			BudgetCents:  t.BudgetCents,
+			Spec:         t.Spec,
+			DeadlineAt:   t.SpecObj.DeadlineAt,
+			ItemCount:    len(t.SpecObj.Items),
+			Status:       string(t.Status),
+			StateLabel:   taskStateLabel(t.Status),
+			CreatedAt:    t.CreatedAt,
+			OpenCount:    opens[t.ID],
+		})
+	}
+	return out
 }
 
 // myTask 我发的需求, 列表项。不吐 requester_id / org_id / 翻译缓存这些
@@ -94,6 +112,12 @@ type myTask struct {
 	Status       string `json:"status"`
 	StateLabel   string `json:"state_label"`
 	CreatedAt    int64  `json:"created_at"`
+	// OpenCount 这条单的邀请链接被打开过几次。
+	//
+	// 和 /me/invite-stats 里的"传到了没有"不是一个问题: 那个算的是
+	// "24 小时内首次打开算不算传到", 是个比例; 这个是"这条链接有没有人点过", 是个事实。
+	// 卡片上要的是后者——0 次的意思是这段话还没发出去, 不是"指标不好"。
+	OpenCount int `json:"open_count"`
 }
 
 // taskStateLabel 需求单的三态标签。

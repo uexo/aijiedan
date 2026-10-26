@@ -263,6 +263,47 @@ export function toast(msg, type) {
   toastTimer = setTimeout(() => toastEl.classList.remove('show'), 3000);
 }
 
+/* ---------- 剪贴板 ---------- */
+
+/* 复制一段文字。返回 'ok' | 'pick' | 'empty'。
+   优先 navigator.clipboard（https / localhost 才有），局域网 http 打开时它不存在，
+   退回到选中文本——让用户长按复制，而不是弹一句"复制失败"了事。
+   pickEl 是"复制不成时该被选中的那个元素"。这段逻辑必须只有一份：
+   发单成功页和我的单要复制的是同一句话，两份实现早晚一份记得加 fallback、
+   另一份忘，而忘了的那一份在所有手机上都是死按钮、在桌面上却一切正常。 */
+export async function copyText(text, pickEl) {
+  if (!text) return 'empty';
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if (!ok) throw new Error('copy failed');
+    }
+    return 'ok';
+  } catch (e) {
+    if (pickEl) {
+      pickEl.classList.add('is-pick');
+      const r = document.createRange();
+      r.selectNodeContents(pickEl);
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(r);
+      }
+    }
+    return 'pick';
+  }
+}
+
 /* ---------- 数字 ---------- */
 
 function group(intPart) {
